@@ -1,5 +1,9 @@
 # رفع PhotoCraft على هوستينجر
 
+> **النسخة الحالية شغالة على: https://studio.engsaber.space/** (اترفعت في 7 أكتوبر 2026 عن طريق Hostinger API: عملنا subdomain، رفعنا الـzip، وفكيناه بـ«Deploy static site archive»). SSL شغال والتحويل لـHTTPS متفعل.
+>
+> ملاحظة: هوستينجر عنده حماية ضد البوتات، فطلبات `curl` المباشرة ممكن ترجع 403 أو صفحة «Checking your browser». المتصفحات العادية مش بتتأثر.
+
 النسخة: **PhotoCraft Web v0.3.0**، وهي النسخة الرسمية من صفحة الإصدارات على GitHub (`photocraft-web-0.3.0.zip`، SHA-256 `1825b2beb2b84331124f6cb78e5eb6eb9584612e8ad6a4e817b7f27cb3f93d06`) من غير أي تعديل في البرنامج.
 
 | الملف | إيه هو |
