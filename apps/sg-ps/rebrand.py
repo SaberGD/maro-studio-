@@ -352,7 +352,7 @@ KEYBOARD_SCRIPT = """  <script>
         var d = document.createElement('div');
         d.id = 'sgps_hint';
         d.dir = 'rtl';
-        d.innerHTML = '<span>اضغط <b><bdi>F11</bdi></b> لوضع ملء الشاشة: كل الاختصارات، حتى <bdi>Ctrl+N</bdi> و <bdi>Ctrl+W</bdi>، هتشتغل للبرنامج بس. للخروج اضغط مطوّلًا على <bdi>Esc</bdi>.<br>ولخطوط جهازك: <bdi>Type › Load Device Fonts…</bdi></span>' +
+        d.innerHTML = '<span>اضغط <b><bdi>F11</bdi></b> لوضع ملء الشاشة: كل الاختصارات، حتى <bdi>Ctrl+N</bdi> و <bdi>Ctrl+W</bdi>، هتشتغل للبرنامج بس. للخروج اضغط مطوّلًا على <bdi>Esc</bdi>.<br>ولو المتصفح سألك عن الخطوط اختار <b><bdi>Allow</bdi></b>: خطوط جهازك هتظهر في أداة النص.</span>' +
           '<button type="button" aria-label="إغلاق">×</button>';
         d.querySelector('button').onclick = function () {
           d.remove();
@@ -437,17 +437,17 @@ FONTS_SCRIPT = """  <script>
                 : 'مفيش خطوط جديدة اتحمّلت من الجهاز.', 7000);
       }
       window.sgpsLoadDeviceFonts = function () { load(false); };
-      // Fonts already allowed once: load them again on the first click of this visit.
-      var enabled = false;
-      try { enabled = localStorage.getItem(ENABLED) === '1'; } catch (e) {}
-      if (enabled && window.queryLocalFonts) {
+      // Device fonts load by themselves: on the first click of every visit the page asks the
+      // browser (Chrome shows its "use your fonts" prompt once; after Allow it never asks again).
+      // A page cannot read installed fonts before that click: browsers require a user gesture.
+      if (window.queryLocalFonts) {
         window.addEventListener('pointerdown', function first() {
           window.removeEventListener('pointerdown', first, true);
-          if (navigator.permissions) {
-            navigator.permissions.query({ name: 'local-fonts' }).then(function (p) {
-              if (p.state === 'granted') load(true);
-            }).catch(function () {});
-          }
+          var go = function () { setTimeout(function () { load(true); }, 0); };
+          if (!navigator.permissions) return go();
+          navigator.permissions.query({ name: 'local-fonts' }).then(function (p) {
+            if (p.state !== 'denied') go();
+          }).catch(go);
         }, true);
       }
     })();
@@ -584,6 +584,18 @@ def rename_everywhere(root: Path) -> int:
     return count
 
 
+def drop_old_translations(root: Path) -> int:
+    """Translation rows for the removed ArtCraft/Discord menu items (and the translator notes that
+    name ArtCraft) are compiled into the app even though nothing shows them: drop them."""
+    dropped = 0
+    for path in root.glob("crates/ui-egui/src/i18n/*.tsv"):
+        lines = path.read_text(encoding="utf-8").split("\n")
+        keep = [l for l in lines if not re.search(r"ArtCraft|Discord", l)]
+        dropped += len(lines) - len(keep)
+        path.write_text("\n".join(keep), encoding="utf-8")
+    return dropped
+
+
 def check(root: Path) -> None:
     """No ArtCraft/Discord string literal may remain in UI code."""
     bad = []
@@ -617,6 +629,7 @@ def main() -> None:
     web_page_behaviour(root)
     device_fonts(root)
     n = rename_everywhere(root)
+    drop_old_translations(root)
     check(root)
     print(f"rebrand: done ({n} name replacements)")
 
