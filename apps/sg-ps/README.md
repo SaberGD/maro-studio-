@@ -36,6 +36,20 @@ apps/sg-ps/build.sh                # يطلع deploy/sg-ps/sg-ps-<version>-hosti
 
 أول build بياخد وقت طويل (حوالي ساعة على 4 cores)، والـbuilds اللي بعده أسرع.
 
+## نسخ الديسكتوب (ويندوز وماك)
+
+`.github/workflows/desktop-sg-ps.yml` بيبني البرنامج على أجهزة ويندوز وماك حقيقية عند GitHub، وبينزّل الملفين في صفحة **Releases** في الريبو:
+- **ويندوز:** `SG-PS-<version>-windows-x64-portable.zip`. فكّه وشغّل `SG-PS.exe`، ومش محتاج تسطيب. الإعدادات بتتحفظ في فولدر `SG-PS-Data` جنبه.
+- **ماك:** `SG-PS-<version>-macos-universal.zip` فيه `SG - PS.app`، وبيشتغل على أجهزة Apple Silicon وIntel. اسحبه لـApplications.
+
+**تشغيله:** من Actions ← Desktop SG - PS ← Run workflow، أو اعمل push لـtag بالشكل `desktop-v0.3.0`. البناء بياخد من 20 لـ40 دقيقة. وتقدر تبني من جهاز ويندوز أو ماك بـ`apps/sg-ps/desktop/package.sh windows|macos`.
+
+**التوقيع:** النسخ دي **مش موقّعة**:
+- **ويندوز:** أول تشغيل بيظهر «Windows protected your PC». اضغط More info ← Run anyway.
+- **ماك:** أول تشغيل اعمل كليك يمين على البرنامج ← Open ← Open.
+
+عشان التحذيرات دي تختفي، محتاج شهادة توقيع لويندوز، وحساب Apple Developer للماك (99 دولار في السنة) عشان التوقيع والـnotarization.
+
 ## النشر التلقائي (GitHub Actions)
 
 أي push على **الفرع الافتراضي** للريبو بيغيّر حاجة في `apps/sg-ps/` أو `archive/photocraft/` بيشغّل `.github/workflows/deploy-sg-ps.yml`، والـworkflow ده:

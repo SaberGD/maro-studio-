@@ -1,0 +1,87 @@
+# Builds the SG - PS desktop app for Windows (portable zip) and macOS (universal .app in a zip)
+# and publishes both as a GitHub Release. Run it from the Actions tab (Run workflow), or push a tag
+# named desktop-v* (for example desktop-v0.3.0).
+name: Desktop SG - PS
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows
+          - os: macos-latest
+            target: macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.sgps-target
+      SGPS_WORK: ${{ github.workspace }}/.sgps-build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          if [ "${{ matrix.target }}" = macos ]; then
+            rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          fi
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .sgps-target
+          key: sgps-desktop-${{ matrix.target }}-${{ hashFiles('archive/photocraft/*.tar.gz') }}-${{ hashFiles('apps/sg-ps/**') }}
+          restore-keys: |
+            sgps-desktop-${{ matrix.target }}-${{ hashFiles('archive/photocraft/*.tar.gz') }}-
+
+      - name: Build and package
+        run: apps/sg-ps/desktop/package.sh ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sg-ps-desktop-${{ matrix.target }}
+          path: deploy/sg-ps-desktop/*.zip
+          retention-days: 30
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l dist
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in desktop-v*) ;; *) TAG="desktop-build-${{ github.run_number }}" ;; esac
+          gh release create "$TAG" dist/*.zip \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "SG - PS Desktop ($TAG)" \
+            --notes "SG - PS desktop app.
+
+          Windows: download SG-PS-...-windows-x64-portable.zip, unzip it, and run SG-PS.exe. On the first run Windows may show \"Windows protected your PC\": click More info > Run anyway.
+
+          macOS (Apple Silicon and Intel): download SG-PS-...-macos-universal.zip, unzip it, and drag \"SG - PS\" into Applications. On the first run, right-click the app > Open > Open (the app is not notarized yet)."

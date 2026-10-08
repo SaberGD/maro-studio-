@@ -584,6 +584,27 @@ def rename_everywhere(root: Path) -> int:
     return count
 
 
+def desktop(root: Path) -> None:
+    """The native desktop app (Windows/macOS): Maro icons, Saber names, own data folder."""
+    icons = HERE / "assets" / "desktop"
+    app_icon = root / "assets/app-icon"
+    shutil.copyfile(icons / "sg-ps-1024.png", app_icon / "photocraft-1024.png")
+    shutil.copyfile(icons / "sg-ps.ico", app_icon / "photocraft.ico")
+    shutil.copyfile(icons / "sg-ps.icns", app_icon / "photocraft.icns")
+    shutil.copyfile(icons / "sg-ps-256.png", app_icon / "hicolor/256x256/apps/ai.storyteller.photocraft.png")
+    edit(root, "apps/photocraft/build.rs", [
+        ('.set("CompanyName", "Learning Machines LLC")', '.set("CompanyName", "Saber Group Academy")'),
+        ('.set("OriginalFilename", "photocraft.exe")', '.set("OriginalFilename", "SG-PS.exe")'),
+        ('.set("InternalName", "photocraft")', '.set("InternalName", "SG-PS")'),
+    ])
+    edit(root, "apps/photocraft/src/app_dirs.rs", [
+        ('pub const PORTABLE_DATA_DIR: &str = "PhotoCraftData";', 'pub const PORTABLE_DATA_DIR: &str = "SG-PS-Data";'),
+    ])
+    edit(root, "apps/photocraft/src/main.rs", [
+        ('const APP_ID: &str = "ai.storyteller.photocraft";', 'const APP_ID: &str = "com.sabergroup.sgps";'),
+    ])
+
+
 def drop_old_translations(root: Path) -> int:
     """Translation rows for the removed ArtCraft/Discord menu items (and the translator notes that
     name ArtCraft) are compiled into the app even though nothing shows them: drop them."""
@@ -630,6 +651,7 @@ def main() -> None:
     device_fonts(root)
     n = rename_everywhere(root)
     drop_old_translations(root)
+    desktop(root)
     check(root)
     print(f"rebrand: done ({n} name replacements)")
 
