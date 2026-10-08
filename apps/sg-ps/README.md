@@ -36,6 +36,24 @@ apps/sg-ps/build.sh                # يطلع deploy/sg-ps/sg-ps-<version>-hosti
 
 أول build بياخد وقت طويل (حوالي ساعة على 4 cores)، والـbuilds اللي بعده أسرع.
 
+## قائمة الانتظار والتجربة المجانية
+
+في شاشة البداية، كروت **SG - AI / SG - PR / SG - AE** (زرار Notify me) وزرار **Book your free trial** بتفتح فورم عربي فيه:
+- الاسم.
+- رقم الواتساب.
+- «مهتم تتعلم إيه؟»: Graphic Design 101، وAdvertising Mastery، وAI 101 وMastery و100x Creatives، أو «لسه مش متأكد».
+- الموافقة على التواصل.
+
+الفورم بيبعت البيانات لـ`hosting/waitlist.php`، واللي بيحفظها سطر سطر في:
+
+**`public_html/sgps-data/leads.csv` على `engsaber.space`**
+
+(File Manager في hPanel ← engsaber.space). الملف بيفتح في Excel والعربي ظاهر صح.
+
+- الفولدر ده برّه فولدر SG - PS، فالنشر التلقائي مش بيلمسه، وعليه `.htaccess` بيمنع فتحه من المتصفح.
+- فيه حد 5 طلبات في الساعة لكل جهاز ضد السبام.
+- بعد الإرسال بيظهر زرار واتساب، ومعاه رسالة جاهزة فيها الاسم والمنتج.
+
 ## نسخ الديسكتوب (ويندوز وماك)
 
 `.github/workflows/desktop-sg-ps.yml` بيبني البرنامج على أجهزة ويندوز وماك حقيقية عند GitHub، وبينزّل الملفين في صفحة **Releases** في الريبو:

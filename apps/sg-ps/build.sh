@@ -24,6 +24,7 @@ python3 -I "$HERE/rebrand.py" "$WORK/src"
 
 cp -R "$WORK/src/dist/web/." "$WORK/site/"
 cp "$HERE/hosting/.htaccess" "$WORK/site/.htaccess"
+cp "$HERE/hosting/waitlist.php" "$WORK/site/waitlist.php"
 # Licence obligations: the MIT licence text (with its copyright line) and the licences of the
 # fonts and icons compiled into the app. They are plain files on the server, not shown in the UI.
 cp "$WORK/src/LICENSE-MIT" "$WORK/site/LICENSE.txt"

@@ -107,30 +107,64 @@ pub fn contact_button(app: &mut PhotocraftApp, ui: &mut egui::Ui, min_width: f32
     r
 }
 
-/// SG - PS: the next apps of the suite, announced on the start screen.
-pub fn coming_soon(ui: &mut egui::Ui) {
+/// SG - PS: a waitlist / free-trial request for `product` ("SG - AI", ..., or "general").
+/// In the browser the page shows its Arabic form; the desktop app opens the site with the form.
+pub static WAITLIST_REQUEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn waitlist(app: &mut PhotocraftApp, ctx: &egui::Context, product: &str) {
+    if cfg!(target_arch = "wasm32") {
+        *WAITLIST_REQUEST.lock().unwrap_or_else(|e| e.into_inner()) = Some(product.to_string());
+        ctx.request_repaint();
+    } else {
+        let url = format!("{APP_PAGE}/?waitlist={}", product.replace(' ', ""));
+        open(app, ctx, &url);
+    }
+}
+
+/// SG - PS: the next apps of the suite, announced on the start screen, with a waitlist.
+pub fn coming_soon(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = crate::theme::Tokens::get(ui.ctx());
-    ui.label(egui::RichText::new(tl!("COMING SOON")).size(11.0).strong().color(t.accent));
-    ui.add_space(6.0);
+    ui.label(egui::RichText::new(tl!("COMING SOON TO SG STUDIO")).size(12.0).strong().color(t.accent));
+    ui.add_space(2.0);
+    ui.label(egui::RichText::new(tl!("Get notified when they launch and book your free trial session")).size(12.0).color(t.text_dim));
+    ui.add_space(8.0);
     let items = [("SG - AI", tl!("Vector design")), ("SG - PR", tl!("Video editing")), ("SG - AE", tl!("Motion graphics"))];
-    let (w, gap) = (132.0, 10.0);
+    let (w, gap) = (136.0, 10.0);
+    let mut clicked: Option<&str> = None;
     ui.horizontal(|ui| {
         ui.add_space(((ui.available_width() - (3.0 * w + 2.0 * gap)) / 2.0).max(0.0));
         ui.spacing_mut().item_spacing.x = gap;
         for (name, what) in items {
-            egui::Frame::NONE
+            let r = egui::Frame::NONE
                 .stroke(egui::Stroke::new(1.0, t.accent_border))
                 .corner_radius(t.radius)
-                .inner_margin(egui::Margin::symmetric(8, 6))
+                .inner_margin(egui::Margin::symmetric(8, 8))
                 .show(ui, |ui| {
                     ui.set_width(w - 18.0);
                     ui.vertical_centered(|ui| {
-                        ui.label(egui::RichText::new(name).size(14.0).strong().color(t.text));
+                        ui.label(egui::RichText::new(name).size(15.0).strong().color(t.text));
                         ui.label(egui::RichText::new(what).size(11.0).color(t.text_dim));
+                        ui.add_space(6.0);
+                        if crate::widgets::secondary_button(ui, tl!("Notify me"), 96.0).clicked() {
+                            clicked = Some(name);
+                        }
                     });
-                });
+                })
+                .response
+                .interact(egui::Sense::click())
+                .on_hover_cursor(egui::CursorIcon::PointingHand);
+            if r.clicked() {
+                clicked = Some(name);
+            }
         }
     });
+    ui.add_space(12.0);
+    if crate::widgets::primary_button(ui, tl!("Book your free trial"), 220.0).clicked() {
+        clicked = Some("general");
+    }
+    if let Some(p) = clicked {
+        waitlist(app, ui.ctx(), p);
+    }
 }
 
 /// The SG - PS (Maro) logo, rendered by the egui_extras SVG loader.
@@ -142,7 +176,7 @@ pub fn url_for("""),
     ])
     edit(root, "crates/ui-egui/src/canvas.rs", [
         ("let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 330.0 + recent_h));",
-         "let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 520.0 + recent_h));"),
+         "let card = Rect::from_center_size(area.center(), egui::vec2(470.0, 600.0 + recent_h));"),
         ("""            crate::links::discord_button(app, ui, 190.0);
             ui.add_space(10.0);
             crate::links::link_row(app, ui);""",
@@ -155,7 +189,7 @@ pub fn url_for("""),
             ui.add_space(10.0);
             crate::links::link_row(app, ui);
             ui.add_space(22.0);
-            crate::links::coming_soon(ui);"""),
+            crate::links::coming_soon(app, ui);"""),
         ("""        ui.vertical_centered(|ui| {
             ui.horizontal(|ui| {
                 let title = ui.painter().layout_no_wrap(tl!("PhotoCraft").into()""",
@@ -334,6 +368,7 @@ KEYBOARD_SCRIPT = """  <script>
         if (!document.fullscreenElement && navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
       });
       window.addEventListener('keydown', function (e) {
+        if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
         var k = (e.key || '').toLowerCase();
         if (k === 'f12') return;
         if (k === 'f11') { e.preventDefault(); toggleFullscreen(); return; }
@@ -433,6 +468,7 @@ FONTS_SCRIPT = """  <script>
         running = false;
         try { localStorage.setItem(ENABLED, '1'); } catch (e) {}
         var n = Object.keys(families).length;
+        if (quiet && !n) { if (toastEl) toastEl.style.display = 'none'; return; }
         toast(n ? 'تم تحميل <b>' + n + '</b> خط من جهازك. هتلاقيهم في قائمة الخطوط في أداة النص (<bdi>T</bdi>).'
                 : 'مفيش خطوط جديدة اتحمّلت من الجهاز.', 7000);
       }
@@ -457,6 +493,129 @@ FONTS_SCRIPT = """  <script>
       padding: 10px 14px; background: #1c1c1c; color: #ececec; border: 1px solid #c4321f; border-radius: 8px;
       font: 13px/1.5 system-ui, 'Segoe UI', Tahoma, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
     #sgps_toast b { color: #fbbf24; }
+  </style>
+"""
+
+
+WAITLIST_SCRIPT = """  <div id="sgps_wl" dir="rtl" hidden>
+    <form id="sgps_wl_form" novalidate>
+      <button type="button" class="x" aria-label="إغلاق" data-close>×</button>
+      <div class="badge" id="sgps_wl_badge">قريبًا</div>
+      <h2 id="sgps_wl_title">احجز تجربتك المجانية</h2>
+      <p id="sgps_wl_lead">سيب بياناتك وفريق صابر جروب هيتواصل معاك على واتساب.</p>
+      <label>الاسم<input name="name" autocomplete="name" required maxlength="80"></label>
+      <label>رقم الواتساب<input name="phone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="01xxxxxxxxx" dir="ltr"></label>
+      <fieldset>
+        <legend>مهتم تتعلم إيه؟ (اختار كل اللي يهمك)</legend>
+        <label class="chk"><input type="checkbox" name="interests" value="graphic-design-101">تصميم جرافيك من الصفر <small>Graphic Design 101</small></label>
+        <label class="chk"><input type="checkbox" name="interests" value="advertising-mastery">تصميم إعلانات احترافي <small>Advertising Mastery</small></label>
+        <label class="chk"><input type="checkbox" name="interests" value="ai-101">الذكاء الاصطناعي من الصفر <small>AI &amp; Automation 101</small></label>
+        <label class="chk"><input type="checkbox" name="interests" value="ai-mastery">بناء Agents وأتمتة الشغل <small>AI &amp; Automation Mastery</small></label>
+        <label class="chk"><input type="checkbox" name="interests" value="ai-100x-creatives">AI للصور والفيديو والحملات <small>AI 100x Creatives</small></label>
+        <label class="chk"><input type="checkbox" name="interests" value="not-sure">لسه مش متأكد، محتاج حد يساعدني أختار</label>
+      </fieldset>
+      <label class="chk consent"><input type="checkbox" name="consent">موافق إن فريق صابر جروب يتواصل معايا على واتساب</label>
+      <p class="err" id="sgps_wl_err" role="alert"></p>
+      <button type="submit" class="go">ابعت</button>
+    </form>
+    <div id="sgps_wl_done" hidden>
+      <button type="button" class="x" aria-label="إغلاق" data-close>×</button>
+      <h2>تمام، وصلتنا بياناتك ✓</h2>
+      <p id="sgps_wl_done_text"></p>
+      <a class="go" id="sgps_wl_wa" target="_blank" rel="noopener">كلّمنا على واتساب دلوقتي</a>
+    </div>
+  </div>
+  <script>
+    // SG - PS waitlist / free-trial form: the editor's "Notify me" and "Book your free trial"
+    // buttons call sgpsOpenWaitlist(product); /?waitlist=SG-AI opens it too (desktop app links).
+    (function () {
+      var WHATSAPP = '__WHATSAPP__';
+      var NAMES = { 'SG - AI': 'SG - AI للتصميم الـVector', 'SG - PR': 'SG - PR لمونتاج الفيديو', 'SG - AE': 'SG - AE للموشن جرافيك' };
+      var box = document.getElementById('sgps_wl'), form = document.getElementById('sgps_wl_form');
+      var done = document.getElementById('sgps_wl_done'), err = document.getElementById('sgps_wl_err');
+      var product = 'general';
+      function field(n) { return form.querySelector('[name=' + n + ']'); }
+      function open(p) {
+        product = NAMES[p] ? p : 'general';
+        var soon = product !== 'general';
+        document.getElementById('sgps_wl_badge').hidden = !soon;
+        document.getElementById('sgps_wl_title').textContent = soon ? NAMES[product] + ' هتنزل قريب' : 'احجز تجربتك المجانية';
+        document.getElementById('sgps_wl_lead').textContent = soon
+          ? 'لو حابب نبلغك أول ما تتوفر، سيب بياناتك واحجز تجربتك المجانية مع فريق صابر جروب.'
+          : 'سيب بياناتك وفريق صابر جروب هيتواصل معاك على واتساب يحدد معاك تجربتك المجانية.';
+        err.textContent = '';
+        form.hidden = false; done.hidden = true; box.hidden = false;
+        setTimeout(function () { field('name').focus(); }, 50);
+      }
+      function close() { box.hidden = true; }
+      window.sgpsOpenWaitlist = open;
+      box.addEventListener('click', function (e) { if (e.target === box || e.target.hasAttribute('data-close')) close(); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !box.hidden) close(); });
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var name = field('name').value.trim(), phone = field('phone').value.trim();
+        var digits = phone.replace(/\\D/g, '');
+        if (!name) { err.textContent = 'اكتب اسمك.'; return; }
+        if (digits.length < 8 || digits.length > 15) { err.textContent = 'اكتب رقم واتساب صحيح.'; return; }
+        if (!field('consent').checked) { err.textContent = 'محتاجين موافقتك عشان نقدر نتواصل معاك.'; return; }
+        var interests = Array.prototype.filter.call(form.querySelectorAll('[name=interests]'), function (c) { return c.checked; })
+          .map(function (c) { return c.value; });
+        var btn = form.querySelector('.go'); btn.disabled = true; err.textContent = '';
+        fetch('waitlist.php', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name, phone: phone, product: product, interests: interests, consent: true, page: location.pathname + location.search }) })
+          .then(function (r) { return r.json().then(function (j) { return [r.status, j]; }); })
+          .then(function (res) {
+            if (res[1] && res[1].ok) {
+              var soon = product !== 'general';
+              document.getElementById('sgps_wl_done_text').textContent = soon
+                ? 'هنبلغك أول ما ' + product + ' تتوفر، وفريقنا هيتواصل معاك قريب يحدد معاك تجربتك المجانية.'
+                : 'فريقنا هيتواصل معاك قريب يحدد معاك تجربتك المجانية.';
+              var msg = 'مرحبًا، أنا ' + name + ' وسجلت في SG Studio' + (soon ? ' لـ ' + product : '') + ' وعايز أحجز تجربتي المجانية';
+              document.getElementById('sgps_wl_wa').href = WHATSAPP + '?text=' + encodeURIComponent(msg);
+              form.hidden = true; done.hidden = false; form.reset();
+            } else if (res[0] === 429) {
+              err.textContent = 'طلبات كتير من نفس الجهاز، جرّب كمان شوية أو كلّمنا على واتساب.';
+            } else {
+              err.textContent = 'حصلت مشكلة في الإرسال، جرّب تاني أو كلّمنا على واتساب.';
+            }
+          })
+          .catch(function () { err.textContent = 'مفيش اتصال بالإنترنت، جرّب تاني.'; })
+          .then(function () { btn.disabled = false; });
+      });
+      var q = new URLSearchParams(location.search).get('waitlist');
+      if (q) {
+        var m = /^SG-*(AI|PR|AE)$/i.exec(q.replace(/[\\s-]+/g, '-'));
+        var wanted = m ? 'SG - ' + m[1].toUpperCase() : 'general';
+        var wait = setInterval(function () {
+          if (!document.getElementById('sgps_loading')) { clearInterval(wait); open(NAMES[wanted] ? wanted : 'general'); }
+        }, 400);
+      }
+    })();
+  </script>
+  <style>
+    #sgps_wl { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+      padding: 16px; background: rgba(0,0,0,.6); font: 14px/1.6 system-ui, 'Segoe UI', Tahoma, sans-serif; color: #ececec; }
+    #sgps_wl[hidden], #sgps_wl [hidden] { display: none !important; }
+    #sgps_wl form, #sgps_wl_done { position: relative; width: min(460px, 100%); max-height: calc(100vh - 32px); overflow: auto;
+      background: #1c1c1c; border: 1px solid #c4321f; border-radius: 12px; padding: 20px 22px; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+    #sgps_wl h2 { margin: 0 0 6px; font-size: 20px; color: #fff; }
+    #sgps_wl p { margin: 0 0 14px; color: #c9c3c1; }
+    #sgps_wl .badge { display: inline-block; margin-bottom: 8px; padding: 2px 10px; border-radius: 999px; background: #c4321f; color: #fff; font-size: 12px; }
+    #sgps_wl label { display: block; margin-bottom: 10px; color: #ddd; }
+    #sgps_wl input[name=name], #sgps_wl input[name=phone] { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 9px 10px;
+      background: #121212; color: #fff; border: 1px solid #463632; border-radius: 8px; font: inherit; }
+    #sgps_wl input:focus { outline: 2px solid #e85c3b; outline-offset: -1px; }
+    #sgps_wl fieldset { border: 1px solid #333; border-radius: 8px; margin: 4px 0 12px; padding: 8px 12px 2px; }
+    #sgps_wl legend { padding: 0 6px; color: #fbbf24; }
+    #sgps_wl .chk { display: flex; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+    #sgps_wl .chk input { accent-color: #e85c3b; }
+    #sgps_wl .chk small { color: #8f8885; margin-inline-start: auto; direction: ltr; }
+    #sgps_wl .consent { color: #fff; }
+    #sgps_wl .err { color: #ff8a70; min-height: 1.2em; margin: 0 0 8px; }
+    #sgps_wl .go { display: block; width: 100%; box-sizing: border-box; padding: 10px; border: 0; border-radius: 8px; background: #c4321f;
+      color: #fff; font: inherit; font-weight: 700; text-align: center; text-decoration: none; cursor: pointer; }
+    #sgps_wl .go:disabled { opacity: .6; cursor: wait; }
+    #sgps_wl .x { position: absolute; top: 8px; left: 10px; background: none; border: 0; color: #e85c3b; font-size: 22px; cursor: pointer; }
   </style>
 """
 
@@ -512,18 +671,25 @@ pub fn families() -> &'static [String] {
     edit(root, "apps/photocraft-web/src/web.rs", [
         ("""        self.app.logic(ctx, frame);
     }""", """        if photocraft_ui_egui::type_tool::DEVICE_FONTS_REQUESTED.swap(false, std::sync::atomic::Ordering::Relaxed) {
-            call_page("sgpsLoadDeviceFonts");
+            call_page("sgpsLoadDeviceFonts", None);
+        }
+        let waitlist = photocraft_ui_egui::links::WAITLIST_REQUEST.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(product) = waitlist {
+            call_page("sgpsOpenWaitlist", Some(&product));
         }
         self.app.logic(ctx, frame);
     }"""),
-        ("fn query() -> String {", """/// SG - PS: calls `window[name]()` defined by the page (index.html), if it exists.
-fn call_page(name: &str) {
+        ("fn query() -> String {", """/// SG - PS: calls `window[name](arg)` defined by the page (index.html), if it exists.
+fn call_page(name: &str, arg: Option<&str>) {
     use wasm_bindgen::JsCast;
     let Some(window) = web_sys::window() else { return };
     if let Ok(f) = js_sys::Reflect::get(&window, &name.into())
         && let Some(f) = f.dyn_ref::<js_sys::Function>()
     {
-        let _ = f.call0(&window);
+        let _ = match arg {
+            Some(a) => f.call1(&window, &a.into()),
+            None => f.call0(&window),
+        };
     }
 }
 
@@ -537,6 +703,8 @@ pub fn sgps_register_font(bytes: Vec<u8>) -> String {
 fn query() -> String {"""),
     ])
     edit(root, "apps/photocraft-web/index.html", [("</body>", FONTS_SCRIPT + "</body>")])
+    whatsapp = WHATSAPP.split("?")[0]
+    edit(root, "apps/photocraft-web/index.html", [("</body>", WAITLIST_SCRIPT.replace("__WHATSAPP__", whatsapp) + "</body>")])
 
 
 def web_page_behaviour(root: Path) -> None:
