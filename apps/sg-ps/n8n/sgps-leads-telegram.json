@@ -1,0 +1,53 @@
+{
+  "name": "SG - PS leads → Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sgps-lead-CHANGE-ME-random",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "SG - PS lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "5bcdec0c-65e5-4b5d-8264-a71e81402734"
+    },
+    {
+      "parameters": {
+        "chatId": "PUT_YOUR_TELEGRAM_CHAT_ID",
+        "text": "=🆕 Lead جديد من SG - PS\n\n👤 {{ $json.body.name }}\n📱 {{ $json.body.phone }}\n🎯 المنتج: {{ $json.body.product === 'general' ? 'تجربة مجانية' : $json.body.product }}\n📚 مهتم بـ: {{ ($json.body.interests || []).join('، ') || 'مختارش' }}\n🕒 {{ $json.body.time_utc }} UTC\n\n💬 كلّمه واتساب: {{ $json.body.whatsapp }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "name": "Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "SG - PS lead": {
+      "main": [
+        [
+          {
+            "node": "Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

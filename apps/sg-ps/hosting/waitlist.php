@@ -5,6 +5,8 @@
 // <parent of this site's folder>/sgps-data/leads.csv, outside the SG - PS folder so deploys
 // (which replace that folder) never touch it. A deny-all .htaccess keeps the data folder off the
 // web; read it from Hostinger's File Manager (public_html/sgps-data/leads.csv on engsaber.space).
+// When the deploy wrote sgps-config.php (GitHub secret SGPS_LEAD_WEBHOOK), each lead is also
+// sent to that n8n webhook, which alerts the team on Telegram.
 
 declare(strict_types=1);
 header('Content-Type: application/json; charset=utf-8');
@@ -95,5 +97,40 @@ fputcsv($fh, [
 ]);
 flock($fh, LOCK_UN);
 fclose($fh);
+
+// Forward to the n8n workflow (Telegram alert), when the deploy configured one. The lead is
+// already saved, so a slow or failing webhook never loses it.
+$cfgFile = __DIR__ . '/sgps-config.php';
+$cfg = is_file($cfgFile) ? include $cfgFile : [];
+$hook = is_array($cfg) ? (string)($cfg['lead_webhook'] ?? '') : '';
+if ($hook !== '' && function_exists('curl_init')) {
+    $LABELS = [
+        'graphic-design-101' => 'Graphic Design 101', 'advertising-mastery' => 'Advertising Mastery',
+        'ai-101' => 'AI & Automation 101', 'ai-mastery' => 'AI & Automation Mastery',
+        'ai-100x-creatives' => 'AI 100x Creatives', 'not-sure' => 'محتاج مساعدة يختار',
+    ];
+    // WhatsApp link: Egyptian local numbers (01xxxxxxxxx) become 201xxxxxxxxx.
+    $wa = (strlen($digits) === 11 && str_starts_with($digits, '01')) ? '2' . $digits : $digits;
+    $payload = json_encode([
+        'time_utc' => gmdate('Y-m-d H:i:s'),
+        'name' => $name,
+        'phone' => $phone,
+        'whatsapp' => 'https://wa.me/' . $wa,
+        'product' => $product,
+        'interests' => array_map(static fn($i) => $LABELS[$i] ?? $i, $interests),
+        'page' => $page,
+    ], JSON_UNESCAPED_UNICODE);
+    $ch = curl_init($hook);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 3,
+        CURLOPT_TIMEOUT => 5,
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
+}
 
 reply(200, ['ok' => true]);

@@ -63,6 +63,9 @@ jobs:
             sgps-${{ runner.os }}-${{ hashFiles('archive/photocraft/*.tar.gz') }}-
 
       - name: Build
+        env:
+          # Optional: n8n webhook that alerts the team on Telegram for each waitlist lead.
+          SGPS_LEAD_WEBHOOK: ${{ secrets.SGPS_LEAD_WEBHOOK }}
         run: apps/sg-ps/build.sh
 
       - name: Deploy to Hostinger

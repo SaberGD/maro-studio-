@@ -31,3 +31,8 @@ AddType text/javascript .js
 
 # 5) ملفات الشرح والتراخيص متتعرضش كصفحات تنفيذ
 Options -Indexes
+
+# 6) إعدادات السيرفر متتفتحش من المتصفح
+<FilesMatch "^sgps-config\.php$">
+  Require all denied
+</FilesMatch>

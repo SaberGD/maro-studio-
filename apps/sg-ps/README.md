@@ -54,6 +54,16 @@ apps/sg-ps/build.sh                # يطلع deploy/sg-ps/sg-ps-<version>-hosti
 - فيه حد 5 طلبات في الساعة لكل جهاز ضد السبام.
 - بعد الإرسال بيظهر زرار واتساب، ومعاه رسالة جاهزة فيها الاسم والمنتج.
 
+### تنبيه تليجرام لكل lead (n8n)
+
+`n8n/sgps-leads-telegram.json` هو workflow فيه خطوتين: Webhook، وبعده رسالة تليجرام فيها الاسم والرقم والمنتج والاهتمامات ورابط واتساب. الإعداد مرة واحدة:
+1. **بوت تليجرام:** في تليجرام كلّم **@BotFather** واكتب `/newbot` واخد الـtoken. وكلّم **@userinfobot** عشان تعرف رقم الـchat id بتاعك (أو بتاع جروب الفريق، بعد ما تضيف البوت للجروب).
+2. **الـworkflow:** في n8n اعمل Import from file للـworkflow (النسخة اللي فيها المسار السري). في خطوة Telegram اعمل Credential جديد بالـtoken، وحط الـchat id مكان `PUT_YOUR_TELEGRAM_CHAT_ID`، وبعدين فعّله (Active).
+3. **الرابط في GitHub:** في الريبو افتح Settings ← Secrets and variables ← Actions، واعمل secret اسمه `SGPS_LEAD_WEBHOOK`. القيمة هي **Production URL** بتاع الـWebhook (`https://n8n.engsaber.space/webhook/sgps-lead-…`).
+4. **التشغيل:** شغّل Deploy SG - PS. النشر بيكتب الرابط في `sgps-config.php` على السيرفر، والمتصفح ممنوع يفتحه.
+
+الـlead بيتحفظ في `leads.csv` الأول، فلو n8n أو تليجرام وقعوا مفيش بيانات بتضيع.
+
 ## نسخ الديسكتوب (ويندوز وماك)
 
 `.github/workflows/desktop-sg-ps.yml` بيبني البرنامج على أجهزة ويندوز وماك حقيقية عند GitHub، وبينزّل الملفين في صفحة **Releases** في الريبو:
