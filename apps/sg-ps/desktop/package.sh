@@ -17,10 +17,19 @@ WORK="${SGPS_WORK:-$REPO/.sgps-build}"
 OUT="$REPO/deploy/sg-ps-desktop"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$WORK/target}"
 PY="$(command -v python3 || command -v python)"
+# Git Bash on Windows: "D:\a\..." paths confuse tar (the colon reads as a remote host) and bash
+# file commands; use /d/a/... for the shell. cargo keeps reading CARGO_TARGET_DIR as given.
+TARGET_DIR="$CARGO_TARGET_DIR"
+TAR_LOCAL=()
+if command -v cygpath >/dev/null 2>&1; then
+  WORK="$(cygpath -u "$WORK")"; OUT="$(cygpath -u "$OUT")"; SRC_TGZ="$(cygpath -u "$SRC_TGZ")"
+  TARGET_DIR="$(cygpath -u "$CARGO_TARGET_DIR")"
+  TAR_LOCAL=(--force-local) # GNU tar (Git Bash); macOS bsdtar has no such flag
+fi
 
 rm -rf "$WORK/src" "$WORK/pkg"
 mkdir -p "$WORK/src" "$WORK/pkg" "$OUT"
-tar -xzf "$SRC_TGZ" -C "$WORK/src" --strip-components=1
+tar ${TAR_LOCAL[@]+"${TAR_LOCAL[@]}"} -xzf "$SRC_TGZ" -C "$WORK/src" --strip-components=1
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$WORK/src/Cargo.toml" | head -1)"
 "$PY" -I "$HERE/../rebrand.py" "$WORK/src"
 
@@ -44,7 +53,7 @@ case "$OS" in
     (cd "$WORK/src" && cargo build --release --locked -p photocraft --target "$T")
     PKG="$WORK/pkg/SG-PS"
     mkdir -p "$PKG"
-    cp "$CARGO_TARGET_DIR/$T/release/photocraft.exe" "$PKG/SG-PS.exe"
+    cp "$TARGET_DIR/$T/release/photocraft.exe" "$PKG/SG-PS.exe"
     cat >"$PKG/portable.txt" <<'TXT'
 SG - PS portable mode
 
@@ -65,8 +74,8 @@ TXT
     APP="$WORK/pkg/SG - PS.app"
     mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
     lipo -create -output "$APP/Contents/MacOS/SG-PS" \
-      "$CARGO_TARGET_DIR/aarch64-apple-darwin/release/photocraft" \
-      "$CARGO_TARGET_DIR/x86_64-apple-darwin/release/photocraft"
+      "$TARGET_DIR/aarch64-apple-darwin/release/photocraft" \
+      "$TARGET_DIR/x86_64-apple-darwin/release/photocraft"
     lipo -info "$APP/Contents/MacOS/SG-PS"
     cp "$WORK/src/assets/app-icon/photocraft.icns" "$APP/Contents/Resources/SG-PS.icns"
     licences "$APP/Contents/Resources"
