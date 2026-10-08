@@ -260,6 +260,241 @@ def better_select_subject(root: Path) -> None:
     ])
 
 
+KEYBOARD_SCRIPT = """  <script>
+    // SG - PS: while the editor is open, keyboard shortcuts belong to the editor, not the browser.
+    // The listener runs in the capture phase and only cancels the browser's default action, so the
+    // editor still receives every key. Ctrl/Cmd+C/V/X keep their default: the browser must fire the
+    // copy, paste and cut events the editor reads the clipboard from. F12 stays the developer tools.
+    (function () {
+      var clipboard = { c: 1, v: 1, x: 1 };
+      function lockKeys() {
+        if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock().catch(function () {});
+      }
+      // Chrome never lets a page cancel Ctrl+N, Ctrl+T, Ctrl+W or Ctrl+Tab, except in fullscreen
+      // with the Keyboard Lock API. F11 therefore enters the page's own fullscreen and locks the keys
+      // (hold Esc to leave).
+      function toggleFullscreen() {
+        if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
+        else document.documentElement.requestFullscreen().then(lockKeys).catch(function () {});
+      }
+      document.addEventListener('fullscreenchange', function () {
+        if (!document.fullscreenElement && navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
+      });
+      window.addEventListener('keydown', function (e) {
+        var k = (e.key || '').toLowerCase();
+        if (k === 'f12') return;
+        if (k === 'f11') { e.preventDefault(); toggleFullscreen(); return; }
+        var cmd = e.ctrlKey || e.metaKey;
+        if (cmd && !e.altKey && clipboard[k]) return;
+        if (cmd || e.altKey || k === 'alt' || /^f([1-9]|10)$/.test(k)) e.preventDefault();
+      }, true);
+      // Ctrl+wheel and pinch zoom the canvas, not the page.
+      window.addEventListener('wheel', function (e) { if (e.ctrlKey) e.preventDefault(); }, { passive: false, capture: true });
+      // Closing or reloading the tab asks first, so unsaved work isn't lost by a stray key.
+      window.addEventListener('beforeunload', function (e) { e.preventDefault(); e.returnValue = ''; });
+      // One-time hint about F11.
+      var HINT = 'sgps.hint.fullscreen';
+      function showHint() {
+        try { if (localStorage.getItem(HINT)) return; } catch (err) {}
+        var d = document.createElement('div');
+        d.id = 'sgps_hint';
+        d.dir = 'rtl';
+        d.innerHTML = '<span>اضغط <b><bdi>F11</bdi></b> لوضع ملء الشاشة: كل الاختصارات، حتى <bdi>Ctrl+N</bdi> و <bdi>Ctrl+W</bdi>، هتشتغل للبرنامج بس. للخروج اضغط مطوّلًا على <bdi>Esc</bdi>.<br>ولخطوط جهازك: <bdi>Type › Load Device Fonts…</bdi></span>' +
+          '<button type="button" aria-label="إغلاق">×</button>';
+        d.querySelector('button').onclick = function () {
+          d.remove();
+          try { localStorage.setItem(HINT, '1'); } catch (err) {}
+        };
+        document.body.appendChild(d);
+        setTimeout(function () { if (d.isConnected) d.remove(); }, 12000);
+      }
+      var waitForApp = setInterval(function () {
+        if (!document.getElementById('sgps_loading')) { clearInterval(waitForApp); setTimeout(showHint, 1500); }
+      }, 500);
+    })();
+  </script>
+  <style>
+    #sgps_hint { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 10;
+      max-width: calc(100% - 32px); display: flex; gap: 12px; align-items: center; padding: 10px 14px;
+      background: #1c1c1c; color: #ececec; border: 1px solid #c4321f; border-radius: 8px;
+      font: 13px/1.5 system-ui, 'Segoe UI', Tahoma, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+    #sgps_hint b { color: #fbbf24; }
+    #sgps_hint button { background: none; border: 0; color: #e85c3b; font-size: 18px; cursor: pointer; padding: 0 4px; }
+  </style>
+"""
+
+
+FONTS_SCRIPT = """  <script>
+    // SG - PS: fonts installed on this computer, through the Local Font Access API (Chrome / Edge).
+    // Type > Load Device Fonts calls sgpsLoadDeviceFonts(); after the first time, the fonts load
+    // again by themselves on the first click (the browser remembers the permission).
+    (function () {
+      var ENABLED = 'sgps.deviceFonts';
+      var toastEl = null, toastTimer = null;
+      function toast(html, ms) {
+        if (!toastEl) {
+          toastEl = document.createElement('div');
+          toastEl.id = 'sgps_toast';
+          toastEl.dir = 'rtl';
+          document.body.appendChild(toastEl);
+        }
+        toastEl.innerHTML = html;
+        toastEl.style.display = 'block';
+        clearTimeout(toastTimer);
+        if (ms) toastTimer = setTimeout(function () { toastEl.style.display = 'none'; }, ms);
+      }
+      var running = false, seen = {};
+      async function load(quiet) {
+        if (running) return;
+        if (!window.queryLocalFonts) {
+          if (!quiet) toast('المتصفح ده مش بيسمح بقراءة خطوط الجهاز. افتح البرنامج من <b>Chrome</b> أو <b>Edge</b>.', 8000);
+          return;
+        }
+        var register = window.wasmBindings && window.wasmBindings.sgps_register_font;
+        if (!register) return;
+        var fonts;
+        try { fonts = await window.queryLocalFonts(); } catch (e) {
+          if (!quiet) toast('محتاج إذنك: لما المتصفح يسأل، اختار <b>Allow</b> عشان البرنامج يقرا خطوط جهازك.', 9000);
+          return;
+        }
+        running = true;
+        var families = {}, files = 0, skipped = 0;
+        toast('جاري تحميل خطوط جهازك…');
+        for (var i = 0; i < fonts.length; i++) {
+          try {
+            var blob = await fonts[i].blob();
+            // Faces of one collection file share the blob: register each file once.
+            var key = blob.size + '|' + fonts[i].family;
+            if (seen[key]) continue;
+            seen[key] = 1;
+            if (blob.size > 40 * 1024 * 1024) { skipped++; continue; }
+            var names = register(new Uint8Array(await blob.arrayBuffer()));
+            if (names) names.split('\\n').forEach(function (n) { families[n] = 1; });
+            files++;
+          } catch (e) { skipped++; }
+          if (i % 20 === 0) {
+            toast('جاري تحميل خطوط جهازك… ' + Math.round(100 * i / fonts.length) + '%');
+            await new Promise(function (r) { setTimeout(r, 0); });
+          }
+        }
+        running = false;
+        try { localStorage.setItem(ENABLED, '1'); } catch (e) {}
+        var n = Object.keys(families).length;
+        toast(n ? 'تم تحميل <b>' + n + '</b> خط من جهازك. هتلاقيهم في قائمة الخطوط في أداة النص (<bdi>T</bdi>).'
+                : 'مفيش خطوط جديدة اتحمّلت من الجهاز.', 7000);
+      }
+      window.sgpsLoadDeviceFonts = function () { load(false); };
+      // Fonts already allowed once: load them again on the first click of this visit.
+      var enabled = false;
+      try { enabled = localStorage.getItem(ENABLED) === '1'; } catch (e) {}
+      if (enabled && window.queryLocalFonts) {
+        window.addEventListener('pointerdown', function first() {
+          window.removeEventListener('pointerdown', first, true);
+          if (navigator.permissions) {
+            navigator.permissions.query({ name: 'local-fonts' }).then(function (p) {
+              if (p.state === 'granted') load(true);
+            }).catch(function () {});
+          }
+        }, true);
+      }
+    })();
+  </script>
+  <style>
+    #sgps_toast { display: none; position: fixed; right: 16px; bottom: 36px; z-index: 11; max-width: min(460px, calc(100% - 32px));
+      padding: 10px 14px; background: #1c1c1c; color: #ececec; border: 1px solid #c4321f; border-radius: 8px;
+      font: 13px/1.5 system-ui, 'Segoe UI', Tahoma, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+    #sgps_toast b { color: #fbbf24; }
+  </style>
+"""
+
+
+def device_fonts(root: Path) -> None:
+    """Fonts installed on the computer, in the browser build (upstream only reads them on desktop)."""
+    edit(root, "crates/ui-egui/src/type_tool.rs", [(
+        """/// Font families (bundled + system), cached for the process.
+pub fn families() -> &'static [String] {
+    static FAMILIES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    FAMILIES.get_or_init(|| photocraft_text::shared().lock().map(|mut e| e.fonts.families()).unwrap_or_default())
+}""",
+        """/// SG - PS: bumped whenever fonts are added while the app runs (device fonts in the browser).
+pub static FONTS_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// SG - PS: set by Type > Load Device Fonts; the web shell picks it up and asks the browser.
+pub static DEVICE_FONTS_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// SG - PS: registers a font file (TTF/OTF/TTC) while the app runs. Returns its family names.
+pub fn register_font(bytes: Vec<u8>) -> Vec<String> {
+    let names = photocraft_text::shared().lock().map(|mut e| e.fonts.register_font_data(bytes)).unwrap_or_default();
+    FONTS_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    names
+}
+
+/// Font families (bundled + system + device fonts added at run time). Rebuilt when fonts are added.
+pub fn families() -> &'static [String] {
+    static FAMILIES: std::sync::Mutex<(u64, &'static [String])> = std::sync::Mutex::new((u64::MAX, &[]));
+    let generation = FONTS_GENERATION.load(std::sync::atomic::Ordering::Relaxed);
+    let mut cached = FAMILIES.lock().unwrap_or_else(|e| e.into_inner());
+    if cached.0 != generation {
+        let list = photocraft_text::shared().lock().map(|mut e| e.fonts.families()).unwrap_or_default();
+        *cached = (generation, Box::leak(list.into_boxed_slice()));
+    }
+    cached.1
+}""")])
+    edit(root, "crates/ui-egui/src/menus.rs", [
+        ('    ("edit.search", "Search…", &["Edit"], Some("Cmd+K")),',
+         '    ("edit.search", "Search…", &["Edit"], Some("Cmd+K")),\n'
+         '    ("type.loadDeviceFonts", "Load Device Fonts…", &["Type"], None),'),
+        ('"file.open" | "file.exit" | "file.clearRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,',
+         '"file.open" | "file.exit" | "file.clearRecent" | "help.about" | "help.systemInfo" | "edit.search" | "type.loadDeviceFonts" => true,'),
+        ("""    if let Some(url) = crate::links::url_for(id) {
+        return Ok(crate::links::open(app, ctx, url));
+    }""", """    if let Some(url) = crate::links::url_for(id) {
+        return Ok(crate::links::open(app, ctx, url));
+    }
+    if id == "type.loadDeviceFonts" {
+        crate::type_tool::DEVICE_FONTS_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
+        app.ui.status = "Loading the fonts installed on this computer…".into();
+        return Ok(Value::Null);
+    }"""),
+    ])
+    edit(root, "apps/photocraft-web/src/web.rs", [
+        ("""        self.app.logic(ctx, frame);
+    }""", """        if photocraft_ui_egui::type_tool::DEVICE_FONTS_REQUESTED.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            call_page("sgpsLoadDeviceFonts");
+        }
+        self.app.logic(ctx, frame);
+    }"""),
+        ("fn query() -> String {", """/// SG - PS: calls `window[name]()` defined by the page (index.html), if it exists.
+fn call_page(name: &str) {
+    use wasm_bindgen::JsCast;
+    let Some(window) = web_sys::window() else { return };
+    if let Ok(f) = js_sys::Reflect::get(&window, &name.into())
+        && let Some(f) = f.dyn_ref::<js_sys::Function>()
+    {
+        let _ = f.call0(&window);
+    }
+}
+
+/// SG - PS: registers a font file read by the page (Local Font Access API). Returns the family
+/// names, one per line.
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn sgps_register_font(bytes: Vec<u8>) -> String {
+    photocraft_ui_egui::type_tool::register_font(bytes).join("\\n")
+}
+
+fn query() -> String {"""),
+    ])
+    edit(root, "apps/photocraft-web/index.html", [("</body>", FONTS_SCRIPT + "</body>")])
+
+
+def web_page_behaviour(root: Path) -> None:
+    edit(root, "apps/photocraft-web/index.html", [("</body>", KEYBOARD_SCRIPT + "</body>")])
+    # A new storage key: browsers that ran the original build start from the SG - PS defaults
+    # (Maro theme, Essentials workspace) instead of the old saved theme.
+    edit(root, "apps/photocraft-web/src/web.rs", [
+        ('const PREFS_KEY: &str = "photocraft.preferences";', 'const PREFS_KEY: &str = "sgps.preferences";'),
+    ])
+
+
 def web(root: Path) -> None:
     edit(root, "apps/photocraft-web/Cargo.toml", [('name = "photocraft-web"\npath = "src/main.rs"', 'name = "sg-ps"\npath = "src/main.rs"')])
     shutil.copyfile(HERE / "assets" / "sg-ps-logo.svg", root / "apps/photocraft-web/sg-ps-logo.svg")
@@ -326,6 +561,8 @@ def main() -> None:
     full_tool_options(root)
     better_select_subject(root)
     web(root)
+    web_page_behaviour(root)
+    device_fonts(root)
     n = rename_everywhere(root)
     check(root)
     print(f"rebrand: done ({n} name replacements)")
