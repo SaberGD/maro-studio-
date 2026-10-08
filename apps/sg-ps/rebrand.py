@@ -26,6 +26,11 @@ from pathlib import Path
 APP_NAME = "SG - PS"
 SABER_SITE = "https://sabergroupacademy.com"
 APP_SITE = "https://studio.engsaber.space"
+FACEBOOK = "https://www.facebook.com/SABERGROUP.Courses/"
+# WhatsApp with a ready message: "Hello, I am coming from SG - PS and want to know about the courses and services".
+WHATSAPP = ("https://wa.me/201103221873?text=%D9%85%D8%B1%D8%AD%D8%A8%D9%8B%D8%A7%D8%8C%20%D8%AC%D8%A7%D9%8A%20%D9%85%D9%86%20"
+            "SG%20-%20PS%20%D9%88%D8%B9%D8%A7%D9%8A%D8%B2%20%D8%A3%D8%B9%D8%B1%D9%81%20%D8%B9%D9%86%20%D8%A7%D9%84%D9%83%D9%88%D8%B1%D8%B3%D8%A7%D8%AA%20"
+            "%D9%88%D8%A7%D9%84%D8%AE%D8%AF%D9%85%D8%A7%D8%AA")
 HERE = Path(__file__).resolve().parent
 
 
@@ -55,14 +60,14 @@ def remove_block(root: Path, rel: str, start: str, end: str) -> None:
 
 def links(root: Path) -> None:
     edit(root, "crates/ui-egui/src/links.rs", [
-        ('pub const DISCORD: &str = "https://discord.gg/artcraft";', f'pub const DISCORD: &str = "{SABER_SITE}";'),
+        ('pub const DISCORD: &str = "https://discord.gg/artcraft";', f'pub const DISCORD: &str = "{FACEBOOK}";\npub const CONTACT: &str = "{WHATSAPP}";'),
         ('pub const ARTCRAFT_WEBSITE: &str = "https://getartcraft.com";', f'pub const ARTCRAFT_WEBSITE: &str = "{SABER_SITE}";'),
         ('pub const APP_PAGE: &str = "https://getartcraft.com/apps/photocraft";', f'pub const APP_PAGE: &str = "{APP_SITE}";'),
         ('pub const GITHUB: &str = "https://github.com/storytold/photocraft";', f'pub const GITHUB: &str = "{SABER_SITE}";'),
         ('pub const ISSUES: &str = "https://github.com/storytold/photocraft/issues";', f'pub const ISSUES: &str = "{SABER_SITE}";'),
         (
             '&[("help.discord", DISCORD), ("help.website", APP_PAGE), ("help.artcraftWebsite", ARTCRAFT_WEBSITE), ("help.github", GITHUB), ("help.reportIssue", ISSUES)];',
-            '&[("help.discord", DISCORD), ("help.website", APP_PAGE)];',
+            '&[("help.discord", DISCORD), ("help.contact", CONTACT), ("help.website", APP_PAGE)];',
         ),
         ('tl!("Join us on Discord")', 'tl!("Saber Group Academy")'),
         (
@@ -75,7 +80,7 @@ def links(root: Path) -> None:
 
 def menus(root: Path) -> None:
     edit(root, "crates/ui-egui/src/menus.rs", [
-        ('("help.discord", "Join the ArtCraft Discord…", &["Help"], None),', '("help.discord", "Saber Group Academy Website", &["Help"], None),'),
+        ('("help.discord", "Join the ArtCraft Discord…", &["Help"], None),', '("help.discord", "Saber Group Academy on Facebook", &["Help"], None),\n    ("help.contact", "Contact Us: Courses & Services…", &["Help"], None),'),
         ('("help.website", "PhotoCraft Website", &["Help"], None),', f'("help.website", "{APP_NAME} Website", &["Help"], None),'),
         ('    ("help.artcraftWebsite", "ArtCraft Website", &["Help"], None),\n', ""),
         ('    ("help.github", "PhotoCraft on GitHub", &["Help"], None),\n', ""),
@@ -93,7 +98,42 @@ def title_bar(root: Path) -> None:
 def logo(root: Path) -> None:
     shutil.copyfile(HERE / "assets" / "sg-ps-logo.svg", root / "crates/ui-egui/src/sg_ps_logo.svg")
     edit(root, "crates/ui-egui/src/links.rs", [
-        ("pub fn url_for(", """/// The SG - PS (Maro) logo, rendered by the egui_extras SVG loader.
+        ("pub fn url_for(", """/// SG - PS: "Contact us" (WhatsApp, courses and services), next to the Facebook button.
+pub fn contact_button(app: &mut PhotocraftApp, ui: &mut egui::Ui, min_width: f32) -> egui::Response {
+    let r = crate::widgets::secondary_button(ui, tl!("Contact us"), min_width).on_hover_text(tl!("Courses and services: chat with us on WhatsApp"));
+    if r.clicked() {
+        open(app, ui.ctx(), CONTACT);
+    }
+    r
+}
+
+/// SG - PS: the next apps of the suite, announced on the start screen.
+pub fn coming_soon(ui: &mut egui::Ui) {
+    let t = crate::theme::Tokens::get(ui.ctx());
+    ui.label(egui::RichText::new(tl!("COMING SOON")).size(11.0).strong().color(t.accent));
+    ui.add_space(6.0);
+    let items = [("SG - AI", tl!("Vector design")), ("SG - PR", tl!("Video editing")), ("SG - AE", tl!("Motion graphics"))];
+    let (w, gap) = (132.0, 10.0);
+    ui.horizontal(|ui| {
+        ui.add_space(((ui.available_width() - (3.0 * w + 2.0 * gap)) / 2.0).max(0.0));
+        ui.spacing_mut().item_spacing.x = gap;
+        for (name, what) in items {
+            egui::Frame::NONE
+                .stroke(egui::Stroke::new(1.0, t.accent_border))
+                .corner_radius(t.radius)
+                .inner_margin(egui::Margin::symmetric(8, 6))
+                .show(ui, |ui| {
+                    ui.set_width(w - 18.0);
+                    ui.vertical_centered(|ui| {
+                        ui.label(egui::RichText::new(name).size(14.0).strong().color(t.text));
+                        ui.label(egui::RichText::new(what).size(11.0).color(t.text_dim));
+                    });
+                });
+        }
+    });
+}
+
+/// The SG - PS (Maro) logo, rendered by the egui_extras SVG loader.
 pub fn logo(size: f32) -> egui::Image<'static> {
     egui::Image::from_bytes("bytes://sg-ps-logo.svg", include_bytes!("sg_ps_logo.svg").as_slice()).fit_to_exact_size(egui::Vec2::splat(size))
 }
@@ -102,7 +142,20 @@ pub fn url_for("""),
     ])
     edit(root, "crates/ui-egui/src/canvas.rs", [
         ("let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 330.0 + recent_h));",
-         "let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 420.0 + recent_h));"),
+         "let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 520.0 + recent_h));"),
+        ("""            crate::links::discord_button(app, ui, 190.0);
+            ui.add_space(10.0);
+            crate::links::link_row(app, ui);""",
+         """            ui.horizontal(|ui| {
+                ui.add_space(((card.width() - 2.0 * 190.0 - 12.0) / 2.0).max(0.0));
+                ui.spacing_mut().item_spacing.x = 12.0;
+                crate::links::discord_button(app, ui, 190.0);
+                crate::links::contact_button(app, ui, 190.0);
+            });
+            ui.add_space(10.0);
+            crate::links::link_row(app, ui);
+            ui.add_space(22.0);
+            crate::links::coming_soon(ui);"""),
         ("""        ui.vertical_centered(|ui| {
             ui.horizontal(|ui| {
                 let title = ui.painter().layout_no_wrap(tl!("PhotoCraft").into()""",

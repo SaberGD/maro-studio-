@@ -54,7 +54,9 @@ echo
 #    protection answers plain curl with 403.
 UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 for _ in $(seq 1 24); do
-  if curl -fsS -A "$UA" -H "Cache-Control: no-cache" "https://$DOMAIN/?v=$RANDOM" | grep -q "$EXPECT"; then
+  # Read the whole page first: `curl | grep -q` fails under pipefail when grep stops early.
+  PAGE="$(curl -fsS -A "$UA" -H "Cache-Control: no-cache" "https://$DOMAIN/?v=$RANDOM" || true)"
+  if [[ "$PAGE" == *"$EXPECT"* ]]; then
     echo "live: https://$DOMAIN/ serves $EXPECT"
     exit 0
   fi
