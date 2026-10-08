@@ -36,7 +36,23 @@ apps/sg-ps/build.sh                # يطلع deploy/sg-ps/sg-ps-<version>-hosti
 
 أول build بياخد وقت طويل (حوالي ساعة على 4 cores)، والـbuilds اللي بعده أسرع.
 
-## الرفع على هوستينجر
+## النشر التلقائي (GitHub Actions)
+
+أي push على **الفرع الافتراضي** للريبو بيغيّر حاجة في `apps/sg-ps/` أو `archive/photocraft/` بيشغّل `.github/workflows/deploy-sg-ps.yml`، والـworkflow ده:
+1. بيبني البرنامج بـ`build.sh`.
+2. بيرفعه على هوستينجر بـ`deploy.sh`.
+3. بيستنى لحد ما https://studio.engsaber.space يعرض النسخة الجديدة.
+
+لو أي خطوة فشلت، الـAction بيطلع أحمر، والموقع بيفضل على النسخة اللي قبلها.
+
+**إعداد لمرة واحدة:** في GitHub افتح Settings ← Secrets and variables ← Actions ← New repository secret، واعمل secret اسمه `HOSTINGER_API_TOKEN`. قيمته مفتاح API من hPanel (صورة الحساب ← Account Information ← API ← New token)، والمفتاح محتاج صلاحية على الاستضافة.
+
+- **تشغيل يدوي:** تبويب Actions ← Deploy SG - PS ← Run workflow.
+- **مدة البناء:** أول build حوالي 25 دقيقة، والـbuilds اللي بعده أسرع، لأن المكتبات اللي اتبنت بتتحفظ في cache.
+- **دومين أو حساب تاني:** حط repository variables باسم `SGPS_DOMAIN` و`HOSTINGER_USERNAME`.
+- **النشر من جهازك:** `HOSTINGER_API_TOKEN=... apps/sg-ps/deploy.sh`.
+
+## الرفع على هوستينجر يدويًا
 
 نفس خطوات `deploy/photocraft-web/README.md`، بس بالملف `deploy/sg-ps/sg-ps-<version>-hostinger.zip`. ولو عندك Hostinger connector:
 1. Generate upload URL للدومين `studio.engsaber.space`، وارفع الـzip بـTUS.

@@ -1,0 +1,78 @@
+# Builds SG - PS and publishes it to https://studio.engsaber.space on every push to the default
+# branch that touches the app. Needs the repository secret HOSTINGER_API_TOKEN
+# (hPanel > Account > API). Optional repository variables: HOSTINGER_USERNAME, SGPS_DOMAIN.
+name: Deploy SG - PS
+
+on:
+  push:
+    paths:
+      - "apps/sg-ps/**"
+      - "archive/photocraft/**"
+      - ".github/workflows/deploy-sg-ps.yml"
+  workflow_dispatch:
+
+# One deploy at a time; a newer push waits for the running one instead of racing it.
+concurrency:
+  group: deploy-sg-ps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Only the default branch goes live; pushes to other branches don't deploy.
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.sgps-target
+      SGPS_WORK: ${{ github.workspace }}/.sgps-build
+      HOSTINGER_USERNAME: ${{ vars.HOSTINGER_USERNAME || 'u570689065' }}
+      SGPS_DOMAIN: ${{ vars.SGPS_DOMAIN || 'studio.engsaber.space' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the deploy secret
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+        run: |
+          if [ -z "$HOSTINGER_API_TOKEN" ]; then
+            echo "::error::Add the repository secret HOSTINGER_API_TOKEN (hPanel > Account > API) under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Rust with the WebAssembly target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+
+      - name: Install trunk
+        run: |
+          curl -fsSL https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin trunk
+          trunk --version
+
+      # Compiled dependencies are reused between runs: the first build takes ~25 min, later ones
+      # only rebuild what rebrand.py changed.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/trunk
+            .sgps-target
+          key: sgps-${{ runner.os }}-${{ hashFiles('archive/photocraft/*.tar.gz') }}-${{ hashFiles('apps/sg-ps/**') }}
+          restore-keys: |
+            sgps-${{ runner.os }}-${{ hashFiles('archive/photocraft/*.tar.gz') }}-
+
+      - name: Build
+        run: apps/sg-ps/build.sh
+
+      - name: Deploy to Hostinger
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+        run: apps/sg-ps/deploy.sh
+
+      - name: Keep the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: sg-ps-hostinger
+          path: deploy/sg-ps/*.zip
+          retention-days: 14
