@@ -773,6 +773,105 @@ def desktop(root: Path) -> None:
     ])
 
 
+def web_place(root: Path) -> None:
+    """File > Place Embedded in the browser. Upstream greys it out on the web (it reads a path) and
+    the web file picker is asynchronous, so the picked file would open as a new document. The
+    picker request is now tagged, and a tagged file is placed into the active document."""
+    edit(root, "crates/engine/src/file_cmds.rs", [(
+        """            r##"{"path":str,"scale":%? (default: fit when larger than the canvas),"fit":bool=true,"center":[x,y]?}"##,
+            native_doc,
+            |s, p| place(s, p, false)""",
+        """            r##"{"path":str,"scale":%? (default: fit when larger than the canvas),"fit":bool=true,"center":[x,y]?}"##,
+            has_doc,
+            |s, p| place(s, p, false)""")])
+    edit(root, "crates/ui-egui/src/view_cmds.rs", [
+        ("/// Engine commands that get a dialog or file picker here when invoked without parameters.",
+         """/// SG - PS: set just before File > Place opens the (asynchronous) web file picker, so the web
+/// shell tags the picked file and the app places it instead of opening it as a document.
+pub static PLACE_NEXT_PICK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Prefix the web shell puts on the name of a file picked for Place.
+pub const PLACE_TAG: &str = "\\u{1}sgps-place:";
+
+/// Engine commands that get a dialog or file picker here when invoked without parameters."""),
+        ("""        "file.placeEmbedded" | "file.placeLinked" => {
+            let (name, bytes) = app.services.pick_open.as_mut().and_then(|f| f())?;""",
+         """        "file.placeEmbedded" | "file.placeLinked" => {
+            PLACE_NEXT_PICK.store(true, std::sync::atomic::Ordering::Relaxed);
+            let picked = app.services.pick_open.as_mut().and_then(|f| f());
+            let Some((name, bytes)) = picked else {
+                // The web picker answers later through the inbox (see PLACE_TAG).
+                return Some(Ok(Value::Null));
+            };
+            PLACE_NEXT_PICK.store(false, std::sync::atomic::Ordering::Relaxed);"""),
+    ])
+    edit(root, "crates/ui-egui/src/lib.rs", [(
+        """        for (name, bytes) in arrived {
+            if let Err(e) = self.open_bytes(&name, &bytes) {""",
+        """        for (name, bytes) in arrived {
+            if let Some(name) = name.strip_prefix(view_cmds::PLACE_TAG) {
+                // SG - PS: a file picked by File > Place Embedded (web): place it, don't open it.
+                if let Err(e) = photocraft_engine::file_cmds::place_bytes(&mut self.session, name, bytes, None, &serde_json::json!({})) {
+                    self.open_failed(name, &e.to_string());
+                }
+                self.sync_views();
+                continue;
+            }
+            if let Err(e) = self.open_bytes(&name, &bytes) {""")])
+    edit(root, "apps/photocraft-web/src/web.rs", [(
+        """        pick_open: Some(Box::new(move || {
+            let inbox = open_inbox.clone();
+            let ctx = ctx.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let Some(file) = rfd::AsyncFileDialog::new().add_filter("All Formats", OPEN_EXTS).pick_file().await else {
+                    return;
+                };
+                let bytes = file.read().await;
+                inbox.lock().unwrap_or_else(|e| e.into_inner()).push((file.file_name(), bytes));""",
+        """        pick_open: Some(Box::new(move || {
+            let inbox = open_inbox.clone();
+            let ctx = ctx.clone();
+            // SG - PS: read the Place flag now (a cancelled picker must not leave it set).
+            let place = photocraft_ui_egui::view_cmds::PLACE_NEXT_PICK.swap(false, std::sync::atomic::Ordering::Relaxed);
+            wasm_bindgen_futures::spawn_local(async move {
+                let Some(file) = rfd::AsyncFileDialog::new().add_filter("All Formats", OPEN_EXTS).pick_file().await else {
+                    return;
+                };
+                let bytes = file.read().await;
+                let name = if place { format!("{}{}", photocraft_ui_egui::view_cmds::PLACE_TAG, file.file_name()) } else { file.file_name() };
+                inbox.lock().unwrap_or_else(|e| e.into_inner()).push((name, bytes));""")])
+
+
+def proportional_edges(root: Path) -> None:
+    """Free Transform: edge handles keep the proportions like the corners (Shift stretches one
+    axis), so scaling from any handle never distorts the layer by accident."""
+    edit(root, "crates/ui-egui/src/transform_tool.rs", [(
+        """            let map = |a: f64, b: f64| {
+                let (x, y) = h.apply(a, b);
+                [x, y]
+            };
+            s.quad = [map(r[0], r[1]), map(r[2], r[1]), map(r[2], r[3]), map(r[0], r[3])];""",
+        """            // SG - PS: edges scale proportionally too, about the box centre (or the reference
+            // point with Alt) on the other axis; Shift stretches one axis as before.
+            if matches!(g.hit, Hit::Edge(_)) && !mods.shift {
+                if mv.0 || mv.1 {
+                    let k = (r[3] - r[1]).abs();
+                    let c = if mods.alt { pu } else { 0.5 };
+                    r[0] = c - c * k;
+                    r[2] = c + (1.0 - c) * k;
+                } else {
+                    let k = (r[2] - r[0]).abs();
+                    let c = if mods.alt { pv } else { 0.5 };
+                    r[1] = c - c * k;
+                    r[3] = c + (1.0 - c) * k;
+                }
+            }
+            let map = |a: f64, b: f64| {
+                let (x, y) = h.apply(a, b);
+                [x, y]
+            };
+            s.quad = [map(r[0], r[1]), map(r[2], r[1]), map(r[2], r[3]), map(r[0], r[3])];""")])
+
+
 def drop_old_translations(root: Path) -> int:
     """Translation rows for the removed ArtCraft/Discord menu items (and the translator notes that
     name ArtCraft) are compiled into the app even though nothing shows them: drop them."""
@@ -820,6 +919,8 @@ def main() -> None:
     n = rename_everywhere(root)
     drop_old_translations(root)
     desktop(root)
+    web_place(root)
+    proportional_edges(root)
     check(root)
     print(f"rebrand: done ({n} name replacements)")
 
