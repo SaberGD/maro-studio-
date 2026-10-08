@@ -8,3 +8,5 @@ services/api/data/
 .DS_Store
 coverage/
 vendor/
+.sgps-build/
+deploy/sg-ps/*.zip

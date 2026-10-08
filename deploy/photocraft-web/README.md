@@ -1,6 +1,8 @@
 # رفع PhotoCraft على هوستينجر
 
-> **النسخة الحالية شغالة على: https://studio.engsaber.space/** (اترفعت في 7 أكتوبر 2026 عن طريق Hostinger API: عملنا subdomain، رفعنا الـzip، وفكيناه بـ«Deploy static site archive»). SSL شغال والتحويل لـHTTPS متفعل.
+> **تحديث 8 أكتوبر:** الموقع بقى شغال بنسخة **SG - PS** (البرنامج بعد تغيير اسمه وشكله، وتفاصيلها في `apps/sg-ps/` و`deploy/sg-ps/`). الملف ده بيوصف النسخة الأصلية من غير تعديل.
+>
+> النسخة الأصلية كانت شغالة على: https://studio.engsaber.space/ (اترفعت في 7 أكتوبر 2026 عن طريق Hostinger API: عملنا subdomain، رفعنا الـzip، وفكيناه بـ«Deploy static site archive»). SSL شغال والتحويل لـHTTPS متفعل.
 >
 > ملاحظة: هوستينجر عنده حماية ضد البوتات، فطلبات `curl` المباشرة ممكن ترجع 403 أو صفحة «Checking your browser». المتصفحات العادية مش بتتأثر.
 
