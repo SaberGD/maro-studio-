@@ -25,6 +25,9 @@ python3 -I "$HERE/rebrand.py" "$WORK/src"
 cp -R "$WORK/src/dist/web/." "$WORK/site/"
 cp "$HERE/hosting/.htaccess" "$WORK/site/.htaccess"
 cp "$HERE/hosting/waitlist.php" "$WORK/site/waitlist.php"
+# Desktop download page (studio.engsaber.space/download/); the zips live on engsaber.space.
+cp -R "$HERE/hosting/download" "$WORK/site/download"
+cp "$HERE/assets/sg-ps-logo.svg" "$WORK/site/download/logo.svg"
 # n8n webhook for new leads (GitHub secret SGPS_LEAD_WEBHOOK); server-side only, never in the page.
 if [ -n "${SGPS_LEAD_WEBHOOK:-}" ]; then
   python3 -c 'import sys; u = sys.argv[1].replace("\\", "\\\\").replace("\x27", "\\\x27"); open(sys.argv[2], "w").write("<?php return [\x27lead_webhook\x27 => \x27" + u + "\x27];\n")' \

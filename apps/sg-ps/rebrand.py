@@ -60,14 +60,14 @@ def remove_block(root: Path, rel: str, start: str, end: str) -> None:
 
 def links(root: Path) -> None:
     edit(root, "crates/ui-egui/src/links.rs", [
-        ('pub const DISCORD: &str = "https://discord.gg/artcraft";', f'pub const DISCORD: &str = "{FACEBOOK}";\npub const CONTACT: &str = "{WHATSAPP}";'),
+        ('pub const DISCORD: &str = "https://discord.gg/artcraft";', f'pub const DISCORD: &str = "{FACEBOOK}";\npub const CONTACT: &str = "{WHATSAPP}";\npub const DOWNLOAD: &str = "{APP_SITE}/download/";'),
         ('pub const ARTCRAFT_WEBSITE: &str = "https://getartcraft.com";', f'pub const ARTCRAFT_WEBSITE: &str = "{SABER_SITE}";'),
         ('pub const APP_PAGE: &str = "https://getartcraft.com/apps/photocraft";', f'pub const APP_PAGE: &str = "{APP_SITE}";'),
         ('pub const GITHUB: &str = "https://github.com/storytold/photocraft";', f'pub const GITHUB: &str = "{SABER_SITE}";'),
         ('pub const ISSUES: &str = "https://github.com/storytold/photocraft/issues";', f'pub const ISSUES: &str = "{SABER_SITE}";'),
         (
             '&[("help.discord", DISCORD), ("help.website", APP_PAGE), ("help.artcraftWebsite", ARTCRAFT_WEBSITE), ("help.github", GITHUB), ("help.reportIssue", ISSUES)];',
-            '&[("help.discord", DISCORD), ("help.contact", CONTACT), ("help.website", APP_PAGE)];',
+            '&[("help.discord", DISCORD), ("help.contact", CONTACT), ("help.download", DOWNLOAD), ("help.website", APP_PAGE)];',
         ),
         ('tl!("Join us on Discord")', 'tl!("Saber Group Academy")'),
         (
@@ -80,7 +80,7 @@ def links(root: Path) -> None:
 
 def menus(root: Path) -> None:
     edit(root, "crates/ui-egui/src/menus.rs", [
-        ('("help.discord", "Join the ArtCraft Discord…", &["Help"], None),', '("help.discord", "Saber Group Academy on Facebook", &["Help"], None),\n    ("help.contact", "Contact Us: Courses & Services…", &["Help"], None),'),
+        ('("help.discord", "Join the ArtCraft Discord…", &["Help"], None),', '("help.discord", "Saber Group Academy on Facebook", &["Help"], None),\n    ("help.contact", "Contact Us: Courses & Services…", &["Help"], None),\n    ("help.download", "Download the Desktop App (Windows / Mac)…", &["Help"], None),'),
         ('("help.website", "PhotoCraft Website", &["Help"], None),', f'("help.website", "{APP_NAME} Website", &["Help"], None),'),
         ('    ("help.artcraftWebsite", "ArtCraft Website", &["Help"], None),\n', ""),
         ('    ("help.github", "PhotoCraft on GitHub", &["Help"], None),\n', ""),
