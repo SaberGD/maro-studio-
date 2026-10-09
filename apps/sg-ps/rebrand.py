@@ -1300,9 +1300,12 @@ def stability(root: Path) -> None:
 def apply_patches(root: Path) -> None:
     """Unified diffs in apps/sg-ps/patches/ (made against the rebranded tree), applied in name order."""
     for diff in sorted((HERE / "patches").glob("*.diff")):
-        r = subprocess.run(["git", "apply", "--whitespace=nowarn", "-p1", str(diff)], cwd=root, capture_output=True, text=True)
+        # Normalise line endings (a Windows checkout may hand us CRLF) and apply from stdin, so the
+        # patch is read the same everywhere.
+        data = diff.read_bytes().replace(b"\r\n", b"\n")
+        r = subprocess.run(["git", "apply", "--whitespace=nowarn", "-p1", "-"], cwd=root, input=data, capture_output=True)
         if r.returncode != 0:
-            sys.exit(f"rebrand: patch {diff.name} does not apply:\n{r.stderr}")
+            sys.exit(f"rebrand: patch {diff.name} does not apply:\n{r.stderr.decode(errors='replace')}")
         print(f"rebrand: applied {diff.name}")
 
 

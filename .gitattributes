@@ -1,0 +1,2 @@
+# Patch files must keep LF line endings on every platform, or git apply rejects them.
+apps/sg-ps/patches/*.diff text eol=lf
