@@ -20,6 +20,7 @@ What it changes (UI only; licence files are kept as the licences require):
 
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1175,6 +1176,116 @@ def check(root: Path) -> None:
         print("rebrand: remaining brand strings (check they are test-only):\n" + "\n".join(bad))
 
 
+TRANSFORM_GUARD = """        // SG - PS: an open Free Transform never stays pending behind other edits. Undo takes back
+        // the pending rotate / scale / move (the last thing the user did) instead of the step
+        // before it; any other document command applies the transform first, so it gets its own
+        // history step and the canvas stops showing the frozen transform preview.
+        if let Some(t) = self.ui.transform.as_ref() {
+            if id == "edit.undo" {
+                let changed = match &t.warp {
+                    Some(w) => !w.is_identity(),
+                    None => t.quad != [[t.rect[0], t.rect[1]], [t.rect[2], t.rect[1]], [t.rect[2], t.rect[3]], [t.rect[0], t.rect[3]]],
+                };
+                transform_tool::cancel(self);
+                if changed || !self.session.is_enabled("edit.undo") {
+                    return Ok(serde_json::json!(true));
+                }
+            } else if !["tools.", "view.", "window.", "help."].iter().any(|p| id.starts_with(p))
+                && photocraft_engine::commands::find(id).is_some_and(|c| c.journal)
+            {
+                transform_tool::commit(self);
+            }
+        }
+"""
+
+CRASH_SCRIPT = """  <script>
+    // SG - PS: if the app stops (an internal error or the browser running out of memory), say so
+    // instead of leaving a frozen canvas, and show the technical details to send to the team.
+    (function () {
+      var shown = false;
+      function show(detail) {
+        if (shown) return; shown = true;
+        var d = document.createElement('div');
+        d.id = 'sgps_crash'; d.dir = 'rtl';
+        d.innerHTML = '<div class="box"><h2>البرنامج وقف بسبب مشكلة 😕</h2>' +
+          '<p>اعمل <b>Reload</b> للصفحة وكمّل. لو المشكلة اتكررت صوّر الرسالة دي وابعتهالنا على واتساب عشان نصلّحها.</p>' +
+          '<pre></pre><div class="row"><button type="button" data-r>Reload</button><a target="_blank" rel="noopener">كلّمنا على واتساب</a></div></div>';
+        d.querySelector('pre').textContent = String(detail || '').slice(0, 1500);
+        d.querySelector('[data-r]').onclick = function () { location.reload(); };
+        d.querySelector('a').href = '__WHATSAPP__';
+        document.body.appendChild(d);
+      }
+      var origError = console.error;
+      console.error = function () {
+        try {
+          var text = Array.prototype.join.call(arguments, ' ');
+          if (/panicked at/.test(text)) show(text);
+        } catch (e) {}
+        return origError.apply(console, arguments);
+      };
+      function fatal(e) {
+        var msg = (e && (e.message || e.reason && e.reason.message)) || '';
+        var stack = (e && (e.error && e.error.stack || e.reason && e.reason.stack)) || '';
+        if (/RuntimeError|unreachable|out of memory|Out of memory/i.test(msg + ' ' + stack)) show(msg + '\\n' + stack);
+      }
+      window.addEventListener('error', fatal);
+      window.addEventListener('unhandledrejection', fatal);
+    })();
+  </script>
+  <style>
+    #sgps_crash { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+      padding: 16px; background: rgba(0,0,0,.7); font: 14px/1.6 system-ui, 'Segoe UI', Tahoma, sans-serif; color: #ececec; }
+    #sgps_crash .box { width: min(520px, 100%); background: #1c1c1c; border: 1px solid #c4321f; border-radius: 12px; padding: 20px 22px; }
+    #sgps_crash h2 { margin: 0 0 6px; font-size: 20px; color: #fff; }
+    #sgps_crash p { margin: 0 0 10px; color: #c9c3c1; }
+    #sgps_crash pre { direction: ltr; text-align: left; max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+      background: #111; border: 1px solid #333; border-radius: 8px; padding: 8px; font-size: 11px; color: #ff8a70; }
+    #sgps_crash .row { display: flex; gap: 10px; }
+    #sgps_crash button, #sgps_crash a { flex: 1; padding: 10px; border-radius: 8px; border: 0; background: #c4321f; color: #fff;
+      font: inherit; font-weight: 700; text-align: center; text-decoration: none; cursor: pointer; }
+    #sgps_crash a { background: #2a2a2a; }
+  </style>
+"""
+
+
+def stability(root: Path) -> None:
+    """Free Transform never stays pending behind other edits; crash safety on the web and desktop."""
+    edit(root, "crates/ui-egui/src/lib.rs", [(
+        "        let suppress_events = self.automation_input && self.session.prefs().script_events.enabled;",
+        TRANSFORM_GUARD + "        let suppress_events = self.automation_input && self.session.prefs().script_events.enabled;",
+    )])
+    edit(root, "crates/ui-egui/src/menus.rs", [(
+        '        "select.transformSelection" => app.ui.transform.is_none() && app.session.is_enabled("select.transformSelection"),',
+        '        "select.transformSelection" => app.ui.transform.is_none() && app.session.is_enabled("select.transformSelection"),\n'
+        '        // SG - PS: Undo cancels an open Free Transform even with no history yet (see `run`).\n'
+        '        "edit.undo" if app.ui.transform.is_some() => true,',
+    )])
+    edit(root, "crates/engine/src/prefs.rs", [
+        # The browser has at most 4 GiB for the app: History must trim itself well before that.
+        ("""    pub fn history_budget_bytes(&self) -> usize {
+        (self.memory_usage_mb as usize).saturating_mul(1 << 20)
+    }""", """    pub fn history_budget_bytes(&self) -> usize {
+        let mb = self.memory_usage_mb as usize;
+        // SG - PS: wasm32 has at most 4 GiB; keep pixels + History well below it.
+        #[cfg(target_arch = "wasm32")]
+        let mb = mb.min(1536);
+        mb.saturating_mul(1 << 20)
+    }"""),
+        # Desktop crash recovery loses at most a few minutes of work.
+        ("            autosave_minutes: 10,", "            autosave_minutes: 3,"),
+    ])
+    edit(root, "apps/photocraft-web/index.html", [("</body>", CRASH_SCRIPT.replace("__WHATSAPP__", WHATSAPP) + "</body>")])
+
+
+def apply_patches(root: Path) -> None:
+    """Unified diffs in apps/sg-ps/patches/ (made against the rebranded tree), applied in name order."""
+    for diff in sorted((HERE / "patches").glob("*.diff")):
+        r = subprocess.run(["git", "apply", "--whitespace=nowarn", "-p1", str(diff)], cwd=root, capture_output=True, text=True)
+        if r.returncode != 0:
+            sys.exit(f"rebrand: patch {diff.name} does not apply:\n{r.stderr}")
+        print(f"rebrand: applied {diff.name}")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -1197,6 +1308,8 @@ def main() -> None:
     desktop(root)
     web_place(root)
     proportional_edges(root)
+    stability(root)
+    apply_patches(root)
     check(root)
     print(f"rebrand: done ({n} name replacements)")
 

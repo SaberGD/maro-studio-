@@ -1,0 +1,228 @@
+--- a/crates/engine/src/fill_key_cmds.rs
++++ b/crates/engine/src/fill_key_cmds.rs
+@@ -16,7 +16,21 @@
+ 
+ const PARAMS: &str = r##"{"layer":id?,"target":"pixels"|{"channel":i}|"quickMask"?}"##;
+ 
++/// SG - PS: the active layer when it is a shape layer (the fill keys recolour its fill, as in
++/// Photoshop, instead of asking to rasterize it).
++fn active_shape(s: &Session, p: &Value) -> Option<u64> {
++    if p.get("target").is_some_and(|t| !t.is_null() && t.as_str() != Some("pixels")) {
++        return None;
++    }
++    let st = s.active()?;
++    let id = p.get("layer").and_then(Value::as_u64).map(photocraft_doc::LayerId).or(st.active_layer)?;
++    matches!(st.doc.layer(id)?.content, photocraft_doc::LayerContent::Shape(_)).then_some(id.0)
++}
++
+ fn enabled(s: &Session) -> std::result::Result<(), String> {
++    if active_shape(s, &Value::Null).is_some() {
++        return Ok(());
++    }
+     let edit_fill = crate::commands::find("edit.fill").ok_or_else(|| "Fill is unavailable".to_string())?;
+     (edit_fill.enabled)(s)
+ }
+@@ -33,6 +47,10 @@
+         q.remove(k);
+     }
+     let c = if background { s.tools.background } else { s.tools.foreground };
++    if let Some(id) = active_shape(s, p) {
++        let edit = crate::commands::find("shape.edit").ok_or_else(|| EngineError::Other("Shape editing is unavailable".into()))?;
++        return (edit.run)(s, &json!({"layer": id, "fill": [c[0], c[1], c[2], 1.0]}));
++    }
+     q.insert("color".into(), json!([c[0], c[1], c[2], 1.0]));
+     q.insert("preserveTransparency".into(), json!(preserve));
+     let edit_fill = crate::commands::find("edit.fill").ok_or_else(|| EngineError::Other("Fill is unavailable".into()))?;
+@@ -109,6 +127,18 @@
+     }
+ 
+     #[test]
++    fn fill_keys_recolour_a_shape_layer() {
++        let mut s = session();
++        s.execute("shape.create", json!({"kind": "rect", "rect": [1, 1, 4, 3], "fill": "#00ff00"})).unwrap();
++        s.execute("edit.fillForeground", json!({})).unwrap();
++        let st = s.active().unwrap();
++        let l = st.doc.layer(st.active_layer.unwrap()).unwrap();
++        let photocraft_doc::LayerContent::Shape(sh) = &l.content else { panic!("still a shape layer") };
++        let Some(photocraft_doc::Fill::Solid(c)) = &sh.fill else { panic!("{:?}", sh.fill) };
++        assert_eq!(c.to_rgba8()[..3], [255, 0, 0]);
++    }
++
++    #[test]
+     fn foreground_fills_the_layer_without_a_selection() {
+         let mut s = session();
+         s.execute("edit.fillForeground", json!({})).unwrap();
+--- a/crates/ui-egui/src/panels.rs
++++ b/crates/ui-egui/src/panels.rs
+@@ -1173,6 +1173,15 @@
+     [110, 20, 90],
+ ];
+ 
++/// SG - PS: the Color panel's Eyedropper button: picks the Eyedropper tool (I), so the next
++/// click on the canvas sets the foreground colour (⌥-click: the background).
++fn eyedropper_button(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
++    let on = app.ui.tool == Tool::Eyedropper;
++    if icons::button(ui, "pipette", 22.0, on, tl!("Eyedropper Tool")).on_hover_text(tl!("Click the canvas to pick a colour")).clicked() {
++        app.ui.tool = Tool::Eyedropper;
++    }
++}
++
+ fn swatches(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+     let t = Tokens::get(ui.ctx());
+     let cols = 10;
+@@ -1198,7 +1207,10 @@
+         }
+     }
+     ui.add_space(2.0);
+-    ui.label(RichText::new(tl!("Click sets foreground · right-click sets background")).small().color(t.text_faint));
++    ui.horizontal(|ui| {
++        eyedropper_button(app, ui);
++        ui.label(RichText::new(tl!("Click sets foreground · right-click sets background")).small().color(t.text_faint));
++    });
+ }
+ 
+ fn color_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -1230,6 +1242,7 @@
+         ui.painter().rect_filled(sw, 6.0, Color32::from_rgb(r, g, b));
+         ui.label(RichText::new(format!("#{r:02X}{g:02X}{b:02X}")).font(theme::mono(12.5)).color(t.text));
+         ui.label(RichText::new(format!("RGB {r} {g} {b}")).font(theme::mono(11.5)).color(t.text_faint));
++        eyedropper_button(app, ui);
+     });
+ }
+ 
+@@ -1257,6 +1270,15 @@
+ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+     // A new active layer opens its parent groups and is scrolled into view (#152).
+     let reveal = crate::layer_reveal::track(app, ui.ctx());
++    // SG - PS: selecting a shape or type layer brings its Properties (Fill/Stroke, Character)
++    // to the front, even when the group was left on the Adjustments tab or collapsed.
++    if let Some(id) = reveal
++        && app.session.active().and_then(|s| s.doc.layer(id)).is_some_and(|l| matches!(l.content, LayerContent::Shape(_) | LayerContent::Text(_)))
++        && Tokens::get(ui.ctx()).pro
++    {
++        app.ui.dock_tabs.properties = 0;
++        app.ui.dock.set_collapsed(crate::dock::Group::Properties, false);
++    }
+     let Some(st) = app.session.active() else {
+         empty(ui, tl!("No document"));
+         return;
+@@ -2182,6 +2204,7 @@
+     ui.horizontal(|ui| {
+         ui.label(RichText::new(format!("#{r:02X}{g:02X}{b:02X}")).font(theme::mono(12.0)).color(t.text));
+         ui.label(RichText::new(format!("R {r}  G {g}  B {b}")).font(theme::mono(11.0)).color(t.text_faint));
++        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| eyedropper_button(app, ui));
+     });
+ }
+ 
+--- a/crates/ui-egui/src/transform_tool.rs
++++ b/crates/ui-egui/src/transform_tool.rs
+@@ -460,6 +460,23 @@
+ }
+ 
+ fn apply_drag(s: &mut TransformSession, g: Gesture, p: [f64; 2], mods: egui::Modifiers) {
++    apply_drag_box(s, g, p, mods);
++    // SG - PS: the reference point keeps its place *in the box* (centre by default), as in
++    // Photoshop: scaling, skewing or distorting carries it along instead of leaving it behind.
++    // (⌥-scaling is about the reference point itself, so it already stays put.)
++    if matches!(g.hit, Hit::Corner(_) | Hit::Edge(_)) && (mods.command || !mods.alt) {
++        let unit = [0.0, 0.0, 1.0, 1.0];
++        let rel = Homography::rect_to_quad(unit, g.quad0).and_then(|h| h.inverse()).map(|inv| inv.apply(g.pivot0[0], g.pivot0[1]));
++        if let (Some((pu, pv)), Some(h1)) = (rel, Homography::rect_to_quad(unit, s.quad)) {
++            let (x, y) = h1.apply(pu, pv);
++            if x.is_finite() && y.is_finite() {
++                s.pivot = [x, y];
++            }
++        }
++    }
++}
++
++fn apply_drag_box(s: &mut TransformSession, g: Gesture, p: [f64; 2], mods: egui::Modifiers) {
+     let (dx, dy) = (p[0] - g.start[0], p[1] - g.start[1]);
+     match g.hit {
+         Hit::Inside => {
+@@ -629,8 +646,6 @@
+                 [x, y]
+             };
+             s.quad = [map(r[0], r[1]), map(r[2], r[1]), map(r[2], r[3]), map(r[0], r[3])];
+-            let (x, y) = h.apply(pu, pv);
+-            s.pivot = [x, y];
+         }
+     }
+ }
+@@ -1093,6 +1108,28 @@
+     }
+ 
+     #[test]
++    fn reference_point_follows_the_box_when_scaling() {
++        // Corner drag: box becomes [0,0,200,100]; the centre reference point follows.
++        let mut s = session();
++        drag(&mut s, [100.0, 50.0], [200.0, 60.0], egui::Modifiers::NONE);
++        assert!((s.pivot[0] - 100.0).abs() < 1e-6 && (s.pivot[1] - 50.0).abs() < 1e-6, "{:?}", s.pivot);
++        // Edge drag (proportional): still the centre.
++        let mut s = session();
++        drag(&mut s, [50.0, 50.0], [50.0, 100.0], egui::Modifiers::NONE);
++        let c = [(s.quad[0][0] + s.quad[2][0]) / 2.0, (s.quad[0][1] + s.quad[2][1]) / 2.0];
++        assert!((s.pivot[0] - c[0]).abs() < 1e-6 && (s.pivot[1] - c[1]).abs() < 1e-6, "{:?} vs {c:?}", s.pivot);
++        // A user-placed reference point keeps its relative spot (top-left quarter).
++        let mut s = session();
++        s.pivot = [25.0, 12.5];
++        drag(&mut s, [100.0, 50.0], [200.0, 60.0], egui::Modifiers::NONE);
++        assert!((s.pivot[0] - 50.0).abs() < 1e-6 && (s.pivot[1] - 25.0).abs() < 1e-6, "{:?}", s.pivot);
++        // Alt scales about the reference point, which stays put.
++        let mut s = session();
++        drag(&mut s, [100.0, 50.0], [150.0, 75.0], egui::Modifiers::ALT);
++        assert!((s.pivot[0] - 50.0).abs() < 1e-6 && (s.pivot[1] - 25.0).abs() < 1e-6, "{:?}", s.pivot);
++    }
++
++    #[test]
+     fn move_rotate_and_distort() {
+         let mut s = session();
+         drag(&mut s, [40.0, 20.0], [50.0, 30.0], egui::Modifiers::NONE);
+--- a/crates/ui-egui/src/vector_ui.rs
++++ b/crates/ui-egui/src/vector_ui.rs
+@@ -452,7 +452,7 @@
+ }
+ 
+ /// A colour swatch that opens a picker; returns the new `#rrggbb` when changed.
+-fn swatch(ui: &mut egui::Ui, fill: Option<&photocraft_doc::Fill>, tip: &str) -> Option<String> {
++fn swatch(ui: &mut egui::Ui, fill: Option<&photocraft_doc::Fill>, tip: &str, fg: [f32; 4]) -> Option<String> {
+     let t = Tokens::get(ui.ctx());
+     let (r, resp) = ui.allocate_exact_size(vec2(26.0, 18.0), Sense::click());
+     let current = fill.and_then(color_of);
+@@ -496,6 +496,14 @@
+     let resp = resp.on_hover_text(tip);
+     let mut out = None;
+     crate::widgets::swatch_popup(&resp).show(|ui| {
++        // SG - PS: one click applies the foreground colour (e.g. just picked with the Eyedropper).
++        ui.horizontal(|ui| {
++            let (sw, _) = ui.allocate_exact_size(vec2(18.0, 14.0), Sense::hover());
++            ui.painter().rect_filled(sw, 2.0, rgb32(fg));
++            if ui.button(tl!("Use Foreground Color")).clicked() {
++                out = Some(hex(fg));
++            }
++        });
+         let mut c = current.unwrap_or(Color32::BLACK);
+         if egui::color_picker::color_picker_color32(ui, &mut c, egui::color_picker::Alpha::Opaque) {
+             out = Some(format!("#{:02x}{:02x}{:02x}", c.r(), c.g(), c.b()));
+@@ -516,18 +524,19 @@
+         return;
+     };
+     let t = Tokens::get(ui.ctx());
++    let fg = app.session.tools.foreground;
+     let mut edit: Option<Value> = None;
+     let key = |k: &str| format!("shape-{}-{k}", id.0);
+     // The shared collapsible section headers (#155).
+     if crate::props_layout::section(ui, "appearance", tl!("Appearance")) {
+         ui.horizontal(|ui| {
+             ui.label(egui::RichText::new(tl!("Fill")).color(t.text_dim).size(12.0));
+-            if let Some(c) = swatch(ui, sh.fill.as_ref(), tl!("Set shape fill type")) {
++            if let Some(c) = swatch(ui, sh.fill.as_ref(), tl!("Set shape fill type"), fg) {
+                 edit = Some(if c == "none" { json!({"fill": null}) } else { json!({"fill": c, "coalesce": key("fill")}) });
+             }
+             ui.add_space(12.0);
+             ui.label(egui::RichText::new(tl!("Stroke")).color(t.text_dim).size(12.0));
+-            if let Some(c) = swatch(ui, sh.stroke.as_ref().map(|s| &s.paint), tl!("Set shape stroke type")) {
++            if let Some(c) = swatch(ui, sh.stroke.as_ref().map(|s| &s.paint), tl!("Set shape stroke type"), fg) {
+                 edit = Some(if c == "none" {
+                     json!({"stroke": null})
+                 } else {
