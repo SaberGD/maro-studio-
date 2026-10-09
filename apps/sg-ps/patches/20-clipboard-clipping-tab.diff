@@ -1,0 +1,304 @@
+--- a/apps/photocraft-web/src/web.rs
++++ b/apps/photocraft-web/src/web.rs
+@@ -132,6 +132,11 @@
+ }
+ 
+ impl eframe::App for WebShell {
++    // The app's own raw-input pass (Tab / ⇧Tab panels, automation input) runs on the web too.
++    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
++        eframe::App::raw_input_hook(&mut self.app, ctx, raw_input);
++    }
++
+     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+         let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
+         for f in dropped {
+--- a/crates/engine/src/edit_cmds.rs
++++ b/crates/engine/src/edit_cmds.rs
+@@ -33,6 +33,14 @@
+     if l.surface().is_some() && matches!(l.content, LayerContent::Raster(_)) { Ok(()) } else { Err("the active layer has no pixels".into()) }
+ }
+ 
++/// Copy reads the active layer's rendered pixels: a pixel layer's, or the cached rendering of a
++/// shape, type or Smart Object layer (Photoshop copies those as pixels too).
++fn has_copyable(s: &Session) -> std::result::Result<(), String> {
++    let d = s.active().ok_or("no document open")?;
++    let l = d.active_layer.and_then(|id| d.doc.layer(id)).ok_or("no active layer")?;
++    if l.surface().is_some() { Ok(()) } else { Err(format!("the active layer ({}) has no pixels", l.content.kind_name())) }
++}
++
+ fn has_clip(s: &Session) -> std::result::Result<(), String> {
+     has_doc(s)?;
+     s.clipboard.as_ref().map(|_| ()).ok_or_else(|| "the clipboard is empty".into())
+@@ -473,7 +481,7 @@
+             s.edit("Cut Pixels", |doc, _| clear_selected(doc, id, bg))?;
+             Ok(r)
+         }),
+-        spec!("edit.copy", "Copy", &["Edit"], Some("Cmd+C"), "{}", has_pixels, |s, _| copy(s, false)),
++        spec!("edit.copy", "Copy", &["Edit"], Some("Cmd+C"), "{}", has_copyable, |s, _| copy(s, false)),
+         spec!("edit.copyMerged", "Copy Merged", &["Edit"], Some("Cmd+Shift+C"), "{}", has_doc, |s, _| copy(s, true)),
+         spec!(
+             "edit.paste",
+@@ -543,6 +551,20 @@
+         st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap().content_bounds()
+     }
+ 
++    /// Copy works on a shape layer (its rendered pixels, as Photoshop); Cut still needs pixels.
++    #[test]
++    fn copy_shape_layer_pastes_pixels() {
++        let mut s = Session::new();
++        s.execute("file.new", json!({"width": 64, "height": 64})).unwrap();
++        s.execute("shape.create", json!({"kind": "rect", "rect": [10, 10, 20, 10], "fill": "#ff8800"})).unwrap();
++        assert!(s.is_enabled("edit.copy"), "{:?}", s.disabled_reason("edit.copy"));
++        assert!(!s.is_enabled("edit.cut"));
++        s.execute("edit.copy", json!({})).unwrap();
++        s.execute("edit.paste", json!({})).unwrap();
++        let b = active_bounds(&s);
++        assert_eq!((b.width(), b.height()), (20, 10));
++    }
++
+     /// #368: the clipboard as a document of its own, from New from Clipboard or a Paste with
+     /// nothing open, at every depth.
+     #[test]
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -871,7 +871,13 @@
+     }
+ 
+     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+-        shortcuts::clipboard_keys(ctx, ctx.text_edit_focused() || self.ui.text_edit.is_some(), raw_input);
++        let typing = ctx.text_edit_focused() || self.ui.text_edit.is_some();
++        // On the web the browser's keydown already delivers ⌘C/⌘X/⌘V presses beside its
++        // copy/cut/paste events: mapping those events to presses again would paste twice.
++        if !cfg!(target_arch = "wasm32") {
++            shortcuts::clipboard_keys(ctx, typing, raw_input);
++        }
++        shortcuts::tab_panels(self, ctx, typing, raw_input);
+         raw_input.events.extend(self.take_synthetic_step());
+     }
+ 
+@@ -892,16 +898,18 @@
+         if chrome {
+             panels::title_bar(self, ui);
+         }
+-        if chrome && self.ui.panels.options_bar {
++        // Tab hides every panel, ⇧Tab the dock and floating panels (Photoshop).
++        let hidden = self.ui.panels_hidden;
++        if chrome && self.ui.panels.options_bar && hidden != 1 {
+             panels::options_bar(self, ui);
+         }
+         if chrome && self.ui.panels.status_bar {
+             panels::status_bar(self, ui);
+         }
+-        if chrome && self.ui.panels.toolbar {
++        if chrome && self.ui.panels.toolbar && hidden != 1 {
+             panels::toolbar(self, ui);
+         }
+-        if chrome {
++        if chrome && hidden == 0 {
+             panels::right_dock(self, ui);
+         }
+         let t = theme::Tokens::get(&ctx);
+@@ -909,13 +917,15 @@
+         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
+             canvas::document_area(self, ui);
+         });
+-        panels::properties_window(self, &ctx);
+-        brush_panel::window(self, &ctx);
+-        preset_panels::windows(self, &ctx);
+-        type_panels_ui::windows(self, &ctx);
+-        analysis_ui::windows(self, &ctx);
+-        timeline_ui::windows(self, &ctx);
+-        workspace_ui::windows(self, &ctx);
++        if hidden == 0 {
++            panels::properties_window(self, &ctx);
++            brush_panel::window(self, &ctx);
++            preset_panels::windows(self, &ctx);
++            type_panels_ui::windows(self, &ctx);
++            analysis_ui::windows(self, &ctx);
++            timeline_ui::windows(self, &ctx);
++            workspace_ui::windows(self, &ctx);
++        }
+         palette::show(self, &ctx);
+         dialogs::show(self, &ctx);
+         jobs_ui::dialog(self, &ctx);
+@@ -1303,6 +1313,45 @@
+         assert_eq!(surf.content_bounds().width(), 3);
+     }
+ 
++    /// ⌘⌥G toggles the clipping mask (Photoshop); Tab / ⇧Tab hide and show the panels.
++    #[test]
++    fn clipping_toggle_and_tab_panels() {
++        let ctx = egui::Context::default();
++        let mut app = PhotocraftApp::new(Session::new(), Services::default());
++        app.session.execute("file.new", serde_json::json!({"width": 32, "height": 32})).unwrap();
++        app.session.execute("layer.new.layer", serde_json::json!({})).unwrap();
++        app.sync_views();
++        let clipped = |app: &PhotocraftApp| {
++            let st = app.session.active().unwrap();
++            st.doc.layer(st.active_layer.unwrap()).unwrap().clipped
++        };
++        crate::menus::invoke(&mut app, &ctx, "layer.createClippingMask", serde_json::json!({})).unwrap();
++        assert!(clipped(&app));
++        crate::menus::invoke(&mut app, &ctx, "layer.createClippingMask", serde_json::json!({})).unwrap();
++        assert!(!clipped(&app));
++
++        let tab = |shift: bool, pressed: bool| egui::Event::Key {
++            key: egui::Key::Tab,
++            physical_key: None,
++            pressed,
++            repeat: false,
++            modifiers: if shift { egui::Modifiers::SHIFT } else { egui::Modifiers::NONE },
++        };
++        let mut raw = egui::RawInput { events: vec![tab(false, true), tab(false, true), tab(false, false)], ..Default::default() };
++        crate::shortcuts::tab_panels(&mut app, &ctx, false, &mut raw);
++        assert_eq!(app.ui.panels_hidden, 1, "a held Tab toggles once");
++        assert_eq!(raw.events.len(), 1, "egui never sees the press (it would move focus)");
++        let mut raw = egui::RawInput { events: vec![tab(false, true), tab(false, false), tab(true, true), tab(true, false)], ..Default::default() };
++        crate::shortcuts::tab_panels(&mut app, &ctx, false, &mut raw);
++        assert_eq!(app.ui.panels_hidden, 2);
++        // Typing keeps Tab; the Window menu shows the panels again.
++        let mut raw = egui::RawInput { events: vec![tab(false, true)], ..Default::default() };
++        crate::shortcuts::tab_panels(&mut app, &ctx, true, &mut raw);
++        assert_eq!((app.ui.panels_hidden, raw.events.len()), (2, 1));
++        crate::menus::invoke(&mut app, &ctx, "window.panel.layers", serde_json::json!({})).unwrap();
++        assert_eq!(app.ui.panels_hidden, 0);
++    }
++
+     type OsClip = Arc<Mutex<Option<(u32, u32, Vec<u8>)>>>;
+ 
+     /// An app whose OS clipboard is `os`, counting every read in `reads`.
+--- a/crates/ui-egui/src/menus.rs
++++ b/crates/ui-egui/src/menus.rs
+@@ -117,6 +117,11 @@
+     if let Some(url) = crate::links::url_for(id) {
+         return Ok(crate::links::open(app, ctx, url));
+     }
++    // Opening or closing a panel from the Window menu (or F5–F8, ⌥F9) shows the panels hidden
++    // with Tab / ⇧Tab again, as in Photoshop.
++    if id.starts_with("window.toggle.") || id.starts_with("window.panel.") {
++        app.ui.panels_hidden = 0;
++    }
+     if id == "type.loadDeviceFonts" {
+         crate::type_tool::DEVICE_FONTS_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
+         app.ui.status = "Loading the fonts installed on this computer…".into();
+@@ -337,6 +342,13 @@
+         "select.transformSelection" if params.as_object().is_none_or(|o| o.is_empty()) => {
+             crate::transform_tool::begin_selection(app, ctx).map(|_| json!({"transform": app.ui.transform}))
+         }
++        // Photoshop: Layer › Create Clipping Mask (⌘⌥G) toggles; on a clipped layer it releases.
++        "layer.createClippingMask"
++            if params.as_object().is_none_or(|o| o.is_empty())
++                && app.session.active().is_some_and(|d| d.active_layer.and_then(|id| d.doc.layer(id)).is_some_and(|l| l.clipped)) =>
++        {
++            app.run("layer.releaseClippingMask", json!({}))
++        }
+         "edit.paste" if params.as_object().is_none_or(|o| o.is_empty()) => {
+             // Photoshop: paste in place when the copied area is visible, else centred in the view;
+             // images from other apps are always centred.
+--- a/crates/ui-egui/src/panels.rs
++++ b/crates/ui-egui/src/panels.rs
+@@ -1551,6 +1551,11 @@
+     }
+ }
+ 
++/// ⌥-click (without ⌘/⇧) on a Layers row toggles its clipping mask.
++fn clip_click(m: egui::Modifiers) -> bool {
++    m.alt && !m.command && !m.shift
++}
++
+ #[allow(clippy::too_many_arguments)]
+ fn layer_row(
+     app: &mut PhotocraftApp,
+@@ -1577,6 +1582,10 @@
+         return;
+     }
+     let painter = ui.painter_at(rect.expand(1.0));
++    if resp.hovered() && clip_click(ui.input(|i| i.modifiers)) && !crate::doc_props_ui::is_background(doc, l) {
++        // Photoshop's clipping cursor while ⌥ is held over a row.
++        ctx.set_cursor_icon(egui::CursorIcon::Alias);
++    }
+     if t.pro {
+         if selected {
+             painter.rect_filled(rect, 0.0, t.row_selected);
+@@ -1677,6 +1686,18 @@
+         actions.push(("select.loadSelection".into(), p));
+     } else if let Some(cmd) = mask_toggle {
+         actions.push(cmd);
++    } else if resp.clicked()
++        && !eye_resp.clicked()
++        && !toggled
++        && !fx_toggled
++        && !masks.clicked
++        && clip_click(ui.input(|i| i.modifiers))
++        && !crate::doc_props_ui::is_background(doc, l)
++    {
++        // Photoshop: ⌥-click between two layers clips the upper one to the one below (and
++        // ⌥-click again releases it). Here the whole row of the upper layer takes the click.
++        let cmd = if l.clipped { "layer.releaseClippingMask" } else { "layer.createClippingMask" };
++        actions.push((cmd.into(), json!({"layer": l.id.0})));
+     } else if resp.clicked() && !eye_resp.clicked() && !toggled && !fx_toggled && !masks.clicked {
+         let mode = select_mode(ui.input(|i| i.modifiers));
+         actions.push(("layer.select".into(), json!({"layer": l.id.0, "mode": mode})));
+--- a/crates/ui-egui/src/shortcuts.rs
++++ b/crates/ui-egui/src/shortcuts.rs
+@@ -227,6 +227,35 @@
+     raw.events = out;
+ }
+ 
++/// Photoshop's Tab (show/hide all panels) and ⇧Tab (show/hide the panels on the right and the
++/// floating ones). Taken from the raw input, before egui would move keyboard focus with Tab,
++/// and only while nothing has keyboard focus and no menu, dialog or warp owns the keys.
++pub fn tab_panels(app: &mut PhotocraftApp, ctx: &egui::Context, typing: bool, raw: &mut egui::RawInput) {
++    let busy = typing
++        || ctx.memory(|m| m.focused().is_some())
++        || crate::menu_nav::is_open(ctx)
++        || !app.ui.dialogs.is_empty()
++        || app.discard.is_some()
++        || app.distort.active()
++        || app.distort.gallery.is_some();
++    raw.events.retain(|e| {
++        let egui::Event::Key { key: Key::Tab, pressed, modifiers: m, .. } = *e else { return true };
++        if !pressed {
++            app.ui.tab_down = false;
++            return true;
++        }
++        if busy || m.command || m.alt {
++            return true;
++        }
++        if !app.ui.tab_down {
++            let target = if m.shift { 2 } else { 1 };
++            app.ui.panels_hidden = if app.ui.panels_hidden == 0 { target } else { 0 };
++        }
++        app.ui.tab_down = true;
++        false
++    });
++}
++
+ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
+     // An open menu owns the keyboard (arrows, ↩, Esc), like a native menu.
+     if crate::menu_nav::is_open(ctx) {
+--- a/crates/ui-egui/src/state.rs
++++ b/crates/ui-egui/src/state.rs
+@@ -549,6 +549,13 @@
+ #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+ pub struct UiState {
+     pub tool: Tool,
++    /// Tab / ⇧Tab (Photoshop): 0 shows the panels, 1 hides them all (Tools, Options bar, the dock
++    /// and floating panels), 2 hides the dock and floating panels only. Not saved.
++    #[serde(skip)]
++    pub panels_hidden: u8,
++    /// Tab is held (its repeats don't toggle again).
++    #[serde(skip)]
++    pub tab_down: bool,
+     /// Recently opened file paths, most-recent first (File › Open Recent). Capped; de-duplicated.
+     #[serde(default)]
+     pub recent_files: Vec<String>,
+@@ -669,6 +676,8 @@
+     fn default() -> Self {
+         Self {
+             tool: Tool::Brush,
++            panels_hidden: 0,
++            tab_down: false,
+             recent_files: Vec::new(),
+             text_edit: None,
+             transform: None,

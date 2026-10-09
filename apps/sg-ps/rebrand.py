@@ -649,8 +649,17 @@ KEYBOARD_SCRIPT = """  <script>
         if (k === 'f12') return;
         if (k === 'f11') { e.preventDefault(); toggleFullscreen(); return; }
         var cmd = e.ctrlKey || e.metaKey;
-        if (cmd && !e.altKey && clipboard[k]) return;
+        // The physical key too: with an Arabic (or other non-Latin) layout Ctrl+C reports e.key 'ؤ'.
+        var code = (e.code || '').replace(/^Key/, '').toLowerCase();
+        if (cmd && !e.altKey && (clipboard[k] || clipboard[code])) return;
         if (cmd || e.altKey || k === 'alt' || /^f([1-9]|10)$/.test(k)) e.preventDefault();
+      }, true);
+      // Releasing Alt (or F10) would move the keyboard to the browser's menu (Windows) and the
+      // editor would stop getting keys: Alt+click in the Layers panel, Alt+drag, Ctrl+Alt+G...
+      window.addEventListener('keyup', function (e) {
+        if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+        var k = (e.key || '').toLowerCase();
+        if (k === 'alt' || k === 'f10') e.preventDefault();
       }, true);
       // Ctrl+wheel and pinch zoom the canvas, not the page.
       window.addEventListener('wheel', function (e) { if (e.ctrlKey) e.preventDefault(); }, { passive: false, capture: true });
@@ -1275,6 +1284,17 @@ def stability(root: Path) -> None:
         ("            autosave_minutes: 10,", "            autosave_minutes: 3,"),
     ])
     edit(root, "apps/photocraft-web/index.html", [("</body>", CRASH_SCRIPT.replace("__WHATSAPP__", WHATSAPP) + "</body>")])
+    # Delete / Backspace with no selection deletes the active layer(s), as in Photoshop; with a
+    # selection it still clears the selected pixels. Edit > Clear in the menu is unchanged.
+    edit(root, "crates/ui-egui/src/shortcut_dispatch.rs", [(
+        "pub fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str) {\n",
+        "pub fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str) {\n"
+        "    let id = if id == \"edit.clear\" && app.ui.transform.is_none() && app.session.active().is_some_and(|d| d.doc.selection.is_none()) {\n"
+        "        \"layer.delete\"\n"
+        "    } else {\n"
+        "        id\n"
+        "    };\n",
+    )])
 
 
 def apply_patches(root: Path) -> None:
