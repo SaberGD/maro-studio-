@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: Cairo; font-weight: 400; src: url(fonts/cairo-arabic-400-normal.woff2) format('woff2'); unicode-range: U+0600-06FF, U+200C-200E, U+FE70-FEFF; }
+  @font-face { font-family: Cairo; font-weight: 700; src: url(fonts/cairo-arabic-700-normal.woff2) format('woff2'); unicode-range: U+0600-06FF, U+200C-200E, U+FE70-FEFF; }
+  @font-face { font-family: Cairo; font-weight: 900; src: url(fonts/cairo-arabic-900-normal.woff2) format('woff2'); unicode-range: U+0600-06FF, U+200C-200E, U+FE70-FEFF; }
+  @font-face { font-family: Cairo; font-weight: 400; src: url(fonts/cairo-latin-400-normal.woff2) format('woff2'); }
+  @font-face { font-family: Cairo; font-weight: 700; src: url(fonts/cairo-latin-700-normal.woff2) format('woff2'); }
+  @font-face { font-family: Cairo; font-weight: 900; src: url(fonts/cairo-latin-900-normal.woff2) format('woff2'); }
+  :root { --red: #e0402a; --red2: #c4321f; --gold: #fbbf24; --ink: #0a0a0a; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ink); }
+  body { font-family: Cairo, sans-serif; color: #fff; }
+  #stage { position: absolute; inset: 0; overflow: hidden; }
+  .bg { position: absolute; inset: -10%; background:
+      radial-gradient(60% 60% at 70% 30%, rgba(224,64,42,.28), transparent 60%),
+      radial-gradient(50% 50% at 20% 80%, rgba(251,191,36,.10), transparent 60%), #0a0a0a; }
+  .grid { position: absolute; inset: -20%; background-image:
+      linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+      background-size: 80px 80px; }
+  .scene { position: absolute; inset: 0; opacity: 0; }
+  .center { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .w { display: inline-block; overflow: hidden; vertical-align: bottom; padding: 0 .04em; }
+  .w > span { display: inline-block; }
+  .h1 { font-weight: 900; font-size: 112px; line-height: 1.15; letter-spacing: -1px; }
+  .h2 { font-weight: 900; font-size: 84px; line-height: 1.2; }
+  .sub { font-weight: 700; font-size: 40px; color: rgba(255,255,255,.75); }
+  .red { color: var(--red); }
+  .gold { color: var(--gold); }
+  .chip { display: inline-flex; align-items: center; gap: 12px; padding: 10px 26px; border-radius: 999px; font-weight: 700; font-size: 30px;
+    background: rgba(224,64,42,.15); border: 2px solid rgba(224,64,42,.6); color: #fff; direction: ltr; }
+  .ltr { direction: ltr; unicode-bidi: isolate; }
+  /* S1 logo */
+  #logo { width: 260px; height: 260px; filter: drop-shadow(0 20px 60px rgba(224,64,42,.55)); }
+  .ring { position: absolute; left: 50%; top: 42%; width: 300px; height: 300px; margin: -150px 0 0 -150px; border-radius: 50%; border: 3px solid var(--red); }
+  #brand { font-weight: 900; font-size: 150px; direction: ltr; margin-top: 10px; letter-spacing: 2px; }
+  #brand .c { display: inline-block; }
+  /* Browser window */
+  .win { position: absolute; border-radius: 22px; overflow: hidden; background: #1a1a1a; box-shadow: 0 40px 120px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.08); }
+  .win .bar { height: 54px; background: #222; display: flex; align-items: center; gap: 12px; padding: 0 20px; direction: ltr; }
+  .dots i { display: inline-block; width: 14px; height: 14px; border-radius: 50%; margin-right: 8px; }
+  .url { flex: 1; height: 34px; border-radius: 17px; background: #111; color: #ddd; font-size: 20px; display: flex; align-items: center; padding: 0 18px; gap: 8px; font-weight: 700; }
+  .url .lock { color: #4ade80; }
+  .win img.shot { display: block; width: 100%; }
+  .caret { display: inline-block; width: 2px; height: 22px; background: var(--red); margin-left: 2px; }
+  /* Feature frames */
+  .frame { position: absolute; border-radius: 18px; overflow: hidden; box-shadow: 0 30px 90px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.1); background: #111; }
+  .frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .label { position: absolute; }
+  .num { font-weight: 900; font-size: 30px; color: var(--gold); direction: ltr; display: inline-block; }
+  /* Transform demo */
+  #tfwrap { position: absolute; left: 420px; top: 140px; width: 520px; height: 800px; }
+  #tfbox { position: absolute; inset: 0; }
+  #tfbox img { position: absolute; inset: 40px; width: calc(100% - 80px); height: calc(100% - 80px); object-fit: contain; }
+  #tfbox .bd { position: absolute; inset: 30px; border: 2px solid var(--red); }
+  #tfbox .hd { position: absolute; width: 22px; height: 22px; background: #fff; border: 3px solid var(--red); margin: -11px 0 0 -11px; }
+  #tfbox .pv { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; border: 3px solid var(--gold); }
+  #tfbox .pv::after { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: var(--gold); border-radius: 50%; }
+  #angle { position: absolute; padding: 8px 18px; border-radius: 10px; background: var(--red); font-weight: 900; font-size: 30px; direction: ltr; }
+  /* Feature grid */
+  .cards { position: absolute; left: 160px; right: 160px; top: 330px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; }
+  .card { height: 250px; border-radius: 26px; padding: 34px; background: linear-gradient(160deg, #1d1d1d, #121212); border: 1px solid rgba(255,255,255,.08);
+    display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; }
+  .card::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 4px; background: linear-gradient(90deg, var(--red), var(--gold)); }
+  .card svg { width: 64px; height: 64px; stroke: var(--red); fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .card b { font-weight: 900; font-size: 40px; }
+  .card span { font-weight: 400; font-size: 25px; color: rgba(255,255,255,.65); }
+  /* Desktop */
+  .os { position: absolute; top: 860px; font-weight: 900; font-size: 44px; display: flex; align-items: center; gap: 16px; direction: ltr; }
+  .os svg { width: 50px; height: 50px; fill: #fff; }
+  /* CTA */
+  .btn { display: inline-flex; padding: 26px 64px; border-radius: 22px; background: var(--red); font-weight: 900; font-size: 52px; box-shadow: 0 20px 60px rgba(224,64,42,.5); }
+  #maroCta { position: absolute; width: 520px; left: 120px; bottom: -40px; filter: drop-shadow(0 30px 60px rgba(0,0,0,.6)); }
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  .wipe { position: absolute; inset: 0; background: var(--red); transform: scaleX(0); transform-origin: right; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="bg"></div>
+  <div class="grid" id="grid"></div>
+
+  <!-- S1: logo reveal -->
+  <section class="scene center" id="s1">
+    <div class="ring" id="ring1"></div><div class="ring" id="ring2"></div>
+    <img id="logo" src="a/logo.svg">
+    <div id="brand">SG - PS</div>
+    <div class="sub" id="s1sub">محرّر صور احترافي · مجاني · بالعربي</div>
+  </section>
+
+  <!-- S2: in the browser -->
+  <section class="scene" id="s2">
+    <div class="label" style="right:140px; top:110px; text-align:right">
+      <div class="h2" id="s2t">من المتصفح على طول</div>
+      <div class="sub" id="s2s" style="margin-top:8px">من غير تسطيب ولا تسجيل · افتح واشتغل</div>
+    </div>
+    <div class="win" id="s2win" style="left:200px; top:330px; width:1520px;">
+      <div class="bar"><span class="dots"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></span>
+        <div class="url"><span class="lock">🔒</span><span id="typed"></span><span class="caret" id="caret"></span></div></div>
+      <img class="shot" src="a/01-home.png" id="s2shot">
+    </div>
+  </section>
+
+  <!-- S3: select subject -->
+  <section class="scene" id="s3">
+    <div class="label" style="right:120px; top:330px; width:620px; text-align:right">
+      <div class="num">01</div>
+      <div class="h2" id="s3t" style="margin-top:6px">حدّد العنصر بضغطة واحدة</div>
+      <div class="sub" id="s3s" style="margin-top:14px">Select Subject بقى أدق: الصوابع والحواف الناعمة والفراغات</div>
+      <div style="margin-top:30px"><span class="chip" id="s3c">Select › Subject</span></div>
+    </div>
+    <div class="frame" id="s3f" style="left:110px; top:150px; width:1000px; height:780px;">
+      <img src="a/03-placed.png" style="object-position: 64% 30%; transform: scale(1.3); transform-origin: 64% 34%;">
+      <img src="a/05-subject.png" id="s3after" style="position:absolute; inset:0; object-position: 64% 30%; transform: scale(1.3); transform-origin: 64% 34%;">
+      <div id="s3scan" style="position:absolute; top:0; bottom:0; width:6px; background:var(--gold); box-shadow:0 0 30px var(--gold);"></div>
+    </div>
+  </section>
+
+  <!-- S4: free transform -->
+  <section class="scene" id="s4">
+    <div class="label" style="right:140px; top:330px; width:640px; text-align:right">
+      <div class="num">02</div>
+      <div class="h2" id="s4t" style="margin-top:6px">حرّك، كبّر، ولفّ براحتك</div>
+      <div class="sub" id="s4s" style="margin-top:14px">Free Transform بنقطة ارتكاز ثابتة في النص و Undo لكل خطوة</div>
+      <div style="margin-top:30px"><span class="chip">Ctrl + T</span></div>
+    </div>
+    <div id="tfwrap"><div id="tfbox">
+      <img src="a/maro-wave.png">
+      <div class="bd"></div>
+      <div class="hd" style="left:30px;top:30px"></div><div class="hd" style="left:50%;top:30px"></div><div class="hd" style="right:30px;left:auto;top:30px;margin-right:-11px"></div>
+      <div class="hd" style="left:30px;top:50%"></div><div class="hd" style="right:30px;left:auto;top:50%;margin-right:-11px"></div>
+      <div class="hd" style="left:30px;bottom:30px;top:auto;margin-bottom:-11px"></div><div class="hd" style="left:50%;bottom:30px;top:auto;margin-bottom:-11px"></div><div class="hd" style="right:30px;left:auto;bottom:30px;top:auto;margin:0 -11px -11px 0"></div>
+      <div class="pv"></div>
+    </div><div id="angle">0°</div></div>
+  </section>
+
+  <!-- S5: features grid -->
+  <section class="scene" id="s5">
+    <div class="h2" id="s5t" style="text-align:center; position:absolute; top:120px; left:0; right:0;">كل اللي محتاجه في مكان واحد</div>
+    <div class="cards">
+      <div class="card"><svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="m3 13 9 5 9-5"/><path d="m3 18 9 5 9-5" opacity=".5"/></svg><div><b>طبقات و Blend Modes</b><br><span>Masks · Clipping · Groups</span></div></div>
+      <div class="card"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 15h8M8 18h5"/></svg><div><b>بيفتح ملفات PSD</b><br><span>بالطبقات · PNG · JPG · RAW</span></div></div>
+      <div class="card"><svg viewBox="0 0 24 24"><path d="M4 7V5h16v2"/><path d="M12 5v14"/><path d="M9 19h6"/></svg><div><b>خطوط جهازك</b><br><span>عربي وإنجليزي في أداة النص</span></div></div>
+      <div class="card"><svg viewBox="0 0 24 24"><path d="m14 4 6 6"/><path d="M17 7 7 17l-3 3"/><path d="m11 7 6 6"/><circle cx="18.5" cy="5.5" r="2.5"/></svg><div><b>Eyedropper وألوان</b><br><span>خد أي لون من الصورة ولوّن بيه</span></div></div>
+      <div class="card"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg><div><b>اختصارات فوتوشوب</b><br><span>Ctrl+C · Ctrl+V · Alt-Clip · Tab</span></div></div>
+      <div class="card"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 3"/><path d="M17 3h4v4"/></svg><div><b>حفظ تلقائي</b><br><span>شغلك في أمان لو حصل أي حاجة</span></div></div>
+    </div>
+  </section>
+
+  <!-- S6: desktop -->
+  <section class="scene" id="s6">
+    <div class="h2" id="s6t" style="text-align:center; position:absolute; top:90px; left:0; right:0;">وكمان على الكمبيوتر</div>
+    <div class="sub" id="s6s" style="text-align:center; position:absolute; top:205px; left:0; right:0;">نسخة ويندوز وماك · شغالة من غير إنترنت</div>
+    <div class="win" id="w1" style="left:150px; top:330px; width:780px;">
+      <div class="bar" style="justify-content:space-between"><span style="font-weight:700;font-size:20px;color:#bbb">SG - PS</span><span style="color:#999;font-size:22px;letter-spacing:14px">— ☐ ✕</span></div>
+      <img class="shot" src="a/03-placed.png"></div>
+    <div class="win" id="w2" style="left:990px; top:330px; width:780px;">
+      <div class="bar"><span class="dots"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></span><span style="flex:1;text-align:center;font-weight:700;font-size:20px;color:#bbb;margin-right:60px">SG - PS</span></div>
+      <img class="shot" src="a/05-subject.png"></div>
+    <div class="os" id="os1" style="left:420px"><svg viewBox="0 0 24 24"><path d="M3 5.5 10.5 4.5v7H3zM11.5 4.4 21 3v8.5h-9.5zM3 12.5h7.5v7L3 18.5zM11.5 12.5H21V21l-9.5-1.4z"/></svg>Windows</div>
+    <div class="os" id="os2" style="left:1290px"><svg viewBox="0 0 24 24"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.2 1-4 2.5-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.5-1-2.5-4zM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg>macOS</div>
+  </section>
+
+  <!-- S7: CTA -->
+  <section class="scene" id="s7">
+    <img id="maroCta" src="a/maro-wave.png">
+    <div style="position:absolute; right:150px; top:200px; width:1060px; text-align:right">
+      <div class="h1" id="s7t">جرّبه مجانًا دلوقتي</div>
+      <div class="sub" id="s7s" style="margin-top:12px">على المتصفح أو حمّله على جهازك</div>
+      <div style="margin-top:50px"><span class="btn ltr" id="s7b">studio.engsaber.space</span></div>
+      <div style="margin-top:70px; display:flex; align-items:center; gap:24px; justify-content:flex-start" id="s7brand">
+        <img src="a/saber-group-wordmark.webp" style="height:60px">
+      </div>
+    </div>
+  </section>
+
+  <div class="wipe" id="wipe"></div>
+  <div class="flash" id="flash"></div>
+</div>
+<script src="lib.js"></script>
+<script>
+  const DURATION = 31;
+  const brandChars = splitChars($('#brand'));
+  const W = {};
+  ['s1sub','s2t','s2s','s3t','s3s','s4t','s4s','s5t','s6t','s6s','s7t','s7s'].forEach(id => W[id] = splitWords($('#' + id)));
+  const cards = $$('.card');
+  const URL = 'studio.engsaber.space';
+
+  function scene(id, t0, t1, fin, fout) {
+    const v = env(window.T, t0, t1, fin || 0.35, fout || 0.35);
+    set('#' + id, { opacity: v, display: v > 0.001 ? '' : 'none' });
+    return window.T >= t0 && window.T <= t1;
+  }
+
+  window.render = (t) => {
+    window.T = t;
+    // Background drift.
+    set('#grid', { transform: `translate(${-t * 14}px, ${-t * 8}px) rotate(-6deg)` });
+
+    // S1 0 - 3.4
+    if (scene('s1', 0, 3.4, 0.01, 0.4)) {
+      const lg = k(t, 0.15, 0.95, E.outBack);
+      set('#logo', { transform: `scale(${lg}) rotate(${(1 - lg) * -40}deg)`, opacity: k(t, 0.15, 0.4) });
+      [['#ring1', 0.4], ['#ring2', 0.6]].forEach(([r, d]) => {
+        const x = k(t, d, d + 1.2, E.outExpo);
+        set(r, { transform: `scale(${0.6 + x * 2.2})`, opacity: (1 - x) * 0.8 });
+      });
+      brandChars.forEach((c, i) => {
+        const x = k(t, 0.8 + i * 0.06, 1.4 + i * 0.06, E.outBack);
+        c.style.transform = `translateY(${(1 - x) * 80}px) scale(${0.6 + 0.4 * x})`;
+        c.style.opacity = clamp(x * 1.5, 0, 1);
+        c.style.color = i >= 5 ? 'var(--red)' : '#fff';
+      });
+      revealWords(W.s1sub, t, 1.5, 0.12, 0.6);
+      const out = k(t, 3.0, 3.4, E.inCubic);
+      set('#s1', { transform: `scale(${1 + out * 0.15})`, filter: `blur(${out * 12}px)` });
+    }
+
+    // S2 3.2 - 8.0
+    if (scene('s2', 3.2, 8.0)) {
+      revealWords(W.s2t, t, 3.35, 0.1, 0.6);
+      revealWords(W.s2s, t, 3.8, 0.06, 0.5);
+      const up = k(t, 3.4, 4.4, E.outExpo);
+      const typedN = Math.round(k(t, 4.2, 5.2, E.lin) * URL.length);
+      $('#typed').textContent = URL.slice(0, typedN);
+      set('#caret', { opacity: Math.floor(t * 3) % 2 ? 1 : 0.2 });
+      const zoom = k(t, 5.6, 7.9, E.inOutCubic);
+      set('#s2win', { transform: `translateY(${(1 - up) * 500}px) perspective(1600px) rotateX(${(1 - up) * 18}deg) scale(${1 + zoom * 0.35})`,
+        transformOrigin: '50% 35%' });
+    }
+
+    // S3 7.8 - 12.4
+    if (scene('s3', 7.8, 12.4)) {
+      const fin = k(t, 7.8, 8.6, E.outExpo);
+      set('#s3f', { transform: `translateX(${(1 - fin) * -300}px) rotate(${(1 - fin) * -4}deg)` });
+      revealWords(W.s3t, t, 8.0, 0.09, 0.55);
+      revealWords(W.s3s, t, 8.4, 0.05, 0.5);
+      set('#s3c', { opacity: k(t, 8.9, 9.3), transform: `scale(${0.8 + 0.2 * k(t, 8.9, 9.3, E.outBack)})` });
+      const scan = k(t, 9.4, 10.6, E.inOutCubic);
+      set('#s3after', { clipPath: `inset(0 ${100 - scan * 100}% 0 0)` });
+      set('#s3scan', { left: `${scan * 100}%`, opacity: scan > 0 && scan < 1 ? 1 : 0 });
+    }
+
+    // S4 12.2 - 16.8
+    if (scene('s4', 12.2, 16.8)) {
+      revealWords(W.s4t, t, 12.4, 0.09, 0.55);
+      revealWords(W.s4s, t, 12.8, 0.05, 0.5);
+      const pop = k(t, 12.3, 13.0, E.outBack);
+      const sc = 1 + 0.18 * k(t, 13.4, 14.2, E.inOutCubic) - 0.18 * k(t, 15.6, 16.2, E.inOutCubic);
+      const rot = 14 * k(t, 14.3, 15.3, E.inOutCubic) - 14 * k(t, 15.6, 16.2, E.inOutCubic);
+      set('#tfbox', { transform: `scale(${pop * sc}) rotate(${rot}deg)` });
+      $('#angle').textContent = Math.round(rot) + '°';
+      set('#angle', { left: '330px', top: '-10px', opacity: k(t, 14.2, 14.4) * (1 - k(t, 16.2, 16.4)) });
+    }
+
+    // S5 16.6 - 21.4
+    if (scene('s5', 16.6, 21.4)) {
+      revealWords(W.s5t, t, 16.7, 0.1, 0.6);
+      cards.forEach((c, i) => {
+        const x = k(t, 17.1 + i * 0.12, 17.8 + i * 0.12, E.outBack);
+        c.style.transform = `translateY(${(1 - x) * 120}px) scale(${0.85 + 0.15 * x})`;
+        c.style.opacity = clamp(x * 1.4, 0, 1);
+        const glow = k(t, 19.0 + i * 0.18, 19.3 + i * 0.18) * (1 - k(t, 19.4 + i * 0.18, 19.9 + i * 0.18));
+        c.style.boxShadow = `0 0 ${glow * 60}px rgba(224,64,42,${glow * 0.6})`;
+      });
+    }
+
+    // S6 21.2 - 25.8
+    if (scene('s6', 21.2, 25.8)) {
+      revealWords(W.s6t, t, 21.3, 0.1, 0.6);
+      revealWords(W.s6s, t, 21.7, 0.06, 0.5);
+      const a = k(t, 21.5, 22.5, E.outExpo), b2 = k(t, 21.75, 22.75, E.outExpo);
+      const fl = Math.sin(t * 1.6) * 6;
+      set('#w1', { transform: `translateX(${(1 - a) * -900}px) perspective(1600px) rotateY(${8 - a * 2}deg) translateY(${fl}px)` });
+      set('#w2', { transform: `translateX(${(1 - b2) * 900}px) perspective(1600px) rotateY(${-8 + b2 * 2}deg) translateY(${-fl}px)` });
+      set('#os1', { opacity: k(t, 22.6, 23.0), transform: `translateY(${(1 - k(t, 22.6, 23.0)) * 30}px)` });
+      set('#os2', { opacity: k(t, 22.8, 23.2), transform: `translateY(${(1 - k(t, 22.8, 23.2)) * 30}px)` });
+    }
+
+    // S7 25.6 - 31
+    if (scene('s7', 25.6, DURATION, 0.35, 0.01)) {
+      const m = k(t, 25.7, 26.7, E.outBack);
+      const wave = Math.sin((t - 26.7) * 3) * 2 * k(t, 26.7, 27);
+      set('#maroCta', { transform: `translateY(${(1 - m) * 600}px) rotate(${wave}deg)` });
+      revealWords(W.s7t, t, 25.9, 0.12, 0.6);
+      revealWords(W.s7s, t, 26.4, 0.06, 0.5);
+      const bt = k(t, 26.9, 27.5, E.outBack);
+      const pulse = 1 + 0.03 * Math.sin((t - 27.5) * 5) * k(t, 27.5, 28);
+      set('#s7b', { transform: `scale(${bt * pulse})`, opacity: k(t, 26.9, 27.2) });
+      set('#s7brand', { opacity: k(t, 27.6, 28.2), transform: `translateY(${(1 - k(t, 27.6, 28.2)) * 30}px)` });
+    }
+
+    // Transition accents: red wipes between scenes.
+    const wipes = [3.2, 7.8, 12.2, 16.6, 21.2, 25.6];
+    let wv = 0, origin = 'right';
+    for (const w of wipes) {
+      const a = k(t, w - 0.3, w, E.inOutExpo), b = k(t, w, w + 0.3, E.inOutExpo);
+      if (t > w - 0.3 && t < w + 0.3) { wv = t < w ? a : 1 - b; origin = t < w ? 'right' : 'left'; }
+    }
+    set('#wipe', { transform: `scaleX(${wv})`, transformOrigin: origin });
+    set('#flash', { opacity: 0.0 });
+  };
+  window.DURATION = DURATION;
+  document.fonts.ready.then(() => { window.READY = true; render(0); });
+</script>
+</body>
+</html>

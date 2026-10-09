@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: Cairo; font-weight: 400; src: url(fonts/cairo-arabic-400-normal.woff2) format('woff2'); unicode-range: U+0600-06FF, U+200C-200E, U+FE70-FEFF; }
+  @font-face { font-family: Cairo; font-weight: 700; src: url(fonts/cairo-arabic-700-normal.woff2) format('woff2'); unicode-range: U+0600-06FF, U+200C-200E, U+FE70-FEFF; }
+  @font-face { font-family: Cairo; font-weight: 900; src: url(fonts/cairo-arabic-900-normal.woff2) format('woff2'); unicode-range: U+0600-06FF, U+200C-200E, U+FE70-FEFF; }
+  @font-face { font-family: Cairo; font-weight: 400; src: url(fonts/cairo-latin-400-normal.woff2) format('woff2'); }
+  @font-face { font-family: Cairo; font-weight: 700; src: url(fonts/cairo-latin-700-normal.woff2) format('woff2'); }
+  @font-face { font-family: Cairo; font-weight: 900; src: url(fonts/cairo-latin-900-normal.woff2) format('woff2'); }
+  :root { --red: #e0402a; --gold: #fbbf24; --ok: #22c55e; --bad: #ef4444; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0a0a0a; }
+  body { font-family: Cairo, sans-serif; color: #fff; }
+  .bg { position: absolute; inset: -10%; background: radial-gradient(55% 55% at 50% 0%, rgba(224,64,42,.22), transparent 65%), #0a0a0a; }
+  .grid { position: absolute; inset: -20%; background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px); background-size: 80px 80px; }
+  .scene { position: absolute; inset: 0; opacity: 0; display: none; }
+  .w { display: inline-block; overflow: hidden; vertical-align: bottom; padding: 0 .04em; }
+  .w > span { display: inline-block; }
+  .h1 { font-weight: 900; font-size: 120px; line-height: 1.15; }
+  .h2 { font-weight: 900; font-size: 64px; line-height: 1.25; }
+  .sub { font-weight: 700; font-size: 38px; color: rgba(255,255,255,.72); }
+  /* fix slide */
+  .head { position: absolute; top: 70px; left: 120px; right: 120px; display: flex; align-items: center; gap: 28px; }
+  .badge { width: 92px; height: 92px; flex: none; border-radius: 26px; background: linear-gradient(140deg, var(--red), #9e2614); display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 46px; direction: ltr; box-shadow: 0 18px 50px rgba(224,64,42,.45); }
+  .head .h2 { flex: 1; }
+  .panes { position: absolute; top: 250px; left: 120px; right: 120px; bottom: 90px; display: grid; grid-template-columns: 1fr 1fr; gap: 50px; }
+  .pane { position: relative; border-radius: 30px; background: linear-gradient(160deg, #1b1b1b, #111); border: 2px solid rgba(255,255,255,.07); overflow: hidden; }
+  .pane .tag { position: absolute; top: 26px; right: 26px; padding: 6px 22px; border-radius: 999px; font-weight: 900; font-size: 30px; display: flex; gap: 10px; align-items: center; z-index: 5; }
+  .pane.before .tag { background: rgba(239,68,68,.16); color: #fca5a5; border: 2px solid rgba(239,68,68,.5); }
+  .pane.after .tag { background: rgba(34,197,94,.16); color: #86efac; border: 2px solid rgba(34,197,94,.5); }
+  .pane.after { border-color: rgba(34,197,94,.35); box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+  .note { position: absolute; bottom: 28px; left: 30px; right: 30px; text-align: center; font-weight: 700; font-size: 30px; color: rgba(255,255,255,.8); z-index: 5; }
+  .art { position: absolute; inset: 90px 40px 90px 40px; }
+  .ltr { direction: ltr; unicode-bidi: isolate; }
+  /* mini UI pieces */
+  .key { display: inline-flex; align-items: center; justify-content: center; min-width: 96px; height: 84px; padding: 0 22px; border-radius: 16px; background: #2a2a2a; border: 2px solid #3a3a3a; border-bottom-width: 8px; font-weight: 900; font-size: 36px; direction: ltr; }
+  .tile { position: absolute; border-radius: 18px; background: #fff; overflow: hidden; }
+  .tile img { width: 100%; height: 100%; object-fit: contain; }
+  .tbox { position: absolute; border: 3px solid var(--red); }
+  .pivot { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 4px solid var(--gold); }
+  .pivot::after { content: ''; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--gold); }
+  .layers { position: absolute; left: 50%; top: 50%; width: 520px; transform: translate(-50%, -50%); border-radius: 18px; background: #161616; border: 2px solid #2a2a2a; padding: 14px; direction: ltr; }
+  .lrow { height: 78px; display: flex; align-items: center; gap: 16px; padding: 0 14px; border-radius: 12px; font-weight: 700; font-size: 28px; position: relative; overflow: hidden; }
+  .lrow.sel { background: rgba(224,64,42,.25); }
+  .thumb { width: 54px; height: 54px; border-radius: 8px; background: #fff; overflow: hidden; flex: none; position: relative; }
+  .thumb img { width: 100%; height: 100%; object-fit: contain; }
+  .clip { color: var(--gold); font-weight: 900; font-size: 34px; }
+  .toast { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); white-space: nowrap; padding: 14px 26px; border-radius: 12px; background: #3b1414; border: 2px solid #7f1d1d; color: #fecaca; font-size: 26px; font-weight: 700; direction: ltr; }
+  .cursor { position: absolute; width: 40px; height: 40px; z-index: 9; }
+  .swatch { width: 90px; height: 90px; border-radius: 16px; border: 3px solid #fff; }
+  .shot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .wipe { position: absolute; inset: 0; background: var(--red); transform: scaleX(0); z-index: 50; }
+</style>
+</head>
+<body>
+<div id="stage" style="position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden">
+<div class="bg"></div><div class="grid" id="grid"></div>
+
+<section class="scene" id="intro">
+  <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center">
+    <img src="a/logo.svg" id="ilogo" style="width:170px; margin-bottom:20px; filter:drop-shadow(0 20px 50px rgba(224,64,42,.5))">
+    <div class="h1" id="it1"><span class="ltr">SG - PS</span> اتحدّث</div>
+    <div class="sub" id="it2" style="margin-top:14px">سمعنا ملاحظاتكم · وده اللي اتصلّح</div>
+  </div>
+</section>
+
+<div id="slides"></div>
+
+<section class="scene" id="outro">
+  <img src="a/maro-wave.png" id="omaro" style="position:absolute; left:140px; bottom:-30px; width:470px; filter:drop-shadow(0 30px 60px rgba(0,0,0,.6))">
+  <div style="position:absolute; right:150px; top:250px; width:1050px; text-align:right">
+    <div class="h1" id="ot1">جرّبوا النسخة الجديدة</div>
+    <div class="sub" id="ot2" style="margin-top:14px">على المتصفح ونسخة ويندوز وماك</div>
+    <div style="margin-top:50px"><span id="obtn" class="ltr" style="display:inline-flex; padding:24px 60px; border-radius:22px; background:var(--red); font-weight:900; font-size:50px; box-shadow:0 20px 60px rgba(224,64,42,.5)">studio.engsaber.space</span></div>
+    <img src="a/saber-group-wordmark.webp" id="obrand" style="height:56px; margin-top:60px">
+  </div>
+</section>
+<div class="wipe" id="wipe"></div>
+</div>
+
+<script src="lib.js"></script>
+<script>
+const CHECK = '✓', CROSS = '✕';
+const SL = [
+  { n: '01', title: 'Ctrl+Z بعد التدوير بيرجّع التدوير نفسه',
+    before: `<div class="art"><div class="tile" id="b1t" style="left:50%;top:44%;width:260px;height:300px;margin:-150px 0 0 -130px"><img src="a/maro-wave.png"></div><div id="b1star" style="position:absolute;left:62px;top:40px;font-size:70px">★</div><div style="position:absolute;left:50%;bottom:-10px;transform:translateX(-50%)"><span class="key" id="b1k">Ctrl+Z</span></div></div><div class="note">بيلغي الخطوة اللي قبل التدوير</div>`,
+    after: `<div class="art"><div class="tile" id="a1t" style="left:50%;top:44%;width:260px;height:300px;margin:-150px 0 0 -130px"><img src="a/maro-wave.png"></div><div id="a1star" style="position:absolute;left:62px;top:40px;font-size:70px">★</div><div style="position:absolute;left:50%;bottom:-10px;transform:translateX(-50%)"><span class="key" id="a1k">Ctrl+Z</span></div></div><div class="note">بيرجّع التدوير على طول</div>`,
+    anim(t) {
+      const rot = 22 * k(t, 0.5, 1.1, E.outBack);
+      const press = k(t, 1.6, 1.7) * (1 - k(t, 1.8, 1.9));
+      set('#b1t', { transform: `rotate(${rot}deg)` });
+      set('#b1star', { opacity: 1 - k(t, 1.8, 2.1), transform: `scale(${1 - 0.5 * k(t, 1.8, 2.1)})` });
+      set('#b1k', { transform: `translateY(${press * 6}px)` });
+      set('#a1t', { transform: `rotate(${rot - 22 * k(t, 1.85, 2.4, E.outBack)}deg)` });
+      set('#a1k', { transform: `translateY(${press * 6}px)` });
+    } },
+  { n: '02', title: 'نقطة الارتكاز بتفضل في نص الصورة',
+    before: `<div class="art"><div class="tbox" id="b2b"></div><div class="pivot" id="b2p"></div></div><div class="note">بعد التكبير بتفضل مكانها القديم</div>`,
+    after: `<div class="art"><div class="tbox" id="a2b"></div><div class="pivot" id="a2p"></div></div><div class="note">بتتحرك مع الصورة وتفضل في النص</div>`,
+    anim(t) {
+      const s = k(t, 0.6, 1.6, E.inOutCubic);
+      const box = (x) => { const w = 180 + 220 * x, h = 200 + 180 * x; return { left: `${40 + 0 * x}px`, top: `${40}px`, width: `${w}px`, height: `${h}px` }; };
+      set('#b2b', box(s)); set('#a2b', box(s));
+      set('#b2p', { left: `${40 + 90}px`, top: `${40 + 100}px` });
+      set('#a2p', { left: `${40 + (180 + 220 * s) / 2}px`, top: `${40 + (200 + 180 * s) / 2}px` });
+      const r = 12 * k(t, 2.0, 2.8, E.inOutCubic);
+      set('#b2b', { transformOrigin: `${90}px ${100}px`, transform: `rotate(${r}deg)` });
+      set('#a2b', { transformOrigin: '50% 50%', transform: `rotate(${r}deg)` });
+    } },
+  { n: '03', title: 'Ctrl+C و Ctrl+V شغالين على الأشكال والصور',
+    before: `<div class="art"><div style="position:absolute;left:50%;top:22%;transform:translateX(-50%);display:flex;gap:18px" class="ltr"><span class="key" id="b3k1">Ctrl+C</span><span class="key" id="b3k2">Ctrl+V</span></div><div class="toast" id="b3toast">Copy is not available: no pixels</div></div><div class="note">لازم تنسخ من القايمة</div>`,
+    after: `<div class="art"><div style="position:absolute;left:50%;top:22%;transform:translateX(-50%);display:flex;gap:18px" class="ltr"><span class="key" id="a3k1">Ctrl+C</span><span class="key" id="a3k2">Ctrl+V</span></div>
+      <div class="layers" style="top:68%;width:440px"><div class="lrow sel" id="a3new" style="height:0"><div class="thumb"><img src="a/maro-wave.png"></div>maro copy</div><div class="lrow"><div class="thumb"><img src="a/maro-wave.png"></div>maro</div></div></div><div class="note">نسخة جديدة في ثانية</div>`,
+    anim(t) {
+      const p1 = k(t, 0.6, 0.7) * (1 - k(t, 0.8, 0.9)), p2 = k(t, 1.2, 1.3) * (1 - k(t, 1.4, 1.5));
+      ['#b3k1', '#a3k1'].forEach(s => set(s, { transform: `translateY(${p1 * 6}px)` }));
+      ['#b3k2', '#a3k2'].forEach(s => set(s, { transform: `translateY(${p2 * 6}px)` }));
+      set('#b3toast', { opacity: k(t, 0.85, 1.05), transform: `translateX(-50%) translateY(${(1 - k(t, 0.85, 1.05, E.outBack)) * 30}px)` });
+      set('#a3new', { height: `${78 * k(t, 1.45, 1.9, E.outBack)}px` });
+    } },
+  { n: '04', title: 'Alt + كليك = Clipping Mask زي فوتوشوب',
+    before: `<div class="art"><div class="layers"><div class="lrow sel"><div class="thumb"><img src="a/maro-wave.png"></div>maro</div><div class="lrow"><div class="thumb" style="background:#e0402a;border-radius:50%"></div>circle</div></div><div style="position:absolute;left:50%;top:88%;transform:translateX(-50%)"><span class="key" id="b4k">Alt + Click</span></div></div><div class="note">مفيش أي رد فعل</div>`,
+    after: `<div class="art"><div class="layers"><div class="lrow sel" id="a4row"><span class="clip" id="a4clip">↳</span><div class="thumb"><img src="a/maro-wave.png"></div>maro</div><div class="lrow"><div class="thumb" style="background:#e0402a;border-radius:50%"></div>circle</div></div><div style="position:absolute;left:50%;top:88%;transform:translateX(-50%)"><span class="key" id="a4k">Alt + Click</span></div></div><div class="note">الصورة اتقصّت جوه الشكل</div>`,
+    anim(t) {
+      const p = k(t, 0.8, 0.9) * (1 - k(t, 1.0, 1.1));
+      set('#b4k', { transform: `translateY(${p * 6}px)` }); set('#a4k', { transform: `translateY(${p * 6}px)` });
+      const c = k(t, 1.05, 1.5, E.outBack);
+      set('#a4clip', { display: 'inline-block', transform: `scale(${c})`, width: `${c * 34}px` });
+    } },
+  { n: '05', title: 'Delete بيمسح اللاير زي فوتوشوب',
+    before: `<div class="art"><div class="layers"><div class="lrow sel" id="b5row"><div class="thumb" id="b5th"><img src="a/maro-wave.png" id="b5img"></div>maro</div><div class="lrow"><div class="thumb"></div>Background</div></div><div style="position:absolute;left:50%;top:88%;transform:translateX(-50%)"><span class="key" id="b5k">Delete</span></div></div><div class="note">بيفضّي اللاير بس واللاير فاضل</div>`,
+    after: `<div class="art"><div class="layers"><div class="lrow sel" id="a5row"><div class="thumb"><img src="a/maro-wave.png"></div>maro</div><div class="lrow"><div class="thumb"></div>Background</div></div><div style="position:absolute;left:50%;top:88%;transform:translateX(-50%)"><span class="key" id="a5k">Delete</span></div></div><div class="note">اللاير اتمسح (ومع تحديد بيمسح المحدد بس)</div>`,
+    anim(t) {
+      const p = k(t, 0.8, 0.9) * (1 - k(t, 1.0, 1.1));
+      set('#b5k', { transform: `translateY(${p * 6}px)` }); set('#a5k', { transform: `translateY(${p * 6}px)` });
+      set('#b5img', { opacity: 1 - k(t, 1.0, 1.3) });
+      const g = k(t, 1.05, 1.6, E.inOutCubic);
+      set('#a5row', { transform: `translateX(${g * -600}px)`, height: `${78 * (1 - k(t, 1.5, 1.9))}px`, opacity: 1 - g * 0.6 });
+    } },
+  { n: '06', title: 'Eyedropper في شباك الألوان ولون الشكل بضغطة',
+    before: `<div class="art"><div style="position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:300px;height:330px;border-radius:20px;background:#fff;overflow:hidden"><img src="a/maro-pointing.png" style="width:100%;height:100%;object-fit:contain"></div><div style="position:absolute;left:30px;top:30px;display:flex;gap:16px;align-items:center"><div class="swatch" style="background:#333"></div><span style="font-size:30px;font-weight:700;color:#aaa">?</span></div></div><div class="note">مفيش طريقة تاخد لون من الصورة</div>`,
+    after: `<div class="art"><div style="position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:300px;height:330px;border-radius:20px;background:#fff;overflow:hidden"><img src="a/maro-pointing.png" style="width:100%;height:100%;object-fit:contain"></div><div style="position:absolute;left:30px;top:30px;display:flex;gap:16px;align-items:center"><div class="swatch" id="a6sw" style="background:#333"></div><svg viewBox="0 0 24 24" style="width:54px;height:54px;stroke:#fff;fill:none;stroke-width:2"><path d="m14 4 6 6"/><path d="M17 7 7 17l-3 3"/><path d="m11 7 6 6"/></svg></div><svg class="cursor" id="a6cur" viewBox="0 0 24 24" style="stroke:#fff;fill:none;stroke-width:2.2"><path d="m14 4 6 6"/><path d="M17 7 7 17l-3 3"/><path d="m11 7 6 6"/></svg><div id="a6ring" style="position:absolute;width:70px;height:70px;border-radius:50%;border:4px solid #d23a22;opacity:0"></div></div><div class="note">خد اللون من الصورة ولوّن بيه الشكل</div>`,
+    anim(t) {
+      const m = k(t, 0.6, 1.4, E.inOutCubic);
+      const x = mix(90, 345, m), y = mix(60, 300, m);
+      set('#a6cur', { left: `${x}px`, top: `${y}px` });
+      const pick = k(t, 1.5, 1.8);
+      set('#a6ring', { left: `${x - 30}px`, top: `${y + 10}px`, opacity: pick * (1 - k(t, 2.2, 2.5)), transform: `scale(${0.6 + pick * 0.6})` });
+      set('#a6sw', { background: pick > 0.5 ? '#d23a22' : '#333', transform: `scale(${1 + 0.15 * Math.sin(Math.PI * k(t, 1.6, 2.0))})` });
+    } },
+  { n: '07', title: 'Select Subject بقى أدق بكتير',
+    before: `<img class="shot" src="a/sel-before.png" style="object-position:30% 30%"><div class="note" style="background:rgba(0,0,0,.55);border-radius:12px;padding:6px">الصوابع ضاعت والفراغ اتحدد</div>`,
+    after: `<img class="shot" src="a/sel-after.png" id="a7img" style="object-position:30% 30%"><div class="note" style="background:rgba(0,0,0,.55);border-radius:12px;padding:6px">99.9% دقة وحواف ناعمة</div>`,
+    anim(t) {
+      const z = 1 + 0.1 * k(t, 0.3, 3.8, E.inOutCubic);
+      $$('#slide7 .shot').forEach(s => s.style.transform = `scale(${z})`);
+    } },
+  { n: '08', title: 'لو حصلت مشكلة البرنامج بيقولك وشغلك محفوظ',
+    before: `<div class="art"><img src="a/03-placed.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:16px;filter:grayscale(1) brightness(.5)"><div style="position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);font-size:110px" id="b8">🧊</div></div><div class="note">الشاشة بتهنّج من غير أي رسالة</div>`,
+    after: `<div class="art"><img src="a/03-placed.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:16px;filter:brightness(.45)"><div id="a8box" style="position:absolute;left:50%;top:48%;width:500px;transform:translate(-50%,-50%);background:#1c1c1c;border:2px solid #c4321f;border-radius:16px;padding:22px;text-align:right"><b style="font-size:30px">البرنامج وقف بسبب مشكلة</b><div style="font-size:22px;color:#bbb;margin-top:6px">اعمل Reload وكمّل · حفظ تلقائي كل 3 دقايق</div><div style="margin-top:14px;padding:10px;border-radius:10px;background:#c4321f;text-align:center;font-weight:900;font-size:24px">Reload</div></div></div><div class="note">رسالة واضحة وحفظ تلقائي</div>`,
+    anim(t) {
+      set('#b8', { transform: `translate(-50%,-50%) scale(${k(t, 0.5, 1.0, E.outBack)})` });
+      set('#a8box', { transform: `translate(-50%,-50%) scale(${k(t, 0.7, 1.2, E.outBack)})`, opacity: k(t, 0.7, 0.9) });
+    } },
+];
+const INTRO = 3.6, SLIDE = 4.2, OUTRO = 4.6;
+const DURATION = INTRO + SL.length * SLIDE + OUTRO;
+const host = $('#slides');
+SL.forEach((s, i) => {
+  const sec = document.createElement('section');
+  sec.className = 'scene'; sec.id = 'slide' + (i + 1);
+  sec.innerHTML = `<div class="head"><div class="badge">${s.n}</div><div class="h2 title">${s.title}</div></div>
+    <div class="panes"><div class="pane before"><div class="tag">${CROSS} قبل</div>${s.before}</div><div class="pane after"><div class="tag">${CHECK} بعد</div>${s.after}</div></div>`;
+  host.appendChild(sec);
+  s.words = splitWords(sec.querySelector('.title'));
+});
+const W = { it2: splitWords($('#it2')), ot1: splitWords($('#ot1')), ot2: splitWords($('#ot2')) };
+
+function show(id, t0, t1, fin, fout) {
+  const v = env(window.T, t0, t1, fin || 0.3, fout || 0.3);
+  set(id, { opacity: v, display: v > 0.001 ? 'block' : 'none' });
+  return window.T >= t0 && window.T <= t1;
+}
+window.render = (t) => {
+  window.T = t;
+  set('#grid', { transform: `translate(${-t * 12}px, ${-t * 6}px) rotate(-6deg)` });
+  if (show('#intro', 0, INTRO, 0.01)) {
+    set('#ilogo', { transform: `scale(${k(t, 0.1, 0.8, E.outBack)}) rotate(${(1 - k(t, 0.1, 0.8)) * -30}deg)` });
+    const h = k(t, 0.5, 1.2, E.outExpo);
+    set('#it1', { transform: `translateY(${(1 - h) * 80}px)`, opacity: h, letterSpacing: `${(1 - h) * 20}px` });
+    revealWords(W.it2, t, 1.1, 0.1, 0.5);
+  }
+  SL.forEach((s, i) => {
+    const t0 = INTRO + i * SLIDE, t1 = t0 + SLIDE;
+    if (!show('#slide' + (i + 1), t0, t1)) return;
+    const lt = t - t0;
+    const sec = $('#slide' + (i + 1));
+    revealWords(s.words, lt, 0.1, 0.07, 0.5);
+    set(sec.querySelector('.badge'), { transform: `scale(${k(lt, 0.0, 0.5, E.outBack)}) rotate(${(1 - k(lt, 0, 0.5)) * 90}deg)` });
+    const [pb, pa] = sec.querySelectorAll('.pane');
+    set(pb, { transform: `translateY(${(1 - k(lt, 0.15, 0.7, E.outExpo)) * 120}px)`, opacity: k(lt, 0.15, 0.5) });
+    set(pa, { transform: `translateY(${(1 - k(lt, 0.3, 0.85, E.outExpo)) * 120}px)`, opacity: k(lt, 0.3, 0.65) });
+    const glow = k(lt, 2.0, 2.4) * (1 - k(lt, 3.3, 3.9));
+    pa.style.boxShadow = `0 0 ${glow * 70}px rgba(34,197,94,${glow * 0.35})`;
+    s.anim(lt);
+  });
+  const o0 = DURATION - OUTRO;
+  if (show('#outro', o0, DURATION, 0.3, 0.01)) {
+    set('#omaro', { transform: `translateY(${(1 - k(t, o0 + 0.1, o0 + 1.0, E.outBack)) * 600}px) rotate(${Math.sin((t - o0) * 3) * 2}deg)` });
+    revealWords(W.ot1, t, o0 + 0.25, 0.1, 0.6);
+    revealWords(W.ot2, t, o0 + 0.7, 0.06, 0.5);
+    set('#obtn', { transform: `scale(${k(t, o0 + 1.1, o0 + 1.6, E.outBack)})` });
+    set('#obrand', { opacity: k(t, o0 + 1.7, o0 + 2.2) });
+  }
+  // Red wipe between sections.
+  const cuts = [INTRO, ...SL.map((_, i) => INTRO + (i + 1) * SLIDE)];
+  let wv = 0, org = 'right';
+  for (const c of cuts) if (t > c - 0.25 && t < c + 0.25) { wv = t < c ? k(t, c - 0.25, c, E.inOutExpo) : 1 - k(t, c, c + 0.25, E.inOutExpo); org = t < c ? 'right' : 'left'; }
+  set('#wipe', { transform: `scaleX(${wv})`, transformOrigin: org });
+};
+window.DURATION = DURATION;
+window.CUTS = [INTRO, ...SL.map((_, i) => INTRO + (i + 1) * SLIDE)];
+document.fonts.ready.then(() => { window.READY = true; render(0); });
+</script>
+</body>
+</html>
