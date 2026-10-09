@@ -39,6 +39,31 @@
     .web { margin-top: 28px; padding: 18px 20px; border: 1px dashed var(--line); border-radius: 14px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
     .web .btn { background: transparent; border: 1px solid var(--red); color: var(--text); }
     .web .btn:hover { background: #2a1410; }
+    .soon { margin-top: 40px; padding: 26px 22px; border-radius: 16px; border: 1px solid #3a1a14;
+      background: radial-gradient(120% 140% at 100% 0%, #2a120d 0%, var(--panel) 55%); }
+    .soon .badge { display: inline-block; font-size: 12px; padding: 2px 12px; border-radius: 99px; background: var(--red); color: #fff; }
+    .soon h2 { margin: 10px 0 6px; font-size: clamp(22px, 4vw, 30px); line-height: 1.35; }
+    .soon > p { margin: 0 0 18px; color: var(--muted); }
+    .apps { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 22px; }
+    .app { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: #121212; }
+    .app b { display: block; font-size: 17px; direction: ltr; text-align: right; }
+    .app span { color: var(--muted); font-size: 14px; }
+    .app small { color: var(--gold); font-size: 13px; }
+    form { display: grid; gap: 12px; max-width: 560px; }
+    form label { display: grid; gap: 4px; font-size: 14px; }
+    form input[type=text], form input[type=tel] { padding: 11px 12px; border-radius: 10px; border: 1px solid #463632;
+      background: #0d0d0d; color: #fff; font: inherit; }
+    form input:focus { outline: 2px solid var(--red-2); outline-offset: -1px; }
+    fieldset { border: 1px solid var(--line); border-radius: 10px; margin: 0; padding: 8px 12px 4px; }
+    legend { padding: 0 6px; color: var(--gold); font-size: 14px; }
+    .chk { display: flex !important; grid-template-columns: none; gap: 8px; align-items: center; margin-bottom: 6px; }
+    .chk input { accent-color: var(--red-2); width: 17px; height: 17px; }
+    .err { color: #ff8a70; min-height: 1.2em; margin: 0; font-size: 14px; }
+    form .btn { cursor: pointer; font: inherit; font-weight: 700; }
+    form .btn:disabled { opacity: .6; cursor: wait; }
+    .done { display: none; padding: 16px; border-radius: 12px; border: 1px solid #2f5b33; background: #102414; }
+    .done h3 { margin: 0 0 4px; }
+    .done p { margin: 0; color: var(--muted); }
     footer { margin-top: 36px; color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px 16px; }
     bdi { direction: ltr; unicode-bidi: isolate; }
   </style>
@@ -54,7 +79,7 @@
     </header>
 
     <h1>حمّل SG - PS على جهازك</h1>
-    <p class="lead">نفس البرنامج اللي على الموقع، بس شغال على جهازك من غير إنترنت وبأداء أسرع للملفات الكبيرة. مجاني ومن غير تسطيب: فك الضغط وشغّل.</p>
+    <p class="lead">نفس البرنامج اللي على الموقع، بس شغال على جهازك من غير إنترنت وبأداء أسرع للملفات الكبيرة. مجاني ومن غير تسطيب: فك الضغط وشغّل. <a href="#soon">وقريب: بدائل After Effects و Premiere و Illustrator ←</a></p>
 
     <div class="cards">
       <section class="card" id="windows">
@@ -90,6 +115,35 @@
       <a class="btn" href="https://studio.engsaber.space/">افتح SG - PS في المتصفح</a>
     </div>
 
+
+    <section class="soon" id="soon">
+      <span class="badge">قريبًا</span>
+      <h2>عاوز تجرب بديل After Effects و Premiere و Illustrator؟</h2>
+      <p>بنجهّز برامج جديدة بنفس الفكرة: مجانية وبالعربي وشغالة على المتصفح والكمبيوتر. املى الفورم وهنبلغك أول ما يكونوا جاهزين.</p>
+      <div class="apps">
+        <div class="app"><b>SG - AE</b><span>موشن جرافيك وأنيميشن</span><br><small>بديل After Effects</small></div>
+        <div class="app"><b>SG - PR</b><span>مونتاج فيديو</span><br><small>بديل Premiere</small></div>
+        <div class="app"><b>SG - AI</b><span>تصميم Vector ولوجوهات</span><br><small>بديل Illustrator</small></div>
+      </div>
+      <form id="notify" novalidate>
+        <label>الاسم<input type="text" name="name" autocomplete="name" maxlength="80" required></label>
+        <label>رقم الواتساب<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="01xxxxxxxxx" dir="ltr" required></label>
+        <fieldset>
+          <legend>عاوز تجرب إيه؟</legend>
+          <label class="chk"><input type="checkbox" name="products" value="SG - AE" checked>بديل After Effects <bdi>(SG - AE)</bdi></label>
+          <label class="chk"><input type="checkbox" name="products" value="SG - PR" checked>بديل Premiere <bdi>(SG - PR)</bdi></label>
+          <label class="chk"><input type="checkbox" name="products" value="SG - AI" checked>بديل Illustrator <bdi>(SG - AI)</bdi></label>
+        </fieldset>
+        <label class="chk"><input type="checkbox" name="consent">موافق إن فريق صابر جروب يبلغني ويتواصل معايا على واتساب</label>
+        <p class="err" id="notify_err" role="alert"></p>
+        <button type="submit" class="btn">بلّغوني أول ما يجهزوا</button>
+      </form>
+      <div class="done" id="notify_done" role="status">
+        <h3>تمام، اتسجلت ✓</h3>
+        <p>أول ما البرامج تجهز هنبعتلك على واتساب.</p>
+      </div>
+    </section>
+
     <footer>
       <span id="version"></span>
       <a href="https://www.facebook.com/SABERGROUP.Courses/" rel="noopener">Saber Group Academy على فيسبوك</a>
@@ -100,6 +154,36 @@
 
   <script>
     (function () {
+      // Coming-soon apps: notify form (same waitlist endpoint as the editor).
+      var form = document.getElementById('notify'), err = document.getElementById('notify_err');
+      function field(n) { return form.querySelector('[name=' + n + ']'); }
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var name = field('name').value.trim(), phone = field('phone').value.trim();
+        var digits = phone.replace(/\D/g, '');
+        var products = Array.prototype.filter.call(form.querySelectorAll('[name=products]'), function (c) { return c.checked; })
+          .map(function (c) { return c.value; });
+        if (!name) { err.textContent = 'اكتب اسمك.'; return; }
+        if (digits.length < 8 || digits.length > 15) { err.textContent = 'اكتب رقم واتساب صحيح.'; return; }
+        if (!products.length) { err.textContent = 'اختار برنامج واحد على الأقل.'; return; }
+        if (!field('consent').checked) { err.textContent = 'محتاجين موافقتك عشان نقدر نبلغك.'; return; }
+        var btn = form.querySelector('button'); btn.disabled = true; err.textContent = '';
+        fetch('../waitlist.php', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name, phone: phone, products: products, interests: [], consent: true, page: location.pathname }) })
+          .then(function (r) { return r.json().then(function (j) { return [r.status, j]; }); })
+          .then(function (res) {
+            if (res[1] && res[1].ok) {
+              form.style.display = 'none';
+              document.getElementById('notify_done').style.display = 'block';
+            } else if (res[0] === 429) {
+              err.textContent = 'طلبات كتير من نفس الجهاز، جرّب كمان شوية.';
+            } else {
+              err.textContent = 'حصلت مشكلة في الإرسال، جرّب تاني.';
+            }
+          })
+          .catch(function () { err.textContent = 'مفيش اتصال بالإنترنت، جرّب تاني.'; })
+          .then(function () { btn.disabled = false; });
+      });
       // Highlight the visitor's system.
       var ua = navigator.userAgent || '';
       var os = /Macintosh/.test(ua) && !/Mobile/.test(ua) ? 'macos' : /Windows/.test(ua) ? 'windows' : '';

@@ -1,7 +1,7 @@
 <?php
 // SG - PS waitlist and free-trial requests.
 //
-// POST JSON {name, phone, product, interests[], consent, page} -> appends one row to
+// POST JSON {name, phone, product | products[], interests[], consent, page} -> appends one row to
 // <parent of this site's folder>/sgps-data/leads.csv, outside the SG - PS folder so deploys
 // (which replace that folder) never touch it. A deny-all .htaccess keeps the data folder off the
 // web; read it from Hostinger's File Manager (public_html/sgps-data/leads.csv on engsaber.space).
@@ -41,6 +41,13 @@ $clean = static function ($v, int $max): string {
 $name = $clean($in['name'] ?? '', 80);
 $phone = preg_replace('/[^\d+]/', '', $clean($in['phone'] ?? '', 32)) ?? '';
 $product = in_array($in['product'] ?? '', $PRODUCTS, true) ? $in['product'] : 'general';
+// Several products at once (the download page asks which coming-soon apps to try).
+if (is_array($in['products'] ?? null)) {
+    $many = array_values(array_intersect($PRODUCTS, $in['products']));
+    if ($many) {
+        $product = implode(' + ', $many);
+    }
+}
 $interests = array_values(array_intersect(is_array($in['interests'] ?? null) ? $in['interests'] : [], $INTERESTS));
 $consent = ($in['consent'] ?? false) === true;
 $page = $clean($in['page'] ?? '', 120);
