@@ -84,10 +84,10 @@
 
   <!-- S1: logo reveal -->
   <section class="scene center" id="s1">
-    <div class="ring" id="ring1"></div><div class="ring" id="ring2"></div>
-    <img id="logo" src="a/logo.svg">
-    <div id="brand">SG - PS</div>
-    <div class="sub" id="s1sub">محرّر صور احترافي · مجاني · بالعربي</div>
+    <div id="brand" style="display:none">SG - PS</div>
+    <div class="h1" id="s1sub" style="font-size:150px; line-height:1.2">محرّر صور احترافي</div>
+    <div id="s1b" style="font-weight:900; font-size:230px; line-height:1.1; color:var(--red); text-shadow:0 20px 80px rgba(224,64,42,.45); margin-top:6px">مجاني</div>
+    <div id="s1line" style="height:8px; width:520px; margin-top:100px; border-radius:4px; background:linear-gradient(90deg, var(--gold), var(--red)); transform-origin:center"></div>
   </section>
 
   <!-- S2: in the browser -->
@@ -199,23 +199,15 @@
     // Background drift.
     set('#grid', { transform: `translate(${-t * 14}px, ${-t * 8}px) rotate(-6deg)` });
 
-    // S1 0 - 3.4
+    // S1 0 - 3.4: the headline fills the opening.
     if (scene('s1', 0, 3.4, 0.01, 0.4)) {
-      const lg = k(t, 0.15, 0.95, E.outBack);
-      set('#logo', { transform: `scale(${lg}) rotate(${(1 - lg) * -40}deg)`, opacity: k(t, 0.15, 0.4) });
-      [['#ring1', 0.4], ['#ring2', 0.6]].forEach(([r, d]) => {
-        const x = k(t, d, d + 1.2, E.outExpo);
-        set(r, { transform: `scale(${0.6 + x * 2.2})`, opacity: (1 - x) * 0.8 });
-      });
-      brandChars.forEach((c, i) => {
-        const x = k(t, 0.8 + i * 0.06, 1.4 + i * 0.06, E.outBack);
-        c.style.transform = `translateY(${(1 - x) * 80}px) scale(${0.6 + 0.4 * x})`;
-        c.style.opacity = clamp(x * 1.5, 0, 1);
-        c.style.color = i >= 5 ? 'var(--red)' : '#fff';
-      });
-      revealWords(W.s1sub, t, 1.5, 0.12, 0.6);
+      revealWords(W.s1sub, t, 0.15, 0.22, 0.6);
+      const f = k(t, 0.95, 1.45, E.outBack);
+      set('#s1b', { transform: `scale(${0.4 + 0.6 * f}) rotate(${(1 - f) * -6}deg)`, opacity: clamp(f * 1.6, 0, 1) });
+      set('#s1line', { transform: `scaleX(${k(t, 1.3, 1.9, E.outExpo)})` });
+      const drift = 1 + 0.04 * k(t, 0.2, 3.0, E.lin);
       const out = k(t, 3.0, 3.4, E.inCubic);
-      set('#s1', { transform: `scale(${1 + out * 0.15})`, filter: `blur(${out * 12}px)` });
+      set('#s1', { transform: `scale(${drift + out * 0.15})`, filter: `blur(${out * 12}px)` });
     }
 
     // S2 3.2 - 8.0
