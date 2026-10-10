@@ -47,6 +47,8 @@ cp "$WORK/src/LICENSE-MIT" "$WORK/site/LICENSE.txt"
   done
   printf '\n==== OFL-BarlowCondensed.txt ====\n\n'
   cat "$HERE/assets/fonts/OFL-BarlowCondensed.txt"
+  printf '\n==== OFL-Cairo.txt (download page) ====\n\n'
+  cat "$HERE/assets/fonts/OFL-Cairo.txt"
 } > "$WORK/site/THIRD-PARTY-NOTICES.txt"
 
 # Nothing from the old name may be left in file names.
