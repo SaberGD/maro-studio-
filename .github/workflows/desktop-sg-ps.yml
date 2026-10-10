@@ -1,6 +1,6 @@
 # Builds the HORIX desktop app for Windows (portable zip) and macOS (universal .app in a zip),
 # publishes both on engsaber.space/sgps-downloads/ (the download page at
-# studio.engsaber.space/download/ links there) and keeps a copy as a GitHub Release. Run it from
+# sabergroupacademy.com/downloads/ links there) and keeps a copy as a GitHub Release. Run it from
 # the Actions tab (Run workflow), or push a tag named desktop-v* (for example desktop-v0.3.0).
 name: Desktop HORIX
 
@@ -80,7 +80,7 @@ jobs:
           case "$TAG" in desktop-v*) ;; *) TAG="desktop-build-${{ github.run_number }}" ;; esac
           echo "TAG=$TAG" >> "$GITHUB_ENV"
 
-      # The public download page (studio.engsaber.space/download/) serves these files.
+      # The public download page (sabergroupacademy.com/downloads/) serves these files.
       - name: Publish on engsaber.space
         env:
           HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}

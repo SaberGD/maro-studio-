@@ -1,6 +1,6 @@
 # HORIX
 
-**HORIX** (اسمه القديم SG - PS) هو محرر الصور بتاع أكاديمية صابر جروب: *The Visionary AI Editor by Saber Group*. شغال على https://studio.engsaber.space/
+**HORIX** (اسمه القديم SG - PS) هو محرر الصور بتاع أكاديمية صابر جروب: *The Visionary AI Editor by Saber Group*. شغال على https://sabergroupacademy.com/horix/، وصفحة تحميل نسخ الديسكتوب على https://sabergroupacademy.com/downloads/. العنوان القديم `studio.engsaber.space` بيحوّل على العناوين دي (301).
 
 الهوية البصرية الرسمية (الشعار، الألوان، قواعد الاستخدام) في [`brand/`](brand/HORIX-Brand-Guide.md). الأسماء الداخلية (فولدر `apps/sg-ps`، وملفات `sg-ps-<hash>.js`، ومفاتيح `sgps.*`، والـsecrets) فضلت زي ما هي عشان النشر وإعدادات المستخدمين ما يتكسروش.
 
@@ -14,7 +14,7 @@
 | اللوجو | أيقونة البرنامج الأصلي | صقر HORIX: اللوجو الكامل (`assets/horix-lockup.svg`) على شاشة البداية وشاشة التحميل، والصقر لوحده (`assets/horix-symbol.svg`) في About، و`assets/horix-favicon.svg` في تبويب المتصفح. كلهم متولّدين من `brand/horix-master.svg` من غير أي تعديل في الرسمة |
 | الثيم الافتراضي | رمادي بلون أزرق | **HORIX (Dark)**: الخلفية Horus Ink `#141314`، والبانلز Graphite `#2A2727`، والنص Falcon Ivory `#F3EFE8`، والأزرار الأساسية Horix Red `#D63C32`، والحالة النشطة (التحديد والتبويب المفتوح) Vision Amber `#EA993F` |
 | خط العناوين | Inter | **Barlow Condensed ExtraBold** (`assets/fonts/`، ترخيص OFL): خط condensed grotesk تقيل زي ما دليل الهوية طالب. خط الواجهة لسه Inter |
-| زرار Discord وروابط المطور الأصلي | موجودة في الشريط العلوي وشاشة البداية وHelp | اتشالت. الروابط بقت لـ `sabergroupacademy.com` و `studio.engsaber.space` |
+| زرار Discord وروابط المطور الأصلي | موجودة في الشريط العلوي وشاشة البداية وHelp | اتشالت. الروابط بقت لـ `sabergroupacademy.com` و`sabergroupacademy.com/horix` |
 | أسماء ملفات البرنامج على السيرفر | باسم البرنامج الأصلي | `sg-ps-<hash>.js` و `sg-ps-<hash>_bg.wasm` |
 
 الثيمات التانية لسه موجودة في Window › Theme.
@@ -41,7 +41,7 @@ apps/sg-ps/build.sh                # يطلع deploy/sg-ps/sg-ps-<version>-hosti
 
 ## قائمة الانتظار والتجربة المجانية
 
-في شاشة البداية، كروت **SG - AI / SG - PR / SG - AE** (زرار Notify me) وزرار **Book your free trial** بتفتح فورم عربي فيه:
+في شاشة البداية فيه قسم «قريبًا: بدائل After Effects و Premiere و Illustrator و Lightroom» وزرار **احجز تجربتك المُبكرة**، وبيفتح فورم عربي فيه:
 - الاسم.
 - رقم الواتساب.
 - «مهتم تتعلم إيه؟»: Graphic Design 101، وAdvertising Mastery، وAI 101 وMastery و100x Creatives، أو «لسه مش متأكد».
@@ -49,11 +49,11 @@ apps/sg-ps/build.sh                # يطلع deploy/sg-ps/sg-ps-<version>-hosti
 
 الفورم بيبعت البيانات لـ`hosting/waitlist.php`، واللي بيحفظها سطر سطر في:
 
-**`public_html/sgps-data/leads.csv` على `engsaber.space`**
+**`domains/sabergroupacademy.com/sgps-data/leads.csv`** (فولدر فوق `public_html` بمستوى)
 
-(File Manager في hPanel ← engsaber.space). الملف بيفتح في Excel والعربي ظاهر صح.
+(File Manager في hPanel). الملف بيفتح في Excel والعربي ظاهر صح. الـleads اللي اتسجلت قبل النقل لسه في `public_html/sgps-data/leads.csv` على `engsaber.space`.
 
-- الفولدر ده برّه فولدر HORIX، فالنشر التلقائي مش بيلمسه، وعليه `.htaccess` بيمنع فتحه من المتصفح.
+- الفولدر ده برّه `public_html`، فالنشر مش بيلمسه، ومحدش يقدر يفتحه من المتصفح. وعليه `.htaccess` بيمنع فتحه برضه.
 - فيه حد 5 طلبات في الساعة لكل جهاز ضد السبام.
 - بعد الإرسال بيظهر زرار واتساب، ومعاه رسالة جاهزة فيها الاسم والمنتج.
 
@@ -84,9 +84,14 @@ apps/sg-ps/build.sh                # يطلع deploy/sg-ps/sg-ps-<version>-hosti
 ## النشر التلقائي (GitHub Actions)
 
 أي push على **الفرع الافتراضي** للريبو بيغيّر حاجة في `apps/sg-ps/` أو `archive/photocraft/` بيشغّل `.github/workflows/deploy-sg-ps.yml`، والـworkflow ده:
-1. بيبني البرنامج بـ`build.sh`.
-2. بيرفعه على هوستينجر بـ`deploy.sh`.
-3. بيستنى لحد ما https://studio.engsaber.space يعرض النسخة الجديدة.
+1. بيبني البرنامج بـ`build.sh`. الـzip فيه 3 فولدرات: `horix/` (البرنامج)، و`downloads/` (صفحة التحميل)، و`redirect/` (التحويل من العنوان القديم).
+2. بيرفع ملفات `horix/` و`downloads/` واحد واحد على `public_html` بتاع `sabergroupacademy.com` بـ`deploy.sh`. **مش بيفك zip فوق الموقع**، لأن نفس الفولدر فيه WordPress وصفحة الأكاديمية والـsubdomains. الرفع بيضيف ويستبدل الملفات دي بس.
+3. بيستنى لحد ما https://sabergroupacademy.com/horix/ يعرض النسخة الجديدة (بيقارن `meta horix-build`).
+4. بيحط ملفات التحويل على `studio.engsaber.space`، ويتأكد إن العنوان القديم بيحوّل.
+
+أسماء ملفات البرنامج ثابتة (`sg-ps.js` و`sg-ps_bg.wasm`) من غير hash، عشان الـAPI مش بيقدر يمسح ملفات، وكل نشر بيستبدل نفس الملفات بدل ما يكدّس نسخ قديمة. و`.htaccess` بيخلّي المتصفح يتأكد من السيرفر كل مرة (304 لو الملف ما اتغيرش).
+
+صفحة الأكاديمية (ريبو `saber-group-academy-landingpage`) فيها service worker، ولازم يسيب `/horix` و`/downloads` للشبكة (التعديل ده في `dist/sw.js` هناك).
 
 لو أي خطوة فشلت، الـAction بيطلع أحمر، والموقع بيفضل على النسخة اللي قبلها.
 
@@ -94,14 +99,14 @@ apps/sg-ps/build.sh                # يطلع deploy/sg-ps/sg-ps-<version>-hosti
 
 - **تشغيل يدوي:** تبويب Actions ← Deploy HORIX ← Run workflow.
 - **مدة البناء:** أول build حوالي 25 دقيقة، والـbuilds اللي بعده أسرع، لأن المكتبات اللي اتبنت بتتحفظ في cache.
-- **دومين أو حساب تاني:** حط repository variables باسم `SGPS_DOMAIN` و`HOSTINGER_USERNAME`.
+- **دومين أو حساب تاني:** حط repository variables باسم `HORIX_DOMAIN` و`HORIX_OLD_DOMAIN` و`HOSTINGER_USERNAME`.
 - **النشر من جهازك:** `HOSTINGER_API_TOKEN=... apps/sg-ps/deploy.sh`.
 
 ## الرفع على هوستينجر يدويًا
 
-نفس خطوات `deploy/photocraft-web/README.md`، بس بالملف `deploy/sg-ps/sg-ps-<version>-hostinger.zip`. ولو عندك Hostinger connector:
-1. Generate upload URL للدومين `studio.engsaber.space`، وارفع الـzip بـTUS.
-2. Deploy static site archive، بـ`archive_path` = اسم الـzip.
+**متفكّش الـzip فوق `public_html` بتاع `sabergroupacademy.com`**، ولا تستخدم «Deploy static site archive» على الدومين ده، لأنهم ممكن يمسحوا WordPress وصفحة الأكاديمية. بدل كده:
+1. فك `deploy/sg-ps/sg-ps-<version>-hostinger.zip` على جهازك.
+2. من File Manager ارفع محتوى `horix/` جوه `public_html/horix/`، ومحتوى `downloads/` جوه `public_html/downloads/`، وخلّي `index.html` آخر ملف.
 
 ## التحديث لإصدار جديد
 

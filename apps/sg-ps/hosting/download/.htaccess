@@ -1,0 +1,11 @@
+# sabergroupacademy.com/downloads/: the HORIX desktop download page (the zips are on engsaber.space).
+DirectoryIndex index.html
+Options -Indexes
+<IfModule mod_headers.c>
+  <FilesMatch "(\.html|^)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  <FilesMatch "\.(woff2|webp|svg)$">
+    Header set Cache-Control "public, max-age=86400"
+  </FilesMatch>
+</IfModule>

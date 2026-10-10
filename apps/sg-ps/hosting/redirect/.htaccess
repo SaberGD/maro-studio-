@@ -1,0 +1,7 @@
+# studio.engsaber.space: HORIX moved to the academy site. Every old link (with its query string,
+# e.g. ?waitlist=early from the desktop app) goes permanently to the new address.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^download(/.*)?$ https://sabergroupacademy.com/downloads/ [R=301,L]
+  RewriteRule ^(.*)$ https://sabergroupacademy.com/horix/$1 [R=301,L]
+</IfModule>

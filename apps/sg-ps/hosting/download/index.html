@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>تحميل HORIX | ويندوز وماك</title>
   <meta name="description" content="حمّل HORIX، محرر الصور من Saber Group Academy، على ويندوز أو ماك مجانًا.">
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/svg+xml" href="horix-favicon.svg">
   <meta name="theme-color" content="#141314">
   <style>
     /* HORIX palette and type (apps/sg-ps/brand/HORIX-Brand-Guide.md). */
@@ -113,10 +113,9 @@
     /* Coming soon */
     .soon { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 56px; align-items: start; }
     .apps { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-    .apps li { display: grid; grid-template-columns: 96px 1fr auto; align-items: center; gap: 18px; padding: 20px 0; border-bottom: 1px solid var(--line); }
-    .apps .name { font: 800 26px/1 var(--display); direction: ltr; text-align: right; }
-    .apps .what { font-size: 15px; }
-    .apps .alt { font-size: 13px; color: var(--amber); }
+    .apps li { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 18px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+    .apps .name { font: 800 26px/1.1 var(--display); }
+    .apps .what { font-size: 14px; color: var(--muted); }
     .apps .soon-tag { font-size: 12px; color: var(--faint); border: 1px solid var(--line); border-radius: 99px; padding: 2px 10px; }
     .panel { background: var(--graphite); border: 1px solid var(--line); border-radius: 16px; padding: 30px; }
     .panel h3 { font: 700 20px/1.4 var(--body); margin: 0 0 4px; }
@@ -158,19 +157,18 @@
       .cta .btn-red { width: 100%; }
       .card, .panel { padding: 22px; }
       .band { padding: 24px; }
-      .apps li { grid-template-columns: 76px 1fr; }
-      .apps .soon-tag { display: none; }
+      .apps .name { font-size: 22px; }
     }
   </style>
 </head>
 <body>
   <header class="nav">
     <div class="wrap">
-      <a class="logo" href="#top" aria-label="HORIX"><img src="logo.svg" alt="HORIX"></a>
+      <a class="logo" href="#top" aria-label="HORIX"><img src="horix-logo.svg" alt="HORIX"></a>
       <nav>
         <a href="#download">التحميل</a>
         <a href="#soon">قريبًا</a>
-        <a class="btn btn-line btn-sm" href="https://studio.engsaber.space/">افتحه في المتصفح</a>
+        <a class="btn btn-line btn-sm" href="https://sabergroupacademy.com/horix/">افتحه في المتصفح</a>
       </nav>
     </div>
   </header>
@@ -245,7 +243,7 @@
             <h3>مش عاوز تسطّب حاجة؟</h3>
             <p>استخدم <bdi>HORIX</bdi> من المتصفح على طول، بنفس الأدوات.</p>
           </div>
-          <a class="btn btn-line" href="https://studio.engsaber.space/">افتح <bdi>HORIX</bdi> في المتصفح</a>
+          <a class="btn btn-line" href="https://sabergroupacademy.com/horix/">افتح <bdi>HORIX</bdi> في المتصفح</a>
         </div>
       </div>
     </section>
@@ -254,32 +252,34 @@
       <div class="wrap soon">
         <div>
           <p class="kicker">COMING SOON</p>
-          <h2>برامج جديدة جاية</h2>
-          <p class="sub">بدائل <bdi>After Effects</bdi> و <bdi>Premiere</bdi> و <bdi>Illustrator</bdi> بنفس الفكرة: مجانية، وبالعربي، وشغالة على المتصفح والكمبيوتر.</p>
+          <h2>قريبًا</h2>
+          <p class="sub">بدائل <bdi>After Effects</bdi> و <bdi>Premiere</bdi> و <bdi>Illustrator</bdi> و <bdi>Lightroom</bdi>، بنفس فكرة <bdi>HORIX</bdi>: مجانية، وبالعربي، وشغالة على المتصفح والكمبيوتر.</p>
           <ul class="apps">
-            <li><span class="name">SG - AE</span><span><span class="what">موشن جرافيك وأنيميشن</span><br><span class="alt">بديل After Effects</span></span><span class="soon-tag">قريبًا</span></li>
-            <li><span class="name">SG - PR</span><span><span class="what">مونتاج فيديو</span><br><span class="alt">بديل Premiere</span></span><span class="soon-tag">قريبًا</span></li>
-            <li><span class="name">SG - AI</span><span><span class="what">تصميم Vector ولوجوهات</span><br><span class="alt">بديل Illustrator</span></span><span class="soon-tag">قريبًا</span></li>
+            <li><span><span class="name">بديل <bdi>After Effects</bdi></span><br><span class="what">موشن جرافيك وأنيميشن</span></span><span class="soon-tag">قريبًا</span></li>
+            <li><span><span class="name">بديل <bdi>Premiere</bdi></span><br><span class="what">مونتاج فيديو</span></span><span class="soon-tag">قريبًا</span></li>
+            <li><span><span class="name">بديل <bdi>Illustrator</bdi></span><br><span class="what">تصميم Vector ولوجوهات</span></span><span class="soon-tag">قريبًا</span></li>
+            <li><span><span class="name">بديل <bdi>Lightroom</bdi></span><br><span class="what">تعديل وتلوين الصور</span></span><span class="soon-tag">قريبًا</span></li>
           </ul>
         </div>
 
         <div class="panel">
           <form id="notify" novalidate>
             <div>
-              <h3>بلّغوني أول ما يجهزوا</h3>
+              <h3>احجز تجربتك المُبكرة</h3>
               <p class="note">هنبعتلك على واتساب أول ما البرامج تنزل.</p>
             </div>
             <label>الاسم<input type="text" name="name" autocomplete="name" maxlength="80" required></label>
             <label>رقم الواتساب<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="01xxxxxxxxx" dir="ltr" required></label>
             <fieldset>
               <legend>عاوز تجرب إيه؟</legend>
-              <label class="chk"><input type="checkbox" name="products" value="SG - AE" checked>بديل After Effects <bdi>(SG - AE)</bdi></label>
-              <label class="chk"><input type="checkbox" name="products" value="SG - PR" checked>بديل Premiere <bdi>(SG - PR)</bdi></label>
-              <label class="chk"><input type="checkbox" name="products" value="SG - AI" checked>بديل Illustrator <bdi>(SG - AI)</bdi></label>
+              <label class="chk"><input type="checkbox" name="products" value="After Effects" checked>بديل <bdi>After Effects</bdi></label>
+              <label class="chk"><input type="checkbox" name="products" value="Premiere" checked>بديل <bdi>Premiere</bdi></label>
+              <label class="chk"><input type="checkbox" name="products" value="Illustrator" checked>بديل <bdi>Illustrator</bdi></label>
+              <label class="chk"><input type="checkbox" name="products" value="Lightroom" checked>بديل <bdi>Lightroom</bdi></label>
             </fieldset>
             <label class="chk"><input type="checkbox" name="consent">موافق إن فريق صابر جروب يبلغني ويتواصل معايا على واتساب</label>
             <p class="err" id="notify_err" role="alert"></p>
-            <button type="submit" class="btn btn-red">سجّلني</button>
+            <button type="submit" class="btn btn-red">احجز تجربتك المُبكرة</button>
           </form>
           <div class="done" id="notify_done" role="status">
             <h3>تمام، اتسجلت ✓</h3>
@@ -292,12 +292,12 @@
 
   <footer>
     <div class="wrap">
-      <img src="logo.svg" alt="HORIX">
+      <img src="horix-logo.svg" alt="HORIX">
       <span id="version"></span>
       <nav>
         <a href="https://www.facebook.com/SABERGROUP.Courses/" rel="noopener">Saber Group Academy على فيسبوك</a>
         <a href="https://sabergroupacademy.com/" rel="noopener">sabergroupacademy.com</a>
-        <a href="../LICENSE.txt">التراخيص</a>
+        <a href="/horix/LICENSE.txt">التراخيص</a>
       </nav>
     </div>
   </footer>
@@ -318,7 +318,7 @@
         if (!products.length) { err.textContent = 'اختار برنامج واحد على الأقل.'; return; }
         if (!field('consent').checked) { err.textContent = 'محتاجين موافقتك عشان نقدر نبلغك.'; return; }
         var btn = form.querySelector('button'); btn.disabled = true; err.textContent = '';
-        fetch('../waitlist.php', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        fetch('/horix/waitlist.php', { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: name, phone: phone, products: products, interests: [], consent: true, page: location.pathname }) })
           .then(function (r) { return r.json().then(function (j) { return [r.status, j]; }); })
           .then(function (res) {
