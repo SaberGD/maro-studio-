@@ -20,3 +20,15 @@ ffmpeg -i fixes-noaudio.mp4 -i fixes.wav -c:v copy -c:a aac -b:a 192k -shortest 
 
 `node render.mjs page.html --stills 1.0,5.0` writes single frames to `stills/` for checking.
 `a/` holds the screenshots and artwork, `fonts/` the Cairo font files.
+
+## Sound effects only (no music)
+
+`sfx.py` synthesises motion sounds (whooshes, impacts, pops, clicks, chimes...) at the times listed
+in `promo-sfx.json` / `fixes-sfx.json`, synced to the animations:
+
+```bash
+python3 sfx.py promo-sfx.wav 31 promo-sfx.json
+ffmpeg -i promo-noaudio.mp4 -i promo-sfx.wav -c:v copy -c:a aac -b:a 192k -shortest SG-PS-promo-sfx.mp4
+python3 sfx.py fixes-sfx.wav 41.8 fixes-sfx.json
+ffmpeg -i fixes-noaudio.mp4 -i fixes-sfx.wav -c:v copy -c:a aac -b:a 192k -shortest SG-PS-update-before-after-sfx.mp4
+```
