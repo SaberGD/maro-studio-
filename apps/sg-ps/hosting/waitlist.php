@@ -1,8 +1,8 @@
 <?php
-// SG - PS waitlist and free-trial requests.
+// HORIX waitlist and free-trial requests.
 //
 // POST JSON {name, phone, product | products[], interests[], consent, page} -> appends one row to
-// <parent of this site's folder>/sgps-data/leads.csv, outside the SG - PS folder so deploys
+// <parent of this site's folder>/sgps-data/leads.csv, outside the HORIX folder so deploys
 // (which replace that folder) never touch it. A deny-all .htaccess keeps the data folder off the
 // web; read it from Hostinger's File Manager (public_html/sgps-data/leads.csv on engsaber.space).
 // When the deploy wrote sgps-config.php (GitHub secret SGPS_LEAD_WEBHOOK), each lead is also

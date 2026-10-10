@@ -1,8 +1,8 @@
-# Builds the SG - PS desktop app for Windows (portable zip) and macOS (universal .app in a zip),
+# Builds the HORIX desktop app for Windows (portable zip) and macOS (universal .app in a zip),
 # publishes both on engsaber.space/sgps-downloads/ (the download page at
 # studio.engsaber.space/download/ links there) and keeps a copy as a GitHub Release. Run it from
 # the Actions tab (Run workflow), or push a tag named desktop-v* (for example desktop-v0.3.0).
-name: Desktop SG - PS
+name: Desktop HORIX
 
 on:
   workflow_dispatch:
@@ -95,9 +95,9 @@ jobs:
           gh release create "$TAG" dist/*.zip \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
-            --title "SG - PS Desktop ($TAG)" \
-            --notes "SG - PS desktop app.
+            --title "HORIX Desktop ($TAG)" \
+            --notes "HORIX desktop app.
 
-          Windows: download SG-PS-...-windows-x64-portable.zip, unzip it, and run SG-PS.exe. On the first run Windows may show \"Windows protected your PC\": click More info > Run anyway.
+          Windows: download HORIX-...-windows-x64-portable.zip, unzip it, and run HORIX.exe. On the first run Windows may show \"Windows protected your PC\": click More info > Run anyway.
 
-          macOS (Apple Silicon and Intel): download SG-PS-...-macos-universal.zip, unzip it, and drag \"SG - PS\" into Applications. On the first run macOS says it could not verify the app (it is not notarized yet): click Done, then System Settings > Privacy & Security > Open Anyway next to SG - PS, and enter your password."
+          macOS (Apple Silicon and Intel): download HORIX-...-macos-universal.zip, unzip it, and drag \"HORIX\" into Applications. On the first run macOS says it could not verify the app (it is not notarized yet): click Done, then System Settings > Privacy & Security > Open Anyway next to HORIX, and enter your password."

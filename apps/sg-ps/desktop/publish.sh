@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Publish the SG - PS desktop zips on engsaber.space/sgps-downloads/ (the download page at
+# Publish the HORIX desktop zips on engsaber.space/sgps-downloads/ (the download page at
 # studio.engsaber.space/download/ links there), through the Hostinger file-upload API.
 #
 # Usage: HOSTINGER_API_TOKEN=... apps/sg-ps/desktop/publish.sh <dir with the zips> <build label>
 # Env:   HOSTINGER_USERNAME (default u570689065), SGPS_DOWNLOAD_DOMAIN (default engsaber.space)
 #
-# Stable names (SG-PS-windows-x64.zip, SG-PS-macos-universal.zip) are overwritten each release;
+# Stable names (HORIX-windows-x64.zip, HORIX-macos-universal.zip) are overwritten each release;
 # latest.json (version, build, date, sizes) goes last, so the page never points at a half upload.
 set -euo pipefail
 
@@ -18,9 +18,9 @@ FOLDER="${SGPS_DOWNLOAD_FOLDER:-sgps-downloads}"
 API="https://developers.hostinger.com/api/hosting/v1"
 : "${HOSTINGER_API_TOKEN:?set HOSTINGER_API_TOKEN}"
 
-WIN="$(ls "$DIR"/SG-PS-*-windows-x64-portable.zip | head -1)"
-MAC="$(ls "$DIR"/SG-PS-*-macos-universal.zip | head -1)"
-VERSION="$(basename "$WIN" | sed -n 's/^SG-PS-\(.*\)-windows-x64-portable\.zip$/\1/p')"
+WIN="$(ls "$DIR"/HORIX-*-windows-x64-portable.zip | head -1)"
+MAC="$(ls "$DIR"/HORIX-*-macos-universal.zip | head -1)"
+VERSION="$(basename "$WIN" | sed -n 's/^HORIX-\(.*\)-windows-x64-portable\.zip$/\1/p')"
 size() { stat -c%s "$1" 2>/dev/null || stat -f%z "$1"; }
 
 CREDS="$(curl -fsS -X POST -H "Authorization: Bearer $HOSTINGER_API_TOKEN" -H "Content-Type: application/json" \
@@ -43,23 +43,23 @@ upload() {
 }
 
 upload "$HERE/../hosting/downloads/.htaccess" .htaccess
-upload "$WIN" SG-PS-windows-x64.zip
-upload "$MAC" SG-PS-macos-universal.zip
+upload "$WIN" HORIX-windows-x64.zip
+upload "$MAC" HORIX-macos-universal.zip
 JSON="$(mktemp)"
 python3 - "$JSON" "$VERSION" "$BUILD" "$(size "$WIN")" "$(size "$MAC")" <<'PY'
 import json, sys, datetime
 out, version, build, win, mac = sys.argv[1:6]
 json.dump({
     "version": version, "build": build, "date": datetime.date.today().isoformat(),
-    "windows": {"file": "SG-PS-windows-x64.zip", "size": int(win)},
-    "macos": {"file": "SG-PS-macos-universal.zip", "size": int(mac)},
+    "windows": {"file": "HORIX-windows-x64.zip", "size": int(win)},
+    "macos": {"file": "HORIX-macos-universal.zip", "size": int(mac)},
 }, open(out, "w"))
 PY
 upload "$JSON" latest.json
 
 # Check what visitors get (browser user agent: Hostinger's bot protection answers curl with 403).
 UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
-for f in SG-PS-windows-x64.zip:"$WIN" SG-PS-macos-universal.zip:"$MAC"; do
+for f in HORIX-windows-x64.zip:"$WIN" HORIX-macos-universal.zip:"$MAC"; do
   name="${f%%:*}"; want="$(size "${f#*:}")"
   got="$(curl -fsSI -A "$UA" "https://$DOMAIN/$FOLDER/$name?v=$BUILD" | tr -d '\r' | awk 'tolower($1)=="content-length:" {print $2}' | tail -1)"
   [ "$got" = "$want" ] || { echo "error: https://$DOMAIN/$FOLDER/$name serves $got bytes, expected $want" >&2; exit 1; }

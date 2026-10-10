@@ -3,23 +3,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>تحميل SG - PS | ويندوز وماك</title>
-  <meta name="description" content="حمّل SG - PS، برنامج تعديل الصور من Saber Group Academy، على ويندوز أو ماك مجانًا.">
-  <link rel="icon" type="image/svg+xml" href="logo.svg">
+  <title>تحميل HORIX | ويندوز وماك</title>
+  <meta name="description" content="حمّل HORIX، محرر الصور من Saber Group Academy، على ويندوز أو ماك مجانًا.">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta name="theme-color" content="#141314">
   <style>
+    /* HORIX palette (apps/sg-ps/brand/HORIX-Brand-Guide.md). */
     :root {
-      --bg: #0f0f0f; --panel: #181818; --line: #2a2a2a; --text: #ececec; --muted: #a3a3a3;
-      --red: #c4321f; --red-2: #e85c3b; --gold: #fbbf24;
+      --bg: #141314; --panel: #2A2727; --deep: #1E1C1C; --line: #3A3535; --text: #F3EFE8; --muted: #A9A198;
+      --red: #D63C32; --red-2: #E0554A; --amber: #EA993F;
     }
+    @font-face { font-family: "Barlow Condensed"; font-weight: 700; font-display: swap; src: url(fonts/barlow-condensed-latin-700-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Barlow Condensed"; font-weight: 800; font-display: swap; src: url(fonts/barlow-condensed-latin-800-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Cairo"; font-weight: 800; font-display: swap; src: url(fonts/cairo-arabic-800-normal.woff2) format("woff2");
+      unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF; }
     * { box-sizing: border-box; }
     html, body { margin: 0; background: var(--bg); color: var(--text); }
     body { font: 16px/1.7 system-ui, "Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif; }
-    a { color: var(--red-2); }
+    h1, h2 { font-family: "Barlow Condensed", "Cairo", system-ui, sans-serif; font-weight: 800; }
+    a { color: var(--amber); }
     .wrap { max-width: 920px; margin: 0 auto; padding: 32px 16px 48px; }
-    header { display: flex; align-items: center; gap: 14px; }
-    header img { width: 56px; height: 56px; }
-    header .name { font-size: 22px; font-weight: 700; direction: ltr; }
-    header .by { color: var(--muted); font-size: 14px; }
+    header { display: flex; align-items: center; gap: 16px; direction: ltr; justify-content: flex-end; }
+    header img { width: 92px; height: auto; }
+    header .rule { display: block; width: 28px; height: 2px; background: var(--red); margin: 6px 0; }
+    header .desc { font-size: 13px; font-weight: 600; letter-spacing: .14em; }
+    header .by { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .14em; }
     h1 { font-size: clamp(26px, 5vw, 38px); line-height: 1.3; margin: 28px 0 8px; }
     .lead { color: var(--muted); margin: 0 0 28px; max-width: 640px; }
     .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
@@ -27,7 +35,7 @@
     .card.mine { border-color: var(--red); box-shadow: 0 0 0 1px var(--red) inset; }
     .card h2 { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 10px; }
     .card h2 svg { width: 26px; height: 26px; fill: currentColor; flex: none; }
-    .tag { font-size: 12px; color: var(--gold); border: 1px solid #4a3a12; background: #241c08; border-radius: 99px; padding: 1px 10px; margin-inline-start: auto; display: none; }
+    .tag { font-size: 12px; color: var(--amber); border: 1px solid #5A3F1E; background: #2E2214; border-radius: 99px; padding: 1px 10px; margin-inline-start: auto; display: none; }
     .card.mine .tag { display: inline-block; }
     .meta { color: var(--muted); font-size: 14px; margin: 0; }
     .btn { display: inline-flex; justify-content: center; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 10px;
@@ -38,26 +46,25 @@
     ol b { color: var(--text); }
     .web { margin-top: 28px; padding: 18px 20px; border: 1px dashed var(--line); border-radius: 14px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
     .web .btn { background: transparent; border: 1px solid var(--red); color: var(--text); }
-    .web .btn:hover { background: #2a1410; }
-    .soon { margin-top: 40px; padding: 26px 22px; border-radius: 16px; border: 1px solid #3a1a14;
-      background: radial-gradient(120% 140% at 100% 0%, #2a120d 0%, var(--panel) 55%); }
+    .web .btn:hover { background: #3A1D19; }
+    .soon { margin-top: 40px; padding: 26px 22px; border-radius: 16px; border: 1px solid var(--line); background: var(--panel); }
     .soon .badge { display: inline-block; font-size: 12px; padding: 2px 12px; border-radius: 99px; background: var(--red); color: #fff; }
     .soon h2 { margin: 10px 0 6px; font-size: clamp(22px, 4vw, 30px); line-height: 1.35; }
     .soon > p { margin: 0 0 18px; color: var(--muted); }
     .apps { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 22px; }
-    .app { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: #121212; }
+    .app { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--deep); }
     .app b { display: block; font-size: 17px; direction: ltr; text-align: right; }
     .app span { color: var(--muted); font-size: 14px; }
-    .app small { color: var(--gold); font-size: 13px; }
+    .app small { color: var(--amber); font-size: 13px; }
     form { display: grid; gap: 12px; max-width: 560px; }
     form label { display: grid; gap: 4px; font-size: 14px; }
-    form input[type=text], form input[type=tel] { padding: 11px 12px; border-radius: 10px; border: 1px solid #463632;
-      background: #0d0d0d; color: #fff; font: inherit; }
-    form input:focus { outline: 2px solid var(--red-2); outline-offset: -1px; }
+    form input[type=text], form input[type=tel] { padding: 11px 12px; border-radius: 10px; border: 1px solid #443D3A;
+      background: var(--bg); color: var(--text); font: inherit; }
+    form input:focus { outline: 2px solid var(--amber); outline-offset: -1px; }
     fieldset { border: 1px solid var(--line); border-radius: 10px; margin: 0; padding: 8px 12px 4px; }
-    legend { padding: 0 6px; color: var(--gold); font-size: 14px; }
+    legend { padding: 0 6px; color: var(--amber); font-size: 14px; }
     .chk { display: flex !important; grid-template-columns: none; gap: 8px; align-items: center; margin-bottom: 6px; }
-    .chk input { accent-color: var(--red-2); width: 17px; height: 17px; }
+    .chk input { accent-color: var(--red); width: 17px; height: 17px; }
     .err { color: #ff8a70; min-height: 1.2em; margin: 0; font-size: 14px; }
     form .btn { cursor: pointer; font: inherit; font-weight: 700; }
     form .btn:disabled { opacity: .6; cursor: wait; }
@@ -71,14 +78,15 @@
 <body>
   <div class="wrap">
     <header>
-      <img src="logo.svg" alt="">
       <div>
-        <div class="name">SG - PS</div>
-        <div class="by">من Saber Group Academy</div>
+        <div class="desc">THE VISIONARY AI EDITOR</div>
+        <span class="rule"></span>
+        <div class="by">BY SABER GROUP</div>
       </div>
+      <img src="logo.svg" alt="HORIX">
     </header>
 
-    <h1>حمّل SG - PS على جهازك</h1>
+    <h1>حمّل <bdi>HORIX</bdi> على جهازك</h1>
     <p class="lead">نفس البرنامج اللي على الموقع، بس شغال على جهازك من غير إنترنت وبأداء أسرع للملفات الكبيرة. مجاني ومن غير تسطيب: فك الضغط وشغّل. <a href="#soon">وقريب: بدائل After Effects و Premiere و Illustrator ←</a></p>
 
     <div class="cards">
@@ -88,10 +96,10 @@
           ويندوز <span class="tag">جهازك</span>
         </h2>
         <p class="meta">ويندوز 10 و 11 <bdi>(64-bit)</bdi><span data-size="windows"></span></p>
-        <a class="btn" data-file="windows" href="https://engsaber.space/sgps-downloads/SG-PS-windows-x64.zip">تحميل لويندوز</a>
+        <a class="btn" data-file="windows" href="https://engsaber.space/sgps-downloads/HORIX-windows-x64.zip">تحميل لويندوز</a>
         <ol>
-          <li>فك ضغط الملف وافتح فولدر <b><bdi>SG-PS</bdi></b>.</li>
-          <li>شغّل <b><bdi>SG-PS.exe</bdi></b>.</li>
+          <li>فك ضغط الملف وافتح فولدر <b><bdi>HORIX</bdi></b>.</li>
+          <li>شغّل <b><bdi>HORIX.exe</bdi></b>.</li>
           <li>لو ظهرت رسالة <b><bdi>Windows protected your PC</bdi></b> دوس <b><bdi>More info</bdi></b> وبعدين <b><bdi>Run anyway</bdi></b>.</li>
         </ol>
       </section>
@@ -102,10 +110,10 @@
           ماك <span class="tag">جهازك</span>
         </h2>
         <p class="meta"><bdi>macOS 11</bdi> أو أحدث · <bdi>Apple Silicon</bdi> و <bdi>Intel</bdi><span data-size="macos"></span></p>
-        <a class="btn" data-file="macos" href="https://engsaber.space/sgps-downloads/SG-PS-macos-universal.zip">تحميل لماك</a>
+        <a class="btn" data-file="macos" href="https://engsaber.space/sgps-downloads/HORIX-macos-universal.zip">تحميل لماك</a>
         <ol>
-          <li>افتح الملف بعد التحميل واسحب <b><bdi>SG - PS</bdi></b> لفولدر <b><bdi>Applications</bdi></b>.</li>
-          <li>أول مرة بس: لو ظهرت رسالة <b><bdi>"SG - PS" Not Opened</bdi></b> دوس <b><bdi>Done</bdi></b>، وبعدين افتح <b><bdi>System Settings</bdi></b> ← <b><bdi>Privacy &amp; Security</bdi></b>، انزل لتحت ودوس <b><bdi>Open Anyway</bdi></b> قدام SG - PS واكتب باسورد الماك.</li>
+          <li>افتح الملف بعد التحميل واسحب <b><bdi>HORIX</bdi></b> لفولدر <b><bdi>Applications</bdi></b>.</li>
+          <li>أول مرة بس: لو ظهرت رسالة <b><bdi>"HORIX" Not Opened</bdi></b> دوس <b><bdi>Done</bdi></b>، وبعدين افتح <b><bdi>System Settings</bdi></b> ← <b><bdi>Privacy &amp; Security</bdi></b>، انزل لتحت ودوس <b><bdi>Open Anyway</bdi></b> قدام <bdi>HORIX</bdi> واكتب باسورد الماك.</li>
           <li>بعد كدا هيفتح عادي على طول.</li>
         </ol>
       </section>
@@ -113,7 +121,7 @@
 
     <div class="web">
       <span>مش عاوز تسطّب حاجة؟ استخدمه من المتصفح على طول.</span>
-      <a class="btn" href="https://studio.engsaber.space/">افتح SG - PS في المتصفح</a>
+      <a class="btn" href="https://studio.engsaber.space/">افتح <bdi>HORIX</bdi> في المتصفح</a>
     </div>
 
 
