@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: Cairo; font-weight: 700; src: url(a/cairo-arabic-700-normal.woff2); unicode-range: U+0600-06FF, U+FE70-FEFF; }
+@font-face { font-family: Cairo; font-weight: 800; src: url(a/cairo-arabic-800-normal.woff2); unicode-range: U+0600-06FF, U+FE70-FEFF; }
+@font-face { font-family: Cairo; font-weight: 900; src: url(a/cairo-arabic-900-normal.woff2); unicode-range: U+0600-06FF, U+FE70-FEFF; }
+@font-face { font-family: Cairo; font-weight: 700; src: url(a/cairo-latin-700-normal.woff2); unicode-range: U+0000-00FF; }
+@font-face { font-family: Cairo; font-weight: 800; src: url(a/cairo-latin-800-normal.woff2); unicode-range: U+0000-00FF; }
+@font-face { font-family: Cairo; font-weight: 900; src: url(a/cairo-latin-900-normal.woff2); unicode-range: U+0000-00FF; }
+@font-face { font-family: Barlow; font-weight: 700; src: url(a/barlow-condensed-latin-700-normal.woff2); }
+@font-face { font-family: Barlow; font-weight: 800; src: url(a/barlow-condensed-latin-800-normal.woff2); }
+@font-face { font-family: Inter; font-weight: 600; src: url(a/inter-latin-600-normal.woff2); }
+:root { --ink: #141314; --amber: #EA993F; --red: #D63C32; --ivory: #F3EFE8; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--ink); color: var(--ivory); font-family: Cairo, sans-serif; }
+#stage { position: absolute; inset: 0; overflow: hidden; direction: ltr; }
+.layer { position: absolute; inset: 0; display: none; }
+.lat { font-family: Barlow, sans-serif; font-weight: 800; direction: ltr; }
+.ar { direction: rtl; font-weight: 900; }
+.red { color: var(--red); }
+#glow { position: absolute; inset: -20%; }
+.blob { position: absolute; border-radius: 50%; filter: blur(130px); }
+#grain { position: absolute; inset: 0; opacity: .06; mix-blend-mode: overlay; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+#vig { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(0,0,0,.55) 100%); pointer-events: none; }
+#macro { position: absolute; inset: 0; background-repeat: no-repeat; }
+#flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.word { display: inline-block; white-space: nowrap; }
+.line { position: absolute; left: 0; right: 0; text-align: center; direction: rtl; white-space: nowrap; }
+.stack { position: absolute; left: 0; right: 0; text-align: center; direction: rtl; }
+.stack .word { display: block; }
+.win { position: absolute; border-radius: 22px; overflow: hidden; box-shadow: 0 50px 140px rgba(0,0,0,.7), 0 0 0 1px rgba(243,239,232,.10); background: #0d0c0d; }
+.win img { position: absolute; max-width: none; }
+.chip { position: absolute; padding: 18px 40px; border-radius: 16px; background: var(--ivory); color: var(--ink); font-size: 64px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+#cursor { position: absolute; width: 58px; height: 58px; display: none; filter: drop-shadow(0 6px 10px rgba(0,0,0,.6)); }
+.plat { display: inline-block; padding: 18px 34px; border-radius: 999px; border: 2px solid rgba(243,239,232,.25); font-size: 50px; margin: 0 10px; }
+.btn { display: inline-block; padding: 30px 80px; border-radius: 20px; background: var(--red); color: var(--ivory); font-size: 76px; font-weight: 900; }
+.hx-dim path, .hx-dim polygon, .hx-dim rect { fill: rgba(243,239,232,.08); }
+.hx-dim .x { fill: rgba(214,60,50,.12); }
+.hx-lit path, .hx-lit polygon, .hx-lit rect { fill: #F3EFE8; }
+.hx-lit .x { fill: #D63C32; }
+.hx-eye { fill: #EA993F; transform-box: fill-box; transform-origin: 50% 40%; }
+#hxDesc { position:absolute; left:0; right:0; top:1110px; text-align:center; font: 600 38px/1 Inter, sans-serif; letter-spacing: .18em; direction: ltr; }
+#hxTrack { position:absolute; left:50%; top:1180px; width:640px; margin-left:-320px; height:6px; background: rgba(243,239,232,.1); overflow:hidden; }
+#hxBar { position:absolute; left:0; top:0; bottom:0; width:0; background: var(--red); }
+#hxStatus { position:absolute; left:0; right:0; top:1220px; text-align:center; font-size:50px; font-weight:700; color:#C4BDB4; direction: rtl; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"><div class="blob" id="b1"></div><div class="blob" id="b2"></div><div class="blob" id="b3"></div></div>
+
+  <!-- intro: macro shots of the real app on the claps, framed for portrait -->
+  <div class="layer" id="L_macro"><div id="macro"></div><div id="eye"></div></div>
+
+  <!-- the question: one word per line, one line per stomp -->
+  <div class="layer" id="L_q">
+    <div class="stack ar" id="q1" style="top:560px;font-size:200px;line-height:1.12"><span class="word">لسه</span><span class="word">بتدفع</span><span class="word">اشتراك</span><span class="word red">شهري</span></div>
+    <div class="stack ar" id="q2" style="top:640px;font-size:210px;line-height:1.12"><span class="word">عشان</span><span class="word">تعدّل</span><span class="word red">صورة؟</span></div>
+  </div>
+
+  <!-- loading screen, then the eye opens on the drop -->
+  <div class="layer" id="L_logo">
+    <div id="lockup" style="position:absolute;inset:0"><svg id="hxMark" viewBox="227 316 1334 1107" style="position:absolute;left:50%;top:420px;width:780px;margin-left:-390px;overflow:visible" data-vx="227" data-vw="1334"><defs><clipPath id="hx_reveal"><rect id="hx_wipe" x="227" y="296" width="0" height="1147"/></clipPath></defs><g class="hx-dim"><path d="M755.48,1421.52l-168.19.57c-31.35.11-58.09-27.32-58.05-58.36l.2-149.38c.04-30.63,27.94-59.86,59.13-59.81l163.9.25c30.66.05,56.66,29.4,57.22,59.73.95,51.26,1.73,99.61-.65,150.39-1.29,27.66-25.24,56.51-53.57,56.6ZM716.18,1227.71l-96.8.05.07,122.02,96.8-.05-.07-122.02Z"/><path d="M1110.25,1422.02l-97.93.25-64.19-80.3-26.13-.93.04,81h-86.44s-.02-267.6-.02-267.6l199.81-.75c38.01-.14,69.42,21.3,73.76,60.92l-1.03,74.75c-.44,31.94-28.47,52.59-60.07,54.29l62.2,78.37ZM1018.18,1278.85l.63-52.72-95.29-.79v53.83s94.66-.31,94.66-.31Z"/><polygon points="504.46 1421.71 417.15 1421.58 417.22 1324.12 315.25 1324.24 315.16 1421.32 227.41 1421.29 227.43 1155.5 315.17 1155.51 315.22 1251.94 417.13 1251.92 417.25 1155.54 504.25 1155.43 504.46 1421.71"/><polygon points="1336.11 1422.27 1238.47 1421.82 1343.11 1288.4 1238.4 1154.46 1343.19 1154.23 1439.49 1287.53 1336.11 1422.27"/><rect x="1133.67" y="1154.4" width="86.33" height="267.58"/><polygon class="x" points="1461.57 1422.58 1405.37 1352.23 1453.39 1288.29 1408.48 1223.13 1463.97 1155.59 1560.52 1155.18 1454.2 1288.23 1558.78 1422.18 1461.57 1422.58"/><path d="M785.39,811.09c-138.61,74.24-254.27,160.38-378.31,257.86,15.29-40.89,34.87-77,56.31-113.9,13.16-22.65,26.25-43.65,41.37-64.78l53.59-74.89c58.82-74.04,123.27-142.16,197.13-201.36,33.88-27.16,67.55-50.68,105.73-69.76,12.96,57.31,54.37,97.89,110.5,110.6,83.31,18.37,157.09-24.73,225.19-70.51-94.59-67.85-209.91-117.49-318.5-152.06-87.38-27.82-173.6-50.77-263.28-69.21l-90.46-18.59c150.47-26.47,339.3-40.76,486.79-12.86,47.04,8.9,90.36,23.55,130.84,49.18,69,43.68,119.17,110.75,143.75,188,61.66,34.26,108.32,84.91,108.9,157.4-1.01,55.85-28.44,107.27-76.16,136.99,11.09-29.29,14.31-57.34.05-82.72-12.27-21.83-33.74-32.98-57.05-42.12-50.41-14.24-101.64-19.19-154.74-19.53-119.05-.75-218.12,36.8-321.63,92.24Z"/><path d="M549.15,684.7l-203.92,172.27c19.09-81.69,54.04-157.54,105.4-222.5,67.15-84.94,136.26-140.69,231.05-193.57l177.11,50.14c-45.08,19.76-84.39,41.62-125.67,65.94-64.13,39.21-122.5,82-183.97,127.73Z"/></g><g class="hx-lit" clip-path="url(#hx_reveal)"><path d="M755.48,1421.52l-168.19.57c-31.35.11-58.09-27.32-58.05-58.36l.2-149.38c.04-30.63,27.94-59.86,59.13-59.81l163.9.25c30.66.05,56.66,29.4,57.22,59.73.95,51.26,1.73,99.61-.65,150.39-1.29,27.66-25.24,56.51-53.57,56.6ZM716.18,1227.71l-96.8.05.07,122.02,96.8-.05-.07-122.02Z"/><path d="M1110.25,1422.02l-97.93.25-64.19-80.3-26.13-.93.04,81h-86.44s-.02-267.6-.02-267.6l199.81-.75c38.01-.14,69.42,21.3,73.76,60.92l-1.03,74.75c-.44,31.94-28.47,52.59-60.07,54.29l62.2,78.37ZM1018.18,1278.85l.63-52.72-95.29-.79v53.83s94.66-.31,94.66-.31Z"/><polygon points="504.46 1421.71 417.15 1421.58 417.22 1324.12 315.25 1324.24 315.16 1421.32 227.41 1421.29 227.43 1155.5 315.17 1155.51 315.22 1251.94 417.13 1251.92 417.25 1155.54 504.25 1155.43 504.46 1421.71"/><polygon points="1336.11 1422.27 1238.47 1421.82 1343.11 1288.4 1238.4 1154.46 1343.19 1154.23 1439.49 1287.53 1336.11 1422.27"/><rect x="1133.67" y="1154.4" width="86.33" height="267.58"/><polygon class="x" points="1461.57 1422.58 1405.37 1352.23 1453.39 1288.29 1408.48 1223.13 1463.97 1155.59 1560.52 1155.18 1454.2 1288.23 1558.78 1422.18 1461.57 1422.58"/><path d="M785.39,811.09c-138.61,74.24-254.27,160.38-378.31,257.86,15.29-40.89,34.87-77,56.31-113.9,13.16-22.65,26.25-43.65,41.37-64.78l53.59-74.89c58.82-74.04,123.27-142.16,197.13-201.36,33.88-27.16,67.55-50.68,105.73-69.76,12.96,57.31,54.37,97.89,110.5,110.6,83.31,18.37,157.09-24.73,225.19-70.51-94.59-67.85-209.91-117.49-318.5-152.06-87.38-27.82-173.6-50.77-263.28-69.21l-90.46-18.59c150.47-26.47,339.3-40.76,486.79-12.86,47.04,8.9,90.36,23.55,130.84,49.18,69,43.68,119.17,110.75,143.75,188,61.66,34.26,108.32,84.91,108.9,157.4-1.01,55.85-28.44,107.27-76.16,136.99,11.09-29.29,14.31-57.34.05-82.72-12.27-21.83-33.74-32.98-57.05-42.12-50.41-14.24-101.64-19.19-154.74-19.53-119.05-.75-218.12,36.8-321.63,92.24Z"/><path d="M549.15,684.7l-203.92,172.27c19.09-81.69,54.04-157.54,105.4-222.5,67.15-84.94,136.26-140.69,231.05-193.57l177.11,50.14c-45.08,19.76-84.39,41.62-125.67,65.94-64.13,39.21-122.5,82-183.97,127.73Z"/></g><path class="hx-eye" id="hxEye" d="M1103.45,574.23c-18.65,22.63-47.82,34.43-77.8,30.98-44.3-5.11-75.8-44.23-74.13-88.57,51.97,18,100.72,35.36,151.93,57.6Z"/></svg><div id="hxDesc">THE VISIONARY AI EDITOR</div><div id="hxTrack"><div id="hxBar"></div></div><div id="hxStatus"></div></div>
+    <div class="stack ar" id="tag" style="top:1170px;font-size:96px;line-height:1.2"><span class="word">محرّر صور احترافي</span><span class="word red">مجاني</span></div>
+  </div>
+
+  <!-- demo in the app: a portrait window on the canvas -->
+  <div class="layer" id="L_demo">
+    <div class="win" id="win"><img id="wimg0"><img id="wimg1"></div>
+    <div class="chip lat" id="chip">Select Subject</div>
+    <div class="line ar" id="cap1" style="top:1330px;font-size:110px"><span class="word">تفصل</span> <span class="word">أي</span> <span class="word">حد</span> <span class="word red">بضغطة</span></div>
+    <div class="line ar" id="cap2" style="top:1330px;font-size:110px"><span class="word">وتغيّر</span> <span class="word red">الألوان</span></div>
+  </div>
+
+  <!-- before / after -->
+  <div class="layer" id="L_ba">
+    <div id="baBox" style="position:absolute;left:110px;top:180px;width:860px;height:1289px;border-radius:24px;overflow:hidden;box-shadow:0 50px 140px rgba(0,0,0,.6)">
+      <img src="fix/crop-11-open.png" style="position:absolute;inset:0;width:100%;height:100%">
+      <img id="baAfter" src="fix/crop-18-final.png" style="position:absolute;inset:0;width:100%;height:100%">
+      <div id="baLine" style="position:absolute;top:0;bottom:0;width:8px;margin-left:-4px;background:var(--ivory);box-shadow:0 0 30px rgba(0,0,0,.6)"></div>
+    </div>
+    <div class="line ar" id="baL" style="top:1500px;left:110px;right:auto;width:300px;font-size:120px;text-align:left">قبل</div>
+    <div class="line ar red" id="baR" style="top:1500px;left:auto;right:110px;width:300px;font-size:120px;text-align:right">بعد</div>
+  </div>
+
+  <!-- menus, side by side -->
+  <div class="layer" id="L_menus">
+    <div class="win" id="mw0" style="width:460px;height:930px"><img src="hd/m-Filter.png" style="transform-origin:0 0;transform:scale(.5) translate(-490px,-215px)"></div>
+    <div class="win" id="mw1" style="width:510px;height:930px"><img src="hd/m-Image.png" style="transform-origin:0 0;transform:scale(.5) translate(-140px,-215px)"></div>
+    <div class="win" id="mw2" style="width:450px;height:930px"><img src="hd/m-Edit.png" style="transform-origin:0 0;transform:scale(.5) translate(0px,-215px)"></div>
+    <div class="stack ar" id="mcap" style="top:1240px;font-size:104px;line-height:1.2"><span class="word">كل الأدوات</span><span class="word red">اللي متعوّد عليها</span></div>
+  </div>
+
+  <!-- all you need -->
+  <div class="layer" id="L_need">
+    <div id="itemBg" style="position:absolute;inset:-60px;background-size:cover;background-position:center;filter:blur(26px) brightness(.5) saturate(1.2);opacity:0"></div>
+    <div class="line ar" id="need" style="top:560px;font-size:100px;font-weight:800"><span class="word">كل</span> <span class="word">اللي</span> <span class="word">محتاجه</span><span class="word">…</span></div>
+    <div style="position:absolute;left:0;right:0;top:760px;height:420px;display:flex;align-items:center;justify-content:center">
+      <div id="item" class="ar" style="line-height:1;white-space:nowrap;text-shadow:0 20px 80px rgba(0,0,0,.6)"></div>
+    </div>
+  </div>
+
+  <!-- free -->
+  <div class="layer" id="L_free" style="background:var(--red)">
+    <div class="line lat" id="free2" style="top:560px;font-size:140px;opacity:.85">100%</div>
+    <div class="line ar" id="free" style="top:720px;font-size:300px;line-height:1">مجاني</div>
+  </div>
+
+  <!-- claim -->
+  <div class="layer" id="L_claim">
+    <div class="stack ar" id="claim" style="top:400px;font-size:160px;line-height:1.15"><span class="word">أقوى</span><span class="word">بديل مجاني</span><span class="word red">للفوتوشوب</span></div>
+    <div class="line" id="plats" style="top:1240px;direction:ltr"><span class="plat lat">WINDOWS</span><span class="plat lat">MAC</span><span class="plat lat">WEB</span></div>
+  </div>
+
+  <!-- end card -->
+  <div class="layer" id="L_end">
+    <img id="endLogo" src="a/horix-wordmark-dark.svg" style="position:absolute;left:50%;top:260px;width:820px;height:820px;margin-left:-410px">
+    <div class="line" id="endBtn" style="top:1130px"><span class="btn ar">حمّله مجانًا</span></div>
+    <div class="line lat" id="endUrl" style="top:1340px;font-size:56px;font-weight:700;color:rgba(243,239,232,.8)">sabergroupacademy.com/<span style="color:var(--amber)">horix</span></div>
+  </div>
+
+  <svg id="cursor" viewBox="0 0 24 24"><path d="M3 2l16 9.5-7 1.6L8.5 20z" fill="#F3EFE8" stroke="#141314" stroke-width="1.4" stroke-linejoin="round"/></svg>
+  <div id="grain"></div>
+  <div id="vig"></div>
+  <div id="flash"></div>
+</div>
+<script src="lib.js"></script>
+<script>
+window.DURATION = 24.84;
+const SW = 1080, SH = 1920;
+// Same beat map as the 16:9 ad (Stomp Clap, 128 BPM): claps, stomps, break, drop at 7.595.
+const CLAPS = [0.365, 0.835, 1.19, 1.54, 1.89, 2.245, 2.73, 3.065, 3.415];
+const STOMP = 3.77, DROP = 7.595;
+
+// [image, focusX, focusY, detail zoom, driftX, driftY, zoomDrift]: portrait crops of the 2x captures
+const MACROS = [
+  ['hd/02-open.png', 0.035, 0.42, 3.2, 0, -0.03, 0.10],
+  ['hd/02-open.png', 0.80, 0.24, 2.8, -0.03, 0, 0.08],
+  ['hd/m-Filter.png', 0.24, 0.40, 2.6, 0, 0.04, 0.10],
+  ['hd/m-Layer.png', 0.72, 0.66, 3.0, 0.02, 0, 0.08],
+  ['hd/05-hs0.png', 0.80, 0.30, 2.8, -0.03, 0, 0.06],
+  ['hd/m-Image.png', 0.17, 0.40, 2.6, 0, 0.04, 0.10],
+  ['fix/hd-cmd.png', 0.30, 0.26, 2.6, 0.02, 0, 0.10],
+  ['fix/hd-ants.png', 0.355, 0.52, 2.4, 0, 0.03, 0.12],
+  ['hd/m-Edit.png', 0.07, 0.40, 2.6, 0, 0.04, 0.10],
+];
+
+// How each app screenshot sits in the portrait window: centre (screenshot px) and scale.
+const W1 = { cx: 813, cy: 586, s: 1.16, nw: 1920 };
+const VIEWS = { 'fix/hd-cmd.png': { cx: 1880, cy: 1150, s: 0.43, nw: 3840 } };
+const SEQ = [[9.4, 'fix/11-open.png'], [10.105, 'fix/hd-cmd.png'], [10.455, 'fix/12-subject.png'], [10.8, 'fix/14-cutout.png'],
+  [11.285, 'fix/15-both.png'], [11.865, 'fix/16-hs-open.png'], [12.215, 'fix/17-hs-hue.png', 0.25], [12.48, 'fix/18-final.png']];
+const ITEMS = [
+  [16.455, 'طبقات', false, 'fix/crop-18-final.png'],
+  [16.915, 'ماسكات', false, 'fix/crop-11-open.png'],
+  [17.31, 'فلاتر', false, 'img/1470071459604-3b5ec3a7fe05.jpg'],
+  [17.855, 'Select Subject', true, 'fix/crop-12-subject.png'],
+  [18.325, 'PSD', true, 'img/1506744038136-46273834b3fb.jpg'],
+  [18.805, 'ويندوز', false, null],
+  [19.045, 'ماك', false, null],
+  [19.51, 'المتصفح', false, null],
+];
+
+const show = (id, on) => { const el = document.getElementById(id); el.style.display = on ? 'block' : 'none'; return on; };
+const flashAt = (t, times, dur, amt) => { let v = 0; for (const x of times) if (t >= x && t < x + dur) v = Math.max(v, amt * (1 - (t - x) / dur)); return v; };
+const punch = (t, t0, amt) => (t < t0 ? 0 : amt * Math.exp(-(t - t0) * 9) * Math.cos((t - t0) * 18));
+const pop = (el, t, t0, from) => { const x = k(t, t0, t0 + 0.22, E.outBack); el.style.opacity = clamp((t - t0) / 0.06, 0, 1); el.style.transform = `scale(${mix(from || 1.6, 1, x)})`; el.style.filter = `blur(${(1 - k(t, t0, t0 + 0.16)) * 14}px)`; };
+const wordsIn = (sel, t, times, from) => $$(sel + ' .word').forEach((w, i) => {
+  const blockish = w.parentElement.classList.contains('stack');
+  if (t < times[i]) { w.style.display = 'none'; return; }
+  w.style.display = blockish ? 'block' : 'inline-block'; pop(w, t, times[i], from);
+});
+
+function bg(t, amt) {
+  set('#b1', { width: '900px', height: '900px', left: `${-200 + 220 * Math.sin(t * 0.35)}px`, top: `${500 + 200 * Math.cos(t * 0.4)}px`, background: 'rgba(214,60,50,.55)', opacity: 0.55 * amt });
+  set('#b2', { width: '1000px', height: '1000px', left: `${500 + 160 * Math.cos(t * 0.3)}px`, top: `${1300 + 200 * Math.sin(t * 0.33)}px`, background: 'rgba(120,30,28,.7)', opacity: 0.7 * amt });
+  set('#b3', { width: '520px', height: '520px', left: `${500 + 220 * Math.sin(t * 0.5)}px`, top: `${200 + 100 * Math.sin(t * 0.7)}px`, background: 'rgba(234,153,63,.35)', opacity: 0.35 * amt });
+}
+
+function macro(t) {
+  const m = $('#macro'), eye = $('#eye');
+  let i = -1; for (let j = 0; j < CLAPS.length; j++) if (t >= CLAPS[j]) i = j;
+  if (i < 0) {
+    m.style.opacity = 0;
+    const s = env(t, 0.02, 0.36, 0.08, 0.1);
+    set(eye, { position: 'absolute', left: '50%', top: '50%', width: '34px', height: `${34 * s}px`, marginLeft: '-17px', marginTop: `${-17 * s}px`, borderRadius: '50%', background: 'var(--amber)', display: 'block' });
+    return;
+  }
+  eye.style.display = 'none';
+  const [src, fx0, fy0, z0, dx, dy, dz] = MACROS[i];
+  const t0 = CLAPS[i], t1 = i + 1 < CLAPS.length ? CLAPS[i + 1] : STOMP;
+  const e = E.outCubic(clamp((t - t0) / (t1 - t0), 0, 1));
+  // detail zoom: image drawn at 1920*z wide; it must still cover the 1920-tall portrait frame
+  const z = Math.max(z0 * (1 + dz * e) * (1 + 0.25 * (1 - k(t, t0, t0 + 0.18, E.outExpo))), SH / 1080 * 1.02);
+  const W = 1920 * z, H = 1080 * z;
+  const x = clamp(SW / 2 - (fx0 + dx * e) * W, SW - W, 0), y = clamp(SH / 2 - (fy0 + dy * e) * H, SH - H, 0);
+  set(m, { backgroundImage: `url(${src})`, backgroundSize: `${W}px ${H}px`, backgroundPosition: `${x}px ${y}px`, opacity: 1,
+    filter: `brightness(${1 + 0.5 * (1 - k(t, t0, t0 + 0.12))}) blur(${(1 - k(t, t0, t0 + 0.1)) * 6}px)` });
+}
+
+function question(t) {
+  const q1 = $('#q1'), q2 = $('#q2');
+  q1.style.display = t < 5.655 ? 'block' : 'none';
+  q2.style.display = t >= 5.655 ? 'block' : 'none';
+  wordsIn('#q1', t, [3.77, 4.14, 4.485, 4.95], 1.7);
+  wordsIn('#q2', t, [5.655, 6.02, 6.36], 1.7);
+  // grow from the middle of the frame: keep the visible stack centred as lines arrive
+  const n1 = [3.77, 4.14, 4.485, 4.95].filter(x => t >= x).length, n2 = [5.655, 6.02, 6.36].filter(x => t >= x).length;
+  q1.style.top = `${960 - n1 * 112 - 30}px`;
+  q2.style.top = `${960 - n2 * 118 - 30}px`;
+  const c = k(t, 6.62, 6.88, E.inCubic);
+  const sh = t > 6.59 && t < 6.75 ? Math.sin(t * 160) * 12 * (1 - (t - 6.59) / 0.16) : 0;
+  q2.style.transform = `translateX(${sh}px) scale(${1 - 0.95 * c})`;
+  q2.style.opacity = 1 - c;
+  q1.style.transform = `scale(${1 + punch(t, 4.95, 0.04)})`;
+}
+
+function logo(t) {
+  const STEPS = [[6.95, 0.12], [7.13, 0.46], [7.32, 0.76], [7.48, 1]];
+  let p = 0, prev = 0;
+  for (const [ts, v] of STEPS) { if (t < ts) break; p = mix(prev, v, k(t, ts, ts + 0.12, E.outCubic)); prev = v; }
+  const vw = +$('#hxMark').dataset.vw;
+  $('#hx_wipe').setAttribute('width', String(vw * p + 2));
+  $('#hxBar').style.width = (p * 100).toFixed(1) + '%';
+  const st = $('#hxStatus');
+  st.innerHTML = t < DROP ? (p < 1 ? `بنحمّل HORIX… <span dir="ltr">${Math.floor(p * 100)}%</span>` : 'بنجهّز الأدوات…') : 'جاهز';
+  st.style.opacity = 1 - k(t, 8.0, 8.2);
+  $('#hxTrack').style.opacity = 1 - k(t, 8.0, 8.2);
+  const eye = $('#hxEye');
+  eye.style.transform = `scaleY(${mix(0.12, 1, k(t, DROP, DROP + 0.5, E.outBack))})`;
+  eye.style.opacity = mix(0.55, 1, k(t, DROP, DROP + 0.2));
+  const L = $('#lockup');
+  const up = k(t, 8.2, 8.6, E.inOutCubic), inn = k(t, 6.9, 7.1, E.outCubic);
+  L.style.transform = `translateY(${-200 * up}px) scale(${mix(0.92, 1, inn) * (1 + 0.06 * k(t, DROP, DROP + 0.3, E.outExpo)) * mix(1, 0.9, up) * (1 + punch(t, 7.87, 0.03))})`;
+  L.style.opacity = inn;
+  wordsIn('#tag', t, [8.27, 8.93], 1.5);
+  $('#L_logo').style.opacity = 1 - k(t, 9.25, 9.4, E.inCubic);
+}
+
+function placeImg(img, src, zoom, fx, fy, ww, wh) {
+  if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+  const v = VIEWS[src] || W1;
+  const s = v.s * zoom, nw = v.nw;
+  // zoom toward a point given as a fraction of the window (fx, fy)
+  const cx = v.cx + (fx - 0.5) * ww / v.s * (1 - 1 / zoom), cy = v.cy + (fy - 0.5) * wh / v.s * (1 - 1 / zoom);
+  set(img, { width: `${nw * s}px`, left: `${ww / 2 - cx * s}px`, top: `${wh / 2 - cy * s}px` });
+}
+
+function demo(t) {
+  const win = $('#win'), i0 = $('#wimg0'), i1 = $('#wimg1');
+  const ww = 960, wh = 1110;
+  let a = 0; for (let j = 0; j < SEQ.length; j++) if (t >= SEQ[j][0]) a = j;
+  const cur = SEQ[a], prev = SEQ[Math.max(0, a - 1)];
+  const fade = cur[2] ? k(t, cur[0], cur[0] + cur[2], E.inOutCubic) : 1;
+  const zoomSubj = k(t, 10.455, 10.7, E.outExpo) * (1 - k(t, 11.2, 11.45, E.inOutCubic));
+  const zoomFinal = k(t, 12.48, 12.75, E.outExpo);
+  const zoom = 1 + 0.18 * zoomSubj + 0.16 * zoomFinal;
+  placeImg(i1, cur[1], zoom, 0.5, 0.42, ww, wh);
+  placeImg(i0, prev[1], zoom, 0.5, 0.42, ww, wh);
+  i1.style.opacity = fade;
+  const fin = k(t, 9.4, 9.85, E.outExpo), out = k(t, 12.95, 13.18, E.inCubic);
+  const p = punch(t, 10.105, 0.03) + punch(t, 10.8, 0.03) + punch(t, 11.285, 0.02) + punch(t, 11.865, 0.02) + punch(t, 12.48, 0.02);
+  set(win, { width: ww + 'px', height: wh + 'px', left: '60px', top: '170px',
+    transform: `perspective(2200px) translateY(${(1 - fin) * 700}px) rotateX(${(1 - fin) * 18}deg) rotateY(${(1 - fin) * -10}deg) scale(${mix(0.85, 1, fin) * (1 + p) * (1 + 0.5 * out)})`,
+    opacity: (1 - out) * clamp((t - 9.4) / 0.08, 0, 1) });
+  const chip = $('#chip');
+  chip.style.display = t >= 10.105 && t < 10.8 ? 'block' : 'none';
+  if (t >= 10.105) { pop(chip, t, 10.105, 1.8); set(chip, { left: '50%', top: '1340px', marginLeft: '-250px' }); }
+  $('#cap1').style.display = t >= 10.8 && t < 11.285 ? 'block' : 'none';
+  $('#cap2').style.display = t >= 11.285 && t < 13.18 ? 'block' : 'none';
+  wordsIn('#cap1', t, [10.8, 10.9, 11.0, 11.03], 1.6);
+  wordsIn('#cap2', t, [11.285, 11.515], 1.6);
+  $('#cap2').style.opacity = 1 - out;
+  const cu = $('#cursor');
+  if (t >= 9.7 && t < 10.5) {
+    const m = k(t, 9.7, 10.05, E.inOutCubic);
+    set(cu, { display: 'block', left: `${mix(820, 560, m)}px`, top: `${mix(1240, 560, m)}px`, transform: `scale(${t > 10.05 && t < 10.2 ? 0.85 : 1})` });
+  } else cu.style.display = 'none';
+}
+
+function beforeAfter(t) {
+  const x = k(t, 13.39, 13.745, E.inOutCubic), wipe = 860 * (1 - x);
+  $('#baAfter').style.clipPath = `inset(0 0 0 ${wipe}px)`;
+  $('#baLine').style.left = wipe + 'px';
+  $('#baLine').style.opacity = x > 0 && x < 1 ? 1 : 0;
+  const box = $('#baBox');
+  box.style.transform = `scale(${mix(1.2, 1, k(t, 13.18, 13.4, E.outExpo)) * (1 + punch(t, 13.745, 0.03))})`;
+  box.style.opacity = clamp((t - 13.18) / 0.06, 0, 1);
+  pop($('#baL'), t, 13.18, 1.5);
+  const r = $('#baR'); if (t < 13.745) r.style.opacity = 0; else pop(r, t, 13.745, 1.5);
+}
+
+function menus(t) {
+  const T = [14.095, 14.33, 14.685];
+  const pos = [[630, 190, 7], [285, 220, 0], [-5, 190, -7]];
+  for (let i = 0; i < 3; i++) {
+    const el = $('#mw' + i);
+    if (t < T[i]) { el.style.opacity = 0; continue; }
+    const x = k(t, T[i], T[i] + 0.3, E.outExpo);
+    set(el, { left: pos[i][0] + 'px', top: pos[i][1] + 'px', opacity: 1,
+      transform: `perspective(1600px) translateY(${(1 - x) * 600 - (t - T[i]) * 16}px) rotateY(${pos[i][2] * (1 - 0.5 * x)}deg) rotateZ(${pos[i][2] * 0.3}deg) scale(${mix(0.55, 0.74, x)})` });
+  }
+  wordsIn('#mcap', t, [14.92, 15.08], 1.4);
+  $('#L_menus').style.opacity = 1 - k(t, 15.3, 15.42);
+}
+
+function need(t) {
+  wordsIn('#need', t, [15.42, 15.62, 15.86, 16.095], 1.6);
+  let a = -1; for (let j = 0; j < ITEMS.length; j++) if (t >= ITEMS[j][0]) a = j;
+  const it = $('#item'), ib = $('#itemBg');
+  if (a < 0) { it.style.opacity = 0; ib.style.opacity = 0; return; }
+  const [t0, txt, lat, img] = ITEMS[a];
+  if (it.dataset.i !== String(a)) {
+    it.dataset.i = a; it.textContent = txt;
+    it.className = lat ? 'lat' : 'ar';
+    it.style.fontSize = lat ? (txt.length > 4 ? '150px' : '320px') : (txt.length > 5 ? '210px' : '250px');
+    it.style.color = a === ITEMS.length - 1 ? 'var(--red)' : 'var(--ivory)';
+  }
+  pop(it, t, t0, 1.35);
+  ib.style.backgroundImage = img ? `url(${img})` : 'none';
+  ib.style.opacity = img ? 0.9 * k(t, t0, t0 + 0.15) * (1 - k(t, 19.85, 19.99)) : 0;
+  ib.style.transform = `scale(${1.1 + (t - t0) * 0.08})`;
+  $('#need').style.opacity = 1 - k(t, 19.8, 19.99);
+  it.style.opacity = Math.min(parseFloat(it.style.opacity), 1 - k(t, 19.85, 19.99));
+}
+
+function free(t) {
+  const f = $('#free'), x = k(t, 19.99, 20.2, E.outExpo);
+  f.style.transform = `scale(${mix(2.2, 1, x) * (1 + punch(t, 20.44, 0.04))})`;
+  f.style.filter = `blur(${(1 - x) * 16}px)`;
+  const f2 = $('#free2'); if (t < 20.205) f2.style.opacity = 0; else pop(f2, t, 20.205, 1.6);
+}
+
+function claim(t) {
+  wordsIn('#claim', t, [20.68, 21.05, 21.61], 1.6);
+  const n = [20.68, 21.05, 21.61].filter(x => t >= x).length;
+  $('#claim').style.top = `${720 - n * 92}px`;
+  const pl = $$('#plats .plat'), T = [21.85, 22.085, 22.315];
+  pl.forEach((p, i) => { if (t < T[i]) p.style.opacity = 0; else pop(p, t, T[i], 1.5); });
+}
+
+function endCard(t) {
+  const L = $('#endLogo'), x = k(t, 22.565, 22.85, E.outExpo);
+  L.style.transform = `scale(${mix(1.35, 1, x)})`; L.style.filter = `blur(${(1 - x) * 14}px)`; L.style.opacity = x;
+  const b = $('#endBtn .btn');
+  if (t < 22.915) b.style.opacity = 0;
+  else { pop(b, t, 22.915, 1.5); const press = t >= 23.27 ? 1 - 0.08 * Math.exp(-(t - 23.27) * 14) : 1; b.style.transform += ` scale(${press})`; }
+  b.style.boxShadow = t >= 23.495 ? `0 0 0 ${44 * k(t, 23.495, 24.0)}px rgba(214,60,50,${0.5 * (1 - k(t, 23.495, 24.0))})` : 'none';
+  const u = $('#endUrl'); if (t < 23.27) u.style.opacity = 0; else { u.style.opacity = k(t, 23.27, 23.5); u.style.transform = `translateY(${(1 - k(t, 23.27, 23.6, E.outExpo)) * 30}px)`; }
+  const cu = $('#cursor');
+  if (t >= 22.95) {
+    const m = k(t, 22.95, 23.25, E.inOutCubic);
+    set(cu, { display: 'block', left: `${mix(900, 640, m)}px`, top: `${mix(1560, 1210, m)}px`, transform: `scale(${t > 23.27 && t < 23.4 ? 0.85 : 1})` });
+  }
+}
+
+function render(t) {
+  t = t + 0.02; // visuals land a hair before the sound, which reads as on the beat
+  bg(t, t < STOMP ? 0 : t < DROP ? 0.15 : 1);
+  if (show('L_macro', t < STOMP)) macro(t);
+  if (show('L_q', t >= STOMP && t < 6.95)) question(t);
+  if (show('L_logo', t >= 6.85 && t < 9.4)) logo(t);
+  const inDemo = show('L_demo', t >= 9.4 && t < 13.18);
+  if (inDemo) demo(t); else if (t < 22.95) $('#cursor').style.display = 'none';
+  if (show('L_ba', t >= 13.18 && t < 14.095)) beforeAfter(t);
+  if (show('L_menus', t >= 14.095 && t < 15.42)) menus(t);
+  if (show('L_need', t >= 15.42 && t < 19.99)) need(t);
+  if (show('L_free', t >= 19.99 && t < 20.68)) free(t);
+  if (show('L_claim', t >= 20.68 && t < 22.565)) claim(t);
+  if (show('L_end', t >= 22.565)) endCard(t);
+  $('#flash').style.opacity = flashAt(t, [DROP, 9.4, 13.18, 19.99, 22.565], 0.18, 0.55) + flashAt(t, CLAPS, 0.06, 0.12);
+  $('#stage').style.opacity = 1 - k(t, 24.25, 24.84, E.inCubic);
+}
+const PRE = [...SEQ.map(s => s[1]), ...MACROS.map(m => m[0]), ...ITEMS.filter(i => i[3]).map(i => i[3])];
+window.__keep = PRE.map(src => { const im = new Image(); im.src = src; return im; });
+document.fonts.ready.then(() => Promise.all([...document.images, ...window.__keep].map(i => i.decode().catch(() => 0)))).then(() => { render(0); window.READY = true; });
+</script>
+</body>
+</html>
