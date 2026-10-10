@@ -87,7 +87,36 @@ done
 [ -n "$ok" ] || { echo "error: https://$DOMAIN/horix/ does not serve build $BUILD after 2 minutes" >&2; exit 1; }
 echo "live: https://$DOMAIN/horix/ (build $BUILD) and https://$DOMAIN/downloads/"
 
-# 3) The old address now redirects there.
+# 3) The WebAssembly must reach every kind of browser intact: fetch it as a Brotli browser, a
+#    gzip-only one and one without compression, decode, and compare with the built file. If the
+#    host mangles the pre-compressed copies, put back .htaccess without them (uncompressed, but
+#    working) and fail the deploy.
+WASM_LOCAL="$SITE/horix/sg-ps_bg.wasm"
+wasm_ok() {
+  local tmp hdr ce ct
+  tmp="$(mktemp -d)"
+  curl -fsS -A "$UA" -H "Accept-Encoding: $1" -D "$tmp/h" -o "$tmp/body" "https://$DOMAIN/horix/sg-ps_bg.wasm?v=$RANDOM" || return 1
+  ce="$(tr -d '\r' < "$tmp/h" | awk 'tolower($1)=="content-encoding:" {print tolower($2)}' | tail -1)"
+  ct="$(tr -d '\r' < "$tmp/h" | awk 'tolower($1)=="content-type:" {print tolower($2)}' | tail -1)"
+  case "$ce" in
+    br) brotli -d -c "$tmp/body" > "$tmp/wasm" || return 1 ;;
+    gzip) gzip -d -c "$tmp/body" > "$tmp/wasm" || return 1 ;;
+    ""|identity) cp "$tmp/body" "$tmp/wasm" ;;
+    *) return 1 ;;
+  esac
+  [[ "$ct" == application/wasm* ]] || return 1
+  cmp -s "$tmp/wasm" "$WASM_LOCAL" || return 1
+  echo "  wasm ok for Accept-Encoding '$1': ${ce:-none}, $(size "$tmp/body") bytes on the wire"
+}
+bad=""
+for enc in "gzip, deflate, br" "gzip" "identity"; do wasm_ok "$enc" || { bad="$enc"; break; }; done
+if [ -n "$bad" ]; then
+  echo "error: the WebAssembly is not served correctly for Accept-Encoding '$bad'; restoring .htaccess without pre-compression" >&2
+  upload "$SITE/htaccess-plain" horix/.htaccess
+  exit 1
+fi
+
+# 4) The old address now redirects there.
 if [ -n "$OLD_DOMAIN" ]; then
   RZIP="$(mktemp -d)/horix-redirect-$BUILD.zip"
   (cd "$SITE/redirect" && zip -qr9 "$RZIP" .)

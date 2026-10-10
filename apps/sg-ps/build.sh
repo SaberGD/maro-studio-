@@ -35,7 +35,26 @@ cp -R "$WORK/src/dist/web/." "$APP/"
 # Build id: the deploy waits until the live page carries it.
 BUILD_ID="${HORIX_BUILD_ID:-$(date -u +%Y%m%d%H%M%S)}"
 sed -i.bak "s|<head>|<head>\n  <meta name=\"horix-build\" content=\"$BUILD_ID\">|" "$APP/index.html" && rm -f "$APP/index.html.bak"
+# The loading screen shows real progress against the WebAssembly file's size.
+WASM="$APP/sg-ps_bg.wasm"
+WASM_SIZE="$(stat -c%s "$WASM" 2>/dev/null || stat -f%z "$WASM")"
+sed -i.bak "s/__HORIX_WASM_SIZE__/$WASM_SIZE/" "$APP/index.html" && rm -f "$APP/index.html.bak"
+if grep -q __HORIX_WASM_SIZE__ "$APP/index.html"; then echo "error: wasm size not written into index.html" >&2; exit 1; fi
+# Pre-compressed copies: the host does not compress .wasm on the fly (25 MB -> ~8 MB with Brotli,
+# ~11 MB with gzip); .htaccess serves the best one the browser accepts.
+gzip -9 -k -f "$WASM"
+if command -v brotli >/dev/null 2>&1; then
+  brotli -q 11 -f -k -o "$WASM.br" "$WASM"
+elif python3 -c "import brotli" 2>/dev/null; then
+  python3 -c 'import brotli,sys; open(sys.argv[1] + ".br", "wb").write(brotli.compress(open(sys.argv[1], "rb").read(), quality=11))' "$WASM"
+else
+  echo "warning: no brotli encoder; serving gzip only" >&2
+fi
+ls -l "$WASM"*
 cp "$HERE/hosting/.htaccess" "$APP/.htaccess"
+# Fallback for deploy.sh: the same rules without the pre-compressed WebAssembly.
+sed '/^# >>> compressed-wasm/,/^# <<< compressed-wasm/d' "$HERE/hosting/.htaccess" > "$WORK/site/htaccess-plain"
+grep -q "compressed-wasm" "$WORK/site/htaccess-plain" && { echo "error: htaccess-plain still has the compressed block" >&2; exit 1; }
 cp "$HERE/hosting/waitlist.php" "$APP/waitlist.php"
 # Desktop download page; the zips themselves live on engsaber.space/sgps-downloads/.
 DL="$WORK/site/downloads"
