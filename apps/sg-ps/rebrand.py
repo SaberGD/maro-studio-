@@ -27,7 +27,8 @@ from pathlib import Path
 
 APP_NAME = "HORIX"
 SABER_SITE = "https://sabergroupacademy.com"
-APP_SITE = "https://studio.engsaber.space"
+APP_SITE = "https://sabergroupacademy.com/horix"
+DOWNLOADS_PAGE = "https://sabergroupacademy.com/downloads/"
 FACEBOOK = "https://www.facebook.com/SABERGROUP.Courses/"
 # WhatsApp with a ready message: "Hello, I am coming from HORIX and want to know about the courses and services".
 WHATSAPP = ("https://wa.me/201103221873?text=%D9%85%D8%B1%D8%AD%D8%A8%D9%8B%D8%A7%D8%8C%20%D8%AC%D8%A7%D9%8A%20%D9%85%D9%86%20"
@@ -62,7 +63,7 @@ def remove_block(root: Path, rel: str, start: str, end: str) -> None:
 
 def links(root: Path) -> None:
     edit(root, "crates/ui-egui/src/links.rs", [
-        ('pub const DISCORD: &str = "https://discord.gg/artcraft";', f'pub const DISCORD: &str = "{FACEBOOK}";\npub const CONTACT: &str = "{WHATSAPP}";\npub const DOWNLOAD: &str = "{APP_SITE}/download/";'),
+        ('pub const DISCORD: &str = "https://discord.gg/artcraft";', f'pub const DISCORD: &str = "{FACEBOOK}";\npub const CONTACT: &str = "{WHATSAPP}";\npub const DOWNLOAD: &str = "{DOWNLOADS_PAGE}";'),
         ('pub const ARTCRAFT_WEBSITE: &str = "https://getartcraft.com";', f'pub const ARTCRAFT_WEBSITE: &str = "{SABER_SITE}";'),
         ('pub const APP_PAGE: &str = "https://getartcraft.com/apps/photocraft";', f'pub const APP_PAGE: &str = "{APP_SITE}";'),
         ('pub const GITHUB: &str = "https://github.com/storytold/photocraft";', f'pub const GITHUB: &str = "{SABER_SITE}";'),
@@ -101,6 +102,13 @@ def logo(root: Path) -> None:
     assets = HERE / "assets"
     shutil.copyfile(assets / "horix-symbol.svg", root / "crates/ui-egui/src/horix_symbol.svg")
     shutil.copyfile(assets / "horix-lockup.svg", root / "crates/ui-egui/src/horix_lockup.svg")
+    # Arabic lines of the start screen, pre-shaped (tools/arabic_svg.py): width / height of each.
+    aspect = {}
+    for name in ("soon-title", "soon-apps", "soon-cta"):
+        svg = (assets / "text" / f"{name}.svg").read_text(encoding="utf-8")
+        _, _, w, h = (float(v) for v in re.search(r'viewBox="([^"]+)"', svg).group(1).split())
+        aspect[name] = w / h
+        shutil.copyfile(assets / "text" / f"{name}.svg", root / f"crates/ui-egui/src/{name.replace('-', '_')}.svg")
     edit(root, "crates/ui-egui/src/links.rs", [
         ("pub fn url_for(", """/// SG - PS: "Contact us" (WhatsApp, courses and services), next to the Facebook button.
 pub fn contact_button(app: &mut PhotocraftApp, ui: &mut egui::Ui, min_width: f32) -> egui::Response {
@@ -111,7 +119,7 @@ pub fn contact_button(app: &mut PhotocraftApp, ui: &mut egui::Ui, min_width: f32
     r
 }
 
-/// SG - PS: a waitlist / free-trial request for `product` ("SG - AI", ..., or "general").
+/// HORIX: a waitlist request for `product` ("early": early access to the coming apps, or "general").
 /// In the browser the page shows its Arabic form; the desktop app opens the site with the form.
 pub static WAITLIST_REQUEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
@@ -125,49 +133,27 @@ pub fn waitlist(app: &mut PhotocraftApp, ctx: &egui::Context, product: &str) {
     }
 }
 
-/// SG - PS: the next apps of the suite, announced on the start screen, with a waitlist.
+/// HORIX: one line of Arabic, pre-shaped into white outlines (egui does not shape Arabic), tinted.
+fn arabic(uri: &'static str, bytes: &'static [u8], aspect: f32, height: f32, color: egui::Color32) -> egui::Image<'static> {
+    egui::Image::from_bytes(uri, bytes).fit_to_exact_size(egui::vec2(height * aspect, height)).tint(color)
+}
+
+/// HORIX: the coming alternatives, announced on the start screen, with an early-access waitlist.
 pub fn coming_soon(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = crate::theme::Tokens::get(ui.ctx());
-    ui.label(egui::RichText::new(tl!("COMING SOON TO SG STUDIO")).font(crate::theme::display(17.0)).color(t.accent));
-    ui.add_space(2.0);
-    ui.label(egui::RichText::new(tl!("Get notified when they launch and book your free trial session")).size(12.0).color(t.text_dim));
-    ui.add_space(8.0);
-    let items = [("SG - AI", tl!("Vector design")), ("SG - PR", tl!("Video editing")), ("SG - AE", tl!("Motion graphics"))];
-    let (w, gap) = (136.0, 10.0);
-    let mut clicked: Option<&str> = None;
-    ui.horizontal(|ui| {
-        ui.add_space(((ui.available_width() - (3.0 * w + 2.0 * gap)) / 2.0).max(0.0));
-        ui.spacing_mut().item_spacing.x = gap;
-        for (name, what) in items {
-            let r = egui::Frame::NONE
-                .stroke(egui::Stroke::new(1.0, t.accent_border))
-                .corner_radius(t.radius)
-                .inner_margin(egui::Margin::symmetric(8, 8))
-                .show(ui, |ui| {
-                    ui.set_width(w - 18.0);
-                    ui.vertical_centered(|ui| {
-                        ui.label(egui::RichText::new(name).font(crate::theme::display(19.0)).color(t.text));
-                        ui.label(egui::RichText::new(what).size(11.0).color(t.text_dim));
-                        ui.add_space(6.0);
-                        if crate::widgets::secondary_button(ui, tl!("Notify me"), 96.0).clicked() {
-                            clicked = Some(name);
-                        }
-                    });
-                })
-                .response
-                .interact(egui::Sense::click())
-                .on_hover_cursor(egui::CursorIcon::PointingHand);
-            if r.clicked() {
-                clicked = Some(name);
-            }
-        }
-    });
-    ui.add_space(12.0);
-    if crate::widgets::primary_button(ui, tl!("Book your free trial"), 220.0).clicked() {
-        clicked = Some("general");
-    }
-    if let Some(p) = clicked {
-        waitlist(app, ui.ctx(), p);
+    ui.add(arabic("bytes://soon-title.svg", include_bytes!("soon_title.svg"), SOON_TITLE_ASPECT, 26.0, t.accent));
+    ui.add_space(4.0);
+    ui.add(arabic("bytes://soon-apps.svg", include_bytes!("soon_apps.svg"), SOON_APPS_ASPECT, 17.0, t.text_dim));
+    ui.add_space(14.0);
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(240.0, 40.0), egui::Sense::click());
+    let r = r.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let [cr, cg, cb, _] = t.primary_bg.to_array();
+    let fill = if r.hovered() { egui::Color32::from_rgb(cr.saturating_add(14), cg.saturating_add(14), cb.saturating_add(14)) } else { t.primary_bg };
+    ui.painter().rect_filled(rect, t.radius, fill);
+    arabic("bytes://soon-cta.svg", include_bytes!("soon_cta.svg"), SOON_CTA_ASPECT, 16.0, t.primary_text)
+        .paint_at(ui, egui::Rect::from_center_size(rect.center(), egui::vec2(16.0 * SOON_CTA_ASPECT, 16.0)));
+    if r.clicked() {
+        waitlist(app, ui.ctx(), "early");
     }
 }
 
@@ -185,9 +171,11 @@ pub fn lockup(width: f32) -> egui::Image<'static> {
 
 pub fn url_for("""),
     ])
+    consts = "".join(f"const {n.upper().replace('-', '_')}_ASPECT: f32 = {v:.4f};\n" for n, v in aspect.items())
+    edit(root, "crates/ui-egui/src/links.rs", [("/// HORIX: one line of Arabic", consts + "\n/// HORIX: one line of Arabic")])
     edit(root, "crates/ui-egui/src/canvas.rs", [
         ("let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 330.0 + recent_h));",
-         "let card = Rect::from_center_size(area.center(), egui::vec2(470.0, 680.0 + recent_h));"),
+         "let card = Rect::from_center_size(area.center(), egui::vec2(470.0, 600.0 + recent_h));"),
         ("""            crate::links::discord_button(app, ui, 190.0);
             ui.add_space(10.0);
             crate::links::link_row(app, ui);""",
@@ -847,11 +835,11 @@ WAITLIST_SCRIPT = """  <div id="sgps_wl" dir="rtl" hidden>
     </div>
   </div>
   <script>
-    // SG - PS waitlist / free-trial form: the editor's "Notify me" and "Book your free trial"
-    // buttons call sgpsOpenWaitlist(product); /?waitlist=SG-AI opens it too (desktop app links).
+    // HORIX waitlist form: the start screen's early-access button calls sgpsOpenWaitlist('early');
+    // /?waitlist=early opens it too (desktop app links; the old ?waitlist=SG-AI links as well).
     (function () {
       var WHATSAPP = '__WHATSAPP__';
-      var NAMES = { 'SG - AI': 'SG - AI للتصميم الـVector', 'SG - PR': 'SG - PR لمونتاج الفيديو', 'SG - AE': 'SG - AE للموشن جرافيك' };
+      var NAMES = { 'early': 'بدائل After Effects و Premiere و Illustrator و Lightroom' };
       var box = document.getElementById('sgps_wl'), form = document.getElementById('sgps_wl_form');
       var done = document.getElementById('sgps_wl_done'), err = document.getElementById('sgps_wl_err');
       var product = 'general';
@@ -860,9 +848,9 @@ WAITLIST_SCRIPT = """  <div id="sgps_wl" dir="rtl" hidden>
         product = NAMES[p] ? p : 'general';
         var soon = product !== 'general';
         document.getElementById('sgps_wl_badge').hidden = !soon;
-        document.getElementById('sgps_wl_title').textContent = soon ? NAMES[product] + ' هتنزل قريب' : 'احجز تجربتك المجانية';
+        document.getElementById('sgps_wl_title').textContent = soon ? 'احجز تجربتك المُبكرة' : 'احجز تجربتك المجانية';
         document.getElementById('sgps_wl_lead').textContent = soon
-          ? 'لو حابب نبلغك أول ما تتوفر، سيب بياناتك واحجز تجربتك المجانية مع فريق صابر جروب.'
+          ? NAMES[product] + ' جاية قريب. سيب بياناتك وهنبلغك أول ما تنزل، وتكون من أول اللي يجربوها.'
           : 'سيب بياناتك وفريق صابر جروب هيتواصل معاك على واتساب يحدد معاك تجربتك المجانية.';
         err.textContent = '';
         form.hidden = false; done.hidden = true; box.hidden = false;
@@ -889,9 +877,9 @@ WAITLIST_SCRIPT = """  <div id="sgps_wl" dir="rtl" hidden>
             if (res[1] && res[1].ok) {
               var soon = product !== 'general';
               document.getElementById('sgps_wl_done_text').textContent = soon
-                ? 'هنبلغك أول ما ' + product + ' تتوفر، وفريقنا هيتواصل معاك قريب يحدد معاك تجربتك المجانية.'
+                ? 'هنبلغك على واتساب أول ما البدائل تنزل، وتكون من أول اللي يجربوها.'
                 : 'فريقنا هيتواصل معاك قريب يحدد معاك تجربتك المجانية.';
-              var msg = 'مرحبًا، أنا ' + name + ' وسجلت في SG Studio' + (soon ? ' لـ ' + product : '') + ' وعايز أحجز تجربتي المجانية';
+              var msg = 'مرحبًا، أنا ' + name + ' وسجلت في HORIX' + (soon ? ' وعايز أحجز تجربتي المُبكرة لـ' + NAMES[product] : ' وعايز أحجز تجربتي المجانية');
               document.getElementById('sgps_wl_wa').href = WHATSAPP + '?text=' + encodeURIComponent(msg);
               form.hidden = true; done.hidden = false; form.reset();
             } else if (res[0] === 429) {
@@ -905,8 +893,7 @@ WAITLIST_SCRIPT = """  <div id="sgps_wl" dir="rtl" hidden>
       });
       var q = new URLSearchParams(location.search).get('waitlist');
       if (q) {
-        var m = /^SG-*(AI|PR|AE)$/i.exec(q.replace(/[\\s-]+/g, '-'));
-        var wanted = m ? 'SG - ' + m[1].toUpperCase() : 'general';
+        var wanted = /^(early|SG-*(AI|PR|AE))$/i.test(q.replace(/[\\s-]+/g, '-')) ? 'early' : 'general';
         var wait = setInterval(function () {
           if (!document.getElementById('sgps_loading')) { clearInterval(wait); open(NAMES[wanted] ? wanted : 'general'); }
         }, 400);

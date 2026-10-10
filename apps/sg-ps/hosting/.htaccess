@@ -1,4 +1,6 @@
-# SG - PS على Hostinger (LiteSpeed/Apache). ارفع الملف ده جنب index.html.
+# HORIX على Hostinger (LiteSpeed/Apache): sabergroupacademy.com/horix/. الملف ده جنب index.html.
+
+DirectoryIndex index.html
 
 # 1) HTTPS إجباري (WebGPU والـclipboard شغالين على https بس)
 <IfModule mod_rewrite.c>
@@ -17,12 +19,10 @@ AddType text/javascript .js
   AddOutputFilterByType DEFLATE application/wasm text/javascript text/html
 </IfModule>
 
-# 4) الكاش: الملفات اللي في اسمها hash تتكاش سنة، وindex.html يتراجع كل مرة
+# 4) الكاش: أسماء الملفات ثابتة في كل نسخة، فالمتصفح بيسأل السيرفر كل مرة (ولو الملف ما اتغيرش
+#    بيرجع 304 من غير ما ينزّله تاني)
 <IfModule mod_headers.c>
-  <FilesMatch "\.(wasm|js)$">
-    Header set Cache-Control "public, max-age=31536000, immutable"
-  </FilesMatch>
-  <FilesMatch "^(index\.html)?$">
+  <FilesMatch "(\.(wasm|js|svg|html)|^)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
   Header always set X-Content-Type-Options "nosniff"

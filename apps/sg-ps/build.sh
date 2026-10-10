@@ -4,7 +4,10 @@
 # Usage: apps/sg-ps/build.sh [photocraft-source.tar.gz]
 #   default source: archive/photocraft/photocraft-source-0.3.0.tar.gz
 # Needs: Rust >= 1.95, `rustup target add wasm32-unknown-unknown`, `cargo install trunk --locked`, zip.
-# Output: deploy/sg-ps/sg-ps-<version>-hostinger.zip
+# Output: deploy/sg-ps/sg-ps-<version>-hostinger.zip, with three folders:
+#   horix/      the editor, served at https://sabergroupacademy.com/horix/
+#   downloads/  the desktop download page, https://sabergroupacademy.com/downloads/
+#   redirect/   the old studio.engsaber.space site: permanent redirects to the two above
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,25 +23,37 @@ VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$WORK/src/Cargo.toml" | head -1)
 
 python3 -I "$HERE/rebrand.py" "$WORK/src"
 
-(cd "$WORK/src/apps/photocraft-web" && CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$WORK/target}" trunk build --release)
+# The editor lives in a folder of the academy site. File names carry no hash: the deploy can only
+# add and overwrite files there (never delete), so each deploy replaces the same few files, and
+# .htaccess makes browsers revalidate them.
+(cd "$WORK/src/apps/photocraft-web" && CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$WORK/target}" \
+  trunk build --release --public-url /horix/ --filehash false)
 
-cp -R "$WORK/src/dist/web/." "$WORK/site/"
-cp "$HERE/hosting/.htaccess" "$WORK/site/.htaccess"
-cp "$HERE/hosting/waitlist.php" "$WORK/site/waitlist.php"
-# Desktop download page (studio.engsaber.space/download/); the zips live on engsaber.space.
-cp -R "$HERE/hosting/download" "$WORK/site/download"
-cp "$HERE/assets/horix-lockup.svg" "$WORK/site/download/logo.svg"
-cp "$HERE/assets/horix-favicon.svg" "$WORK/site/download/favicon.svg"
-mkdir -p "$WORK/site/download/fonts"
-cp "$HERE"/assets/fonts/*.woff2 "$WORK/site/download/fonts/"
+APP="$WORK/site/horix"
+mkdir -p "$APP"
+cp -R "$WORK/src/dist/web/." "$APP/"
+# Build id: the deploy waits until the live page carries it.
+BUILD_ID="${HORIX_BUILD_ID:-$(date -u +%Y%m%d%H%M%S)}"
+sed -i.bak "s|<head>|<head>\n  <meta name=\"horix-build\" content=\"$BUILD_ID\">|" "$APP/index.html" && rm -f "$APP/index.html.bak"
+cp "$HERE/hosting/.htaccess" "$APP/.htaccess"
+cp "$HERE/hosting/waitlist.php" "$APP/waitlist.php"
+# Desktop download page; the zips themselves live on engsaber.space/sgps-downloads/.
+DL="$WORK/site/downloads"
+cp -R "$HERE/hosting/download" "$DL"
+cp "$HERE/assets/horix-lockup.svg" "$DL/horix-logo.svg"
+cp "$HERE/assets/horix-favicon.svg" "$DL/horix-favicon.svg"
+mkdir -p "$DL/fonts"
+cp "$HERE"/assets/fonts/*.woff2 "$DL/fonts/"
+# The old address: everything moves permanently to the academy site.
+cp -R "$HERE/hosting/redirect" "$WORK/site/redirect"
 # n8n webhook for new leads (GitHub secret SGPS_LEAD_WEBHOOK); server-side only, never in the page.
 if [ -n "${SGPS_LEAD_WEBHOOK:-}" ]; then
   python3 -c 'import sys; u = sys.argv[1].replace("\\", "\\\\").replace("\x27", "\\\x27"); open(sys.argv[2], "w").write("<?php return [\x27lead_webhook\x27 => \x27" + u + "\x27];\n")' \
-    "$SGPS_LEAD_WEBHOOK" "$WORK/site/sgps-config.php"
+    "$SGPS_LEAD_WEBHOOK" "$APP/sgps-config.php"
 fi
 # Licence obligations: the MIT licence text (with its copyright line) and the licences of the
 # fonts and icons compiled into the app. They are plain files on the server, not shown in the UI.
-cp "$WORK/src/LICENSE-MIT" "$WORK/site/LICENSE.txt"
+cp "$WORK/src/LICENSE-MIT" "$APP/LICENSE.txt"
 {
   echo "HORIX includes the following third-party material."
   for f in assets/fonts/OFL-Inter.txt assets/fonts/OFL-JetBrainsMono.txt assets/icons/LICENSE-lucide.txt assets/dict/LICENSE-SCOWL.txt; do
@@ -49,11 +64,11 @@ cp "$WORK/src/LICENSE-MIT" "$WORK/site/LICENSE.txt"
   cat "$HERE/assets/fonts/OFL-BarlowCondensed.txt"
   printf '\n==== OFL-Cairo.txt (download page) ====\n\n'
   cat "$HERE/assets/fonts/OFL-Cairo.txt"
-} > "$WORK/site/THIRD-PARTY-NOTICES.txt"
+} > "$APP/THIRD-PARTY-NOTICES.txt"
 
 # Nothing from the old name may be left in file names.
-if ls "$WORK/site" | grep -qi photocraft; then
-  echo "error: output still has photocraft file names:" >&2; ls "$WORK/site" >&2; exit 1
+if ls "$APP" | grep -qi photocraft; then
+  echo "error: output still has photocraft file names:" >&2; ls "$APP" >&2; exit 1
 fi
 
 ZIP="$OUT/sg-ps-$VERSION-hostinger.zip"

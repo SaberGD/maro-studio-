@@ -20,7 +20,7 @@
     {
       "parameters": {
         "chatId": "PUT_YOUR_TELEGRAM_CHAT_ID",
-        "text": "=🆕 Lead جديد من HORIX\n\n👤 {{ $json.body.name }}\n📱 {{ $json.body.phone }}\n🎯 المنتج: {{ $json.body.product === 'general' ? 'تجربة مجانية' : $json.body.product }}\n📚 مهتم بـ: {{ ($json.body.interests || []).join('، ') || 'مختارش' }}\n🕒 {{ $json.body.time_utc }} UTC\n\n💬 كلّمه واتساب: {{ $json.body.whatsapp }}",
+        "text": "=🆕 Lead جديد من HORIX\n\n👤 {{ $json.body.name }}\n📱 {{ $json.body.phone }}\n🎯 المنتج: {{ $json.body.product === 'general' ? 'تجربة مجانية' : $json.body.product === 'early' ? 'تجربة مُبكرة لبدائل After Effects و Premiere و Illustrator و Lightroom' : $json.body.product }}\n📚 مهتم بـ: {{ ($json.body.interests || []).join('، ') || 'مختارش' }}\n🕒 {{ $json.body.time_utc }} UTC\n\n💬 كلّمه واتساب: {{ $json.body.whatsapp }}",
         "additionalFields": {
           "appendAttribution": false
         }

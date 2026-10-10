@@ -2,9 +2,10 @@
 // HORIX waitlist and free-trial requests.
 //
 // POST JSON {name, phone, product | products[], interests[], consent, page} -> appends one row to
-// <parent of this site's folder>/sgps-data/leads.csv, outside the HORIX folder so deploys
-// (which replace that folder) never touch it. A deny-all .htaccess keeps the data folder off the
-// web; read it from Hostinger's File Manager (public_html/sgps-data/leads.csv on engsaber.space).
+// <parent of the site's document root>/sgps-data/leads.csv, outside public_html so deploys never
+// touch it. A deny-all .htaccess keeps the data folder off the
+// web; read it from Hostinger's File Manager: domains/sabergroupacademy.com/sgps-data/leads.csv
+// (one level above public_html; the leads from before the move stay in engsaber.space/public_html/sgps-data).
 // When the deploy wrote sgps-config.php (GitHub secret SGPS_LEAD_WEBHOOK), each lead is also
 // sent to that n8n webhook, which alerts the team on Telegram.
 
@@ -28,7 +29,8 @@ if (!is_array($in)) {
     reply(400, ['ok' => false, 'error' => 'json']);
 }
 
-$PRODUCTS = ['SG - AI', 'SG - PR', 'SG - AE', 'SG - PS', 'general'];
+// 'early' is the early-access list for the coming alternatives; the SG - ... names are older links.
+$PRODUCTS = ['early', 'After Effects', 'Premiere', 'Illustrator', 'Lightroom', 'SG - AI', 'SG - PR', 'SG - AE', 'SG - PS', 'general'];
 $INTERESTS = [
     'graphic-design-101', 'advertising-mastery', 'ai-101', 'ai-mastery', 'ai-100x-creatives', 'not-sure',
 ];

@@ -1,6 +1,8 @@
-# Builds HORIX (apps/sg-ps) and publishes it to https://studio.engsaber.space on every push to the default
+# Builds HORIX (apps/sg-ps) and publishes it to https://sabergroupacademy.com/horix/ (and the download
+# page to /downloads/) on every push to the default
 # branch that touches the app. Needs the repository secret HOSTINGER_API_TOKEN
-# (hPanel > Account > API). Optional repository variables: HOSTINGER_USERNAME, SGPS_DOMAIN.
+# (hPanel > Account > API). Optional repository variables: HOSTINGER_USERNAME, HORIX_DOMAIN,
+# HORIX_OLD_DOMAIN (the old address that now redirects; studio.engsaber.space).
 name: Deploy HORIX
 
 on:
@@ -26,7 +28,9 @@ jobs:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.sgps-target
       SGPS_WORK: ${{ github.workspace }}/.sgps-build
       HOSTINGER_USERNAME: ${{ vars.HOSTINGER_USERNAME || 'u570689065' }}
-      SGPS_DOMAIN: ${{ vars.SGPS_DOMAIN || 'studio.engsaber.space' }}
+      HORIX_DOMAIN: ${{ vars.HORIX_DOMAIN || 'sabergroupacademy.com' }}
+      HORIX_OLD_DOMAIN: ${{ vars.HORIX_OLD_DOMAIN || 'studio.engsaber.space' }}
+      HORIX_BUILD_ID: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 

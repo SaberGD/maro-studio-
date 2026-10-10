@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Publish the HORIX desktop zips on engsaber.space/sgps-downloads/ (the download page at
-# studio.engsaber.space/download/ links there), through the Hostinger file-upload API.
+# sabergroupacademy.com/downloads/ links there), through the Hostinger file-upload API.
 #
 # Usage: HOSTINGER_API_TOKEN=... apps/sg-ps/desktop/publish.sh <dir with the zips> <build label>
 # Env:   HOSTINGER_USERNAME (default u570689065), SGPS_DOWNLOAD_DOMAIN (default engsaber.space)
