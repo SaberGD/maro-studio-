@@ -85,10 +85,11 @@ def menus(root: Path) -> None:
     edit(root, "crates/ui-egui/src/menus.rs", [
         ('("help.discord", "Join the ArtCraft Discord…", &["Help"], None),', '("help.discord", "Saber Group Academy on Facebook", &["Help"], None),\n    ("help.contact", "Contact Us: Courses & Services…", &["Help"], None),\n    ("help.download", "Download the Desktop App (Windows / Mac)…", &["Help"], None),'),
         ('("help.website", "PhotoCraft Website", &["Help"], None),', f'("help.website", "{APP_NAME} Website", &["Help"], None),'),
+        ('("window.theme.studio", "Studio Theme", &["Window", "Theme"], None),', '("window.theme.studio", "HORIX Theme", &["Window", "Theme"], None),'),
         ('    ("help.artcraftWebsite", "ArtCraft Website", &["Help"], None),\n', ""),
         ('    ("help.github", "PhotoCraft on GitHub", &["Help"], None),\n', ""),
         ('    ("help.reportIssue", "Report an Issue…", &["Help"], None),\n', ""),
-        ('("window.theme.pro", "Pro Theme", &["Window", "Theme"], None),', '("window.theme.pro", "HORIX Theme", &["Window", "Theme"], None),'),
+        ('("window.theme.pro", "Pro Theme", &["Window", "Theme"], None),', '("window.theme.pro", "HORIX Pro Theme", &["Window", "Theme"], None),'),
     ])
 
 
@@ -141,17 +142,17 @@ fn arabic(uri: &'static str, bytes: &'static [u8], aspect: f32, height: f32, col
 /// HORIX: the coming alternatives, announced on the start screen, with an early-access waitlist.
 pub fn coming_soon(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = crate::theme::Tokens::get(ui.ctx());
-    ui.add(arabic("bytes://soon-title.svg", include_bytes!("soon_title.svg"), SOON_TITLE_ASPECT, 26.0, t.accent));
-    ui.add_space(4.0);
-    ui.add(arabic("bytes://soon-apps.svg", include_bytes!("soon_apps.svg"), SOON_APPS_ASPECT, 17.0, t.text_dim));
-    ui.add_space(14.0);
-    let (rect, r) = ui.allocate_exact_size(egui::vec2(240.0, 40.0), egui::Sense::click());
+    ui.add(arabic("bytes://soon-title.svg", include_bytes!("soon_title.svg"), SOON_TITLE_ASPECT, 19.0, t.accent));
+    ui.add_space(3.0);
+    ui.add(arabic("bytes://soon-apps.svg", include_bytes!("soon_apps.svg"), SOON_APPS_ASPECT, 13.5, t.text_dim));
+    ui.add_space(10.0);
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(190.0, 32.0), egui::Sense::click());
     let r = r.on_hover_cursor(egui::CursorIcon::PointingHand);
     let [cr, cg, cb, _] = t.primary_bg.to_array();
     let fill = if r.hovered() { egui::Color32::from_rgb(cr.saturating_add(14), cg.saturating_add(14), cb.saturating_add(14)) } else { t.primary_bg };
     ui.painter().rect_filled(rect, t.radius, fill);
-    arabic("bytes://soon-cta.svg", include_bytes!("soon_cta.svg"), SOON_CTA_ASPECT, 16.0, t.primary_text)
-        .paint_at(ui, egui::Rect::from_center_size(rect.center(), egui::vec2(16.0 * SOON_CTA_ASPECT, 16.0)));
+    arabic("bytes://soon-cta.svg", include_bytes!("soon_cta.svg"), SOON_CTA_ASPECT, 13.0, t.primary_text)
+        .paint_at(ui, egui::Rect::from_center_size(rect.center(), egui::vec2(13.0 * SOON_CTA_ASPECT, 13.0)));
     if r.clicked() {
         waitlist(app, ui.ctx(), "early");
     }
@@ -175,7 +176,7 @@ pub fn url_for("""),
     edit(root, "crates/ui-egui/src/links.rs", [("/// HORIX: one line of Arabic", consts + "\n/// HORIX: one line of Arabic")])
     edit(root, "crates/ui-egui/src/canvas.rs", [
         ("let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 330.0 + recent_h));",
-         "let card = Rect::from_center_size(area.center(), egui::vec2(470.0, 600.0 + recent_h));"),
+         "let card = Rect::from_center_size(area.center(), egui::vec2(470.0, 570.0 + recent_h));"),
         ("""            crate::links::discord_button(app, ui, 190.0);
             ui.add_space(10.0);
             crate::links::link_row(app, ui);""",
@@ -205,7 +206,7 @@ pub fn url_for("""),
             ui.label(egui::RichText::new("THE VISIONARY AI EDITOR").font(crate::theme::medium(12.0)).color(t.text));
             ui.add_space(4.0);
             let (rule, _) = ui.allocate_exact_size(egui::vec2(28.0, 2.0), Sense::hover());
-            ui.painter().rect_filled(rule, 0.0, t.primary_bg);
+            ui.painter().rect_filled(rule, 0.0, egui::Color32::from_rgb(214, 60, 50)); // Horix Red, as in the logo
             ui.add_space(4.0);
             ui.label(egui::RichText::new("BY SABER GROUP").font(crate::theme::medium(10.5)).color(t.text_faint));
             ui.add_space(10.0);
@@ -224,10 +225,13 @@ pub fn url_for("""),
 def theme(root: Path) -> None:
     rel = "crates/ui-egui/src/theme.rs"
     edit(root, rel, [
-        ("    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas (default).\n    #[default]\n    ProMedium,",
-         "    #[default]\n    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas.\n    ProMedium,"),
-        ('ThemeKind::Pro => "Pro (Dark)",', 'ThemeKind::Pro => "HORIX (Dark)",'),
-        ('"pro" | "prodark" | "photoshop" | "dark" =>', '"pro" | "prodark" | "photoshop" | "dark" | "horix" =>'),
+        # HORIX's default is the Studio layout (rounded cards, floating panels) in HORIX colours.
+        ("    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas (default).\n    #[default]\n    ProMedium,\n    Studio,",
+         "    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas.\n    ProMedium,\n    /// HORIX's default.\n    #[default]\n    Studio,"),
+        ('ThemeKind::Pro => "Pro (Dark)",', 'ThemeKind::Pro => "HORIX Pro (Dark)",'),
+        ('ThemeKind::Studio => "Studio (Dark)",', 'ThemeKind::Studio => "HORIX (Dark)",'),
+        ('"pro" | "prodark" | "photoshop" | "dark" =>', '"pro" | "prodark" | "photoshop" | "horixpro" =>'),
+        ('"studio" | "studiodark" =>', '"studio" | "studiodark" | "dark" | "horix" =>'),
     ])
     # HORIX palette (brand/HORIX-Brand-Guide.md): Horus Ink #141314 canvas, Graphite #2A2727 panels,
     # Falcon Ivory #F3EFE8 text, Horix Red #D63C32 primary actions, Vision Amber #EA993F active state.
@@ -270,7 +274,23 @@ def theme(root: Path) -> None:
                 row_selected: Color32::from_rgb(77, 55, 32),
             },
 """
-    path.write_text(text[:start] + horix + text[end:], encoding="utf-8")
+    text = text[:start] + horix + text[end:]
+    s0 = text.index("            ThemeKind::Studio => Tokens {")
+    s1 = text.index("            ThemeKind::StudioLight => Tokens {")
+    studio = text[s0:s1]
+    for old, new in (
+        ("accent: Color32::from_rgb(139, 124, 246),", "accent: Color32::from_rgb(234, 153, 63),"),
+        ("accent_soft: Color32::from_rgba_unmultiplied(139, 124, 246, 46),", "accent_soft: Color32::from_rgba_unmultiplied(234, 153, 63, 46),"),
+        ("accent_border: Color32::from_rgba_unmultiplied(160, 148, 255, 110),", "accent_border: Color32::from_rgba_unmultiplied(234, 153, 63, 120),"),
+        ("accent_text: Color32::from_rgb(214, 208, 255),", "accent_text: Color32::from_rgb(246, 200, 148),"),
+        ("primary_bg: Color32::from_rgb(246, 246, 248),", "primary_bg: Color32::from_rgb(243, 239, 232),"),
+        ("primary_text: Color32::from_rgb(12, 12, 14),", "primary_text: Color32::from_rgb(20, 19, 20),"),
+        ("text: Color32::from_rgb(236, 236, 240),", "text: Color32::from_rgb(243, 239, 232),"),
+    ):
+        if studio.count(old) != 1:
+            sys.exit(f"rebrand: theme.rs Studio tokens: expected text not found: {old}")
+        studio = studio.replace(old, new)
+    path.write_text(text[:s0] + studio + text[s1:], encoding="utf-8")
     # Display face for headlines: Barlow Condensed ExtraBold (OFL), falling back to Inter.
     shutil.copyfile(HERE / "assets/fonts/BarlowCondensed-ExtraBold.ttf", root / "crates/ui-egui/src/horix_display.ttf")
     edit(root, rel, [
@@ -285,8 +305,8 @@ def theme(root: Path) -> None:
          "pub fn mono(size: f32) -> FontId {"),
     ])
     edit(root, "crates/engine/src/prefs.rs", [
-        ('Classic = "classic" } default ProMedium);', 'Classic = "classic" } default Pro);'),
-        ("            theme: Theme::ProMedium,", "            theme: Theme::Pro,"),
+        ('Classic = "classic" } default ProMedium);', 'Classic = "classic" } default Studio);'),
+        ("            theme: Theme::ProMedium,", "            theme: Theme::Studio,"),
     ])
 
 
@@ -1020,7 +1040,8 @@ def web_page_behaviour(root: Path) -> None:
     # A new storage key: browsers that ran the original build start from the SG - PS defaults
     # (Maro theme, Essentials workspace) instead of the old saved theme.
     edit(root, "apps/photocraft-web/src/web.rs", [
-        ('const PREFS_KEY: &str = "photocraft.preferences";', 'const PREFS_KEY: &str = "sgps.preferences";'),
+        # A new key when the defaults change, so returning visitors get them (HORIX theme).
+        ('const PREFS_KEY: &str = "photocraft.preferences";', 'const PREFS_KEY: &str = "horix.preferences";'),
     ])
 
 
