@@ -853,10 +853,12 @@
      let accent = Tokens::get(painter.ctx()).accent;
      for (pts, _) in path_lines(&path, &|q| xf.to_screen(q[0] as f32, q[1] as f32)) {
          // Every tool's own shape is convex (custom shapes aren't, and draw no fill).
-@@ -122,9 +139,41 @@
-     json!({"subpaths": [{"closed": closed, "knots": pen.knots.iter().map(|k| json!({"anchor": k[0], "in": k[1], "out": k[2], "smooth": k[1] != k[0] || k[2] != k[0]})).collect::<Vec<_>>()}]})
- }
+@@ -120,11 +137,43 @@
  
+ fn pen_to_json(pen: &PenPath, closed: bool) -> Value {
+     json!({"subpaths": [{"closed": closed, "knots": pen.knots.iter().map(|k| json!({"anchor": k[0], "in": k[1], "out": k[2], "smooth": k[1] != k[0] || k[2] != k[0]})).collect::<Vec<_>>()}]})
++}
++
 +/// Convert clicked anchors to a smooth Catmull-Rom-style Bezier path for the Curvature Pen.
 +fn curvature_handles(pen: &mut PenPath, closed: bool) {
 +    let n = pen.knots.len();
@@ -882,8 +884,8 @@
 +            knot[2] = [a[0] + tangent[0], a[1] + tangent[1]];
 +        }
 +    }
-+}
-+
+ }
+ 
  /// Pen press: close on the first anchor, else add an anchor (dragging pulls smooth handles).
  pub fn pen_down(app: &mut PhotocraftApp, x: f64, y: f64) {
 +    if matches!(app.ui.tool_options.pen_kind.as_str(), "add-anchor" | "delete-anchor" | "convert-anchor") {
@@ -1124,7 +1126,17 @@
      }
      // Pen path in progress, with handles of the last knot and a rubber band to the pointer.
      if let Some(pen) = &app.ui.pen {
-@@ -388,28 +601,38 @@
+@@ -382,34 +595,50 @@
+     let lbl = |ui: &mut egui::Ui, s: &str| {
+         ui.label(egui::RichText::new(s).color(t.text_dim).size(12.0));
+     };
++    let active_shape = app
++        .session
++        .active()
++        .and_then(|st| st.active_layer.and_then(|id| st.doc.layer(id)).and_then(|layer| matches!(layer.content, LayerContent::Shape(_)).then_some(layer.id.0)));
+     let o = &mut app.ui.tool_options;
+     if tool == Tool::PathSelection {
+         lbl(ui, if app.ui.vector_mask_target { "Drag to move the targeted vector mask" } else { tl!("Drag to move the active shape's path or the Work Path") });
          return true;
      }
      if tool == Tool::Pen {
@@ -1147,8 +1159,8 @@
 -                &[("key", &crate::shortcuts::pretty("Enter"))],
 -            ),
 -        );
-+        if o.vector_mode == "shape" {
-+            shape_style_options(ui, o, &lbl);
++        let style_edit = if o.vector_mode == "shape" {
++            shape_style_options(ui, o, &lbl)
 +        } else {
 +            lbl(
 +                ui,
@@ -1160,7 +1172,9 @@
 +                    _ => tl!("Click: corner · Drag: smooth · Click first point: close · Enter finish · Esc cancel"),
 +                },
 +            );
-+        }
++            None
++        };
++        apply_active_shape_style(app, active_shape, style_edit);
          return true;
      }
      let mut mode = "shape".to_string();
@@ -1173,38 +1187,60 @@
 -    ui.painter().rect_stroke(r, 2.0, Stroke::new(1.0, t.field_border), egui::StrokeKind::Outside);
 -    lbl(ui, tl!("Stroke:"));
 -    crate::widgets::value_field(ui, &mut o.stroke_width, 0.0..=288.0, "px", 58.0);
-+    shape_style_options(ui, o, &lbl);
++    let style_edit = shape_style_options(ui, o, &lbl);
      match tool {
          Tool::Rectangle => {
              crate::widgets::vline(ui, 22.0);
-@@ -438,6 +661,21 @@
+@@ -435,9 +664,45 @@
+         }
+         _ => {}
+     }
++    apply_active_shape_style(app, active_shape, style_edit);
      true
  }
  
-+fn shape_style_options(ui: &mut egui::Ui, o: &mut ToolOptions, lbl: &impl Fn(&mut egui::Ui, &str)) {
++fn shape_style_options(ui: &mut egui::Ui, o: &mut ToolOptions, lbl: &impl Fn(&mut egui::Ui, &str)) -> Option<Value> {
 +    lbl(ui, tl!("Fill:"));
-+    crate::widgets::checkbox(ui, &mut o.shape_fill, "");
++    let fill_toggle_changed = crate::widgets::checkbox(ui, &mut o.shape_fill, "").changed();
 +    let mut fill = option_rgb(&o.shape_fill_color, [0, 0, 0]);
-+    if ui.color_edit_button_srgb(&mut fill).on_hover_text(tl!("Fill Color")).changed() {
++    let fill_color_changed = ui.color_edit_button_srgb(&mut fill).on_hover_text(tl!("Fill Color")).changed();
++    if fill_color_changed {
 +        o.shape_fill_color = option_hex(fill);
 +    }
 +    lbl(ui, tl!("Stroke:"));
 +    let mut stroke = option_rgb(&o.shape_stroke_color, [255, 255, 255]);
-+    if ui.color_edit_button_srgb(&mut stroke).on_hover_text(tl!("Stroke Color")).changed() {
++    let stroke_color_changed = ui.color_edit_button_srgb(&mut stroke).on_hover_text(tl!("Stroke Color")).changed();
++    if stroke_color_changed {
 +        o.shape_stroke_color = option_hex(stroke);
 +    }
-+    crate::widgets::value_field(ui, &mut o.stroke_width, 0.0..=288.0, "px", 58.0);
++    let stroke_width_changed = crate::widgets::value_field(ui, &mut o.stroke_width, 0.0..=288.0, "px", 58.0).changed();
++
++    let mut edit = serde_json::Map::new();
++    if fill_toggle_changed || fill_color_changed {
++        edit.insert("fill".into(), if o.shape_fill { json!(o.shape_fill_color) } else { Value::Null });
++    }
++    if stroke_color_changed || stroke_width_changed {
++        edit.insert("stroke".into(), if o.stroke_width > 0.0 { json!({"width": o.stroke_width, "color": o.shape_stroke_color}) } else { Value::Null });
++    }
++    (!edit.is_empty()).then_some(Value::Object(edit))
++}
++
++fn apply_active_shape_style(app: &mut PhotocraftApp, active_shape: Option<u64>, edit: Option<Value>) {
++    let (Some(layer), Some(mut edit)) = (active_shape, edit) else { return };
++    edit["layer"] = json!(layer);
++    if let Err(error) = app.run("shape.edit", edit) {
++        app.ui.status = error;
++        app.ui.status_error = true;
++    }
 +}
 +
  // ---------------------------------------------------------------------------------------------
  // Properties (shape layers)
  
-@@ -854,8 +1092,64 @@
-         path_selection_finish(&mut app, [50.0, 50.0], [60.0, 55.0]);
-         let wp = app.session.active().unwrap().doc.work_path.clone().unwrap();
+@@ -856,6 +1121,77 @@
          assert_eq!((wp.subpaths[0].knots[0].anchor.x, wp.subpaths[0].knots[0].anchor.y), (30.0, 25.0));
-+    }
-+
+     }
+ 
 +    #[test]
 +    fn curvature_pen_builds_smooth_handles_without_dragging() {
 +        let mut app = app();
@@ -1220,8 +1256,8 @@
 +        let path = app.session.active().unwrap().doc.work_path.clone().unwrap();
 +        assert_eq!(path.subpaths[0].knots.len(), 3);
 +        assert!(path.subpaths[0].knots.iter().all(|k| k.smooth));
-     }
- 
++    }
++
 +    #[test]
 +    fn pen_anchor_tools_add_convert_and_delete_points() {
 +        let mut app = app();
@@ -1259,6 +1295,21 @@
 +        let photocraft_doc::Fill::Solid(stroke) = &shape.stroke.as_ref().unwrap().paint else { panic!("solid stroke") };
 +        assert_eq!(&fill.to_rgba8()[..3], &[0x12, 0x34, 0x56]);
 +        assert_eq!(&stroke.to_rgba8()[..3], &[0xfe, 0xdc, 0xba]);
++
++        let id = st.active_layer.unwrap().0;
++        apply_active_shape_style(&mut app, Some(id), Some(json!({"fill": "#abcdef", "stroke": {"width": 7.0, "color": "#112233"}})));
++        let st = app.session.active().unwrap();
++        let LayerContent::Shape(shape) = &st.doc.layer(st.active_layer.unwrap()).unwrap().content else { panic!("shape layer") };
++        let photocraft_doc::Fill::Solid(fill) = shape.fill.as_ref().unwrap() else { panic!("solid fill") };
++        let photocraft_doc::Fill::Solid(stroke) = &shape.stroke.as_ref().unwrap().paint else { panic!("solid stroke") };
++        assert_eq!(&fill.to_rgba8()[..3], &[0xab, 0xcd, 0xef]);
++        assert_eq!(&stroke.to_rgba8()[..3], &[0x11, 0x22, 0x33]);
++        assert_eq!(shape.stroke.as_ref().unwrap().width, 7.0);
++
++        apply_active_shape_style(&mut app, Some(id), Some(json!({"fill": null, "stroke": null})));
++        let st = app.session.active().unwrap();
++        let LayerContent::Shape(shape) = &st.doc.layer(st.active_layer.unwrap()).unwrap().content else { panic!("shape layer") };
++        assert!(shape.fill.is_none() && shape.stroke.is_none());
 +    }
 +
      /// #534: dragging in a shape's fill picker, opened from the Properties panel at the right edge
