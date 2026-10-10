@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy a built SG - PS package to Hostinger through the Hostinger API, then check it is live.
+# Deploy a built HORIX package to Hostinger through the Hostinger API, then check it is live.
 #
 # Usage: HOSTINGER_API_TOKEN=... apps/sg-ps/deploy.sh [deploy/sg-ps/sg-ps-<version>-hostinger.zip]
 # Env:   HOSTINGER_API_TOKEN (required)  hPanel > Account > API

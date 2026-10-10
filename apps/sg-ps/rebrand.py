@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebrand an unpacked PhotoCraft source tree as SG - PS (Saber Group).
+"""Rebrand an unpacked PhotoCraft source tree as HORIX (Saber Group).
 
 Usage: python3 -I rebrand.py <path-to-photocraft-source>
 
@@ -8,10 +8,11 @@ fails loudly here instead of silently shipping the old branding. Re-run on a fre
 source; the script is not meant to run twice on the same tree.
 
 What it changes (UI only; licence files are kept as the licences require):
-  - App name "PhotoCraft" -> "SG - PS" in every user-visible string and translation.
+  - App name "PhotoCraft" -> "HORIX" in every user-visible string and translation.
   - Removes the ArtCraft Discord, website and GitHub links; Help/start-screen links go to Saber.
-  - New Maro logo on the start screen, About dialog and browser tab.
-  - Maro colour theme (dark, red-orange accent) as the default theme.
+  - HORIX logo (apps/sg-ps/brand/) on the start screen, About dialog, loading screen and browser tab.
+  - HORIX colour theme (Horus Ink, Graphite, Horix Red, Vision Amber) as the default theme.
+  - Barlow Condensed ExtraBold as the display face for headlines (brand guide: condensed grotesk).
   - Full tool options bar in every theme (upstream shows it only in the Pro themes).
   - Select Subject: spatial prior around the salient mass (see segeval/), fewer leaks into busy
     backgrounds.
@@ -24,13 +25,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-APP_NAME = "SG - PS"
+APP_NAME = "HORIX"
 SABER_SITE = "https://sabergroupacademy.com"
 APP_SITE = "https://studio.engsaber.space"
 FACEBOOK = "https://www.facebook.com/SABERGROUP.Courses/"
-# WhatsApp with a ready message: "Hello, I am coming from SG - PS and want to know about the courses and services".
+# WhatsApp with a ready message: "Hello, I am coming from HORIX and want to know about the courses and services".
 WHATSAPP = ("https://wa.me/201103221873?text=%D9%85%D8%B1%D8%AD%D8%A8%D9%8B%D8%A7%D8%8C%20%D8%AC%D8%A7%D9%8A%20%D9%85%D9%86%20"
-            "SG%20-%20PS%20%D9%88%D8%B9%D8%A7%D9%8A%D8%B2%20%D8%A3%D8%B9%D8%B1%D9%81%20%D8%B9%D9%86%20%D8%A7%D9%84%D9%83%D9%88%D8%B1%D8%B3%D8%A7%D8%AA%20"
+            "HORIX%20%D9%88%D8%B9%D8%A7%D9%8A%D8%B2%20%D8%A3%D8%B9%D8%B1%D9%81%20%D8%B9%D9%86%20%D8%A7%D9%84%D9%83%D9%88%D8%B1%D8%B3%D8%A7%D8%AA%20"
             "%D9%88%D8%A7%D9%84%D8%AE%D8%AF%D9%85%D8%A7%D8%AA")
 HERE = Path(__file__).resolve().parent
 
@@ -86,7 +87,7 @@ def menus(root: Path) -> None:
         ('    ("help.artcraftWebsite", "ArtCraft Website", &["Help"], None),\n', ""),
         ('    ("help.github", "PhotoCraft on GitHub", &["Help"], None),\n', ""),
         ('    ("help.reportIssue", "Report an Issue…", &["Help"], None),\n', ""),
-        ('("window.theme.pro", "Pro Theme", &["Window", "Theme"], None),', '("window.theme.pro", "Maro Theme", &["Window", "Theme"], None),'),
+        ('("window.theme.pro", "Pro Theme", &["Window", "Theme"], None),', '("window.theme.pro", "HORIX Theme", &["Window", "Theme"], None),'),
     ])
 
 
@@ -97,7 +98,9 @@ def title_bar(root: Path) -> None:
 
 
 def logo(root: Path) -> None:
-    shutil.copyfile(HERE / "assets" / "sg-ps-logo.svg", root / "crates/ui-egui/src/sg_ps_logo.svg")
+    assets = HERE / "assets"
+    shutil.copyfile(assets / "horix-symbol.svg", root / "crates/ui-egui/src/horix_symbol.svg")
+    shutil.copyfile(assets / "horix-lockup.svg", root / "crates/ui-egui/src/horix_lockup.svg")
     edit(root, "crates/ui-egui/src/links.rs", [
         ("pub fn url_for(", """/// SG - PS: "Contact us" (WhatsApp, courses and services), next to the Facebook button.
 pub fn contact_button(app: &mut PhotocraftApp, ui: &mut egui::Ui, min_width: f32) -> egui::Response {
@@ -125,7 +128,7 @@ pub fn waitlist(app: &mut PhotocraftApp, ctx: &egui::Context, product: &str) {
 /// SG - PS: the next apps of the suite, announced on the start screen, with a waitlist.
 pub fn coming_soon(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = crate::theme::Tokens::get(ui.ctx());
-    ui.label(egui::RichText::new(tl!("COMING SOON TO SG STUDIO")).size(12.0).strong().color(t.accent));
+    ui.label(egui::RichText::new(tl!("COMING SOON TO SG STUDIO")).font(crate::theme::display(17.0)).color(t.accent));
     ui.add_space(2.0);
     ui.label(egui::RichText::new(tl!("Get notified when they launch and book your free trial session")).size(12.0).color(t.text_dim));
     ui.add_space(8.0);
@@ -143,7 +146,7 @@ pub fn coming_soon(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 .show(ui, |ui| {
                     ui.set_width(w - 18.0);
                     ui.vertical_centered(|ui| {
-                        ui.label(egui::RichText::new(name).size(15.0).strong().color(t.text));
+                        ui.label(egui::RichText::new(name).font(crate::theme::display(19.0)).color(t.text));
                         ui.label(egui::RichText::new(what).size(11.0).color(t.text_dim));
                         ui.add_space(6.0);
                         if crate::widgets::secondary_button(ui, tl!("Notify me"), 96.0).clicked() {
@@ -168,16 +171,23 @@ pub fn coming_soon(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
 }
 
-/// The SG - PS (Maro) logo, rendered by the egui_extras SVG loader.
-pub fn logo(size: f32) -> egui::Image<'static> {
-    egui::Image::from_bytes("bytes://sg-ps-logo.svg", include_bytes!("sg_ps_logo.svg").as_slice()).fit_to_exact_size(egui::Vec2::splat(size))
+/// The HORIX falcon symbol, `height` tall, rendered by the egui_extras SVG loader.
+pub fn logo(height: f32) -> egui::Image<'static> {
+    egui::Image::from_bytes("bytes://horix-symbol.svg", include_bytes!("horix_symbol.svg").as_slice())
+        .fit_to_exact_size(egui::vec2(height * 1051.0 / 753.0, height))
+}
+
+/// The HORIX logo (falcon over the HORIX letters), `width` wide.
+pub fn lockup(width: f32) -> egui::Image<'static> {
+    egui::Image::from_bytes("bytes://horix-lockup.svg", include_bytes!("horix_lockup.svg").as_slice())
+        .fit_to_exact_size(egui::vec2(width, width * 1107.0 / 1334.0))
 }
 
 pub fn url_for("""),
     ])
     edit(root, "crates/ui-egui/src/canvas.rs", [
         ("let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 330.0 + recent_h));",
-         "let card = Rect::from_center_size(area.center(), egui::vec2(470.0, 600.0 + recent_h));"),
+         "let card = Rect::from_center_size(area.center(), egui::vec2(470.0, 680.0 + recent_h));"),
         ("""            crate::links::discord_button(app, ui, 190.0);
             ui.add_space(10.0);
             crate::links::link_row(app, ui);""",
@@ -191,21 +201,33 @@ pub fn url_for("""),
             crate::links::link_row(app, ui);
             ui.add_space(22.0);
             crate::links::coming_soon(app, ui);"""),
-        ("""        ui.vertical_centered(|ui| {
-            ui.horizontal(|ui| {
-                let title = ui.painter().layout_no_wrap(tl!("PhotoCraft").into()""",
-         """        ui.vertical_centered(|ui| {
-            ui.add(crate::links::logo(80.0));
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                let title = ui.painter().layout_no_wrap(tl!("PhotoCraft").into()"""),
-        ('let by = ui.painter().layout_no_wrap("open source".into()', 'let by = ui.painter().layout_no_wrap("by Saber Group".into()'),
+        # The official lockup in place of the typed title: logo, descriptor, a short red rule, "BY SABER GROUP".
+        ("""            ui.horizontal(|ui| {
+                let title = ui.painter().layout_no_wrap(tl!("PhotoCraft").into(), crate::theme::semibold(38.0), t.text);
+                let by = ui.painter().layout_no_wrap("open source".into(), egui::FontId::proportional(13.0), t.text_faint);
+                let total = title.size().x + by.size().x + 10.0;
+                ui.add_space(((card.width() - total) / 2.0).max(0.0));
+                let (r, _) = ui.allocate_exact_size(title.size(), Sense::hover());
+                ui.painter().galley(r.min, title, t.text);
+                let (r2, _) = ui.allocate_exact_size(egui::vec2(by.size().x + 10.0, r.height()), Sense::hover());
+                ui.painter().galley(egui::pos2(r2.left() + 10.0, r.bottom() - by.size().y - 8.0), by, t.text_faint);
+            });
+""", """            ui.add(crate::links::lockup(190.0));
+            ui.add_space(12.0);
+            ui.label(egui::RichText::new("THE VISIONARY AI EDITOR").font(crate::theme::medium(12.0)).color(t.text));
+            ui.add_space(4.0);
+            let (rule, _) = ui.allocate_exact_size(egui::vec2(28.0, 2.0), Sense::hover());
+            ui.painter().rect_filled(rule, 0.0, t.primary_bg);
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new("BY SABER GROUP").font(crate::theme::medium(10.5)).color(t.text_faint));
+            ui.add_space(10.0);
+"""),
     ])
     edit(root, "crates/ui-egui/src/dialogs.rs", [
         ('ui.label(tl!("PhotoCraft — an open-source, native image editor written in Rust."));',
          'ui.vertical_centered(|ui| ui.add(crate::links::logo(64.0)));\n'
          '                    ui.add_space(6.0);\n'
-         '                    ui.label(tl!("PhotoCraft — the image editor of Saber Group Academy."));'),
+         '                    ui.label(tl!("PhotoCraft — the visionary AI editor by Saber Group."));'),
         ('ui.weak("egui · wgpu · photocraft-engine");',
          'ui.weak("Built on open-source software (MIT / Apache-2.0). Licence texts ship with the app.");'),
     ])
@@ -216,50 +238,64 @@ def theme(root: Path) -> None:
     edit(root, rel, [
         ("    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas (default).\n    #[default]\n    ProMedium,",
          "    #[default]\n    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas.\n    ProMedium,"),
-        ('ThemeKind::Pro => "Pro (Dark)",', 'ThemeKind::Pro => "Maro (Dark)",'),
-        ('"pro" | "prodark" | "photoshop" | "dark" =>', '"pro" | "prodark" | "photoshop" | "dark" | "maro" =>'),
+        ('ThemeKind::Pro => "Pro (Dark)",', 'ThemeKind::Pro => "HORIX (Dark)",'),
+        ('"pro" | "prodark" | "photoshop" | "dark" =>', '"pro" | "prodark" | "photoshop" | "dark" | "horix" =>'),
     ])
-    # Maro palette: charcoal #151515/#1c1c1c, red-orange #c4321f/#e85c3b, amber #fbbf24.
+    # HORIX palette (brand/HORIX-Brand-Guide.md): Horus Ink #141314 canvas, Graphite #2A2727 panels,
+    # Falcon Ivory #F3EFE8 text, Horix Red #D63C32 primary actions, Vision Amber #EA993F active state.
     path = root / rel
     text = path.read_text(encoding="utf-8")
     start = text.index("            ThemeKind::Pro => Tokens {")
     end = text.index("            ThemeKind::Studio => Tokens {")
-    maro = """            ThemeKind::Pro => Tokens {
+    horix = """            ThemeKind::Pro => Tokens {
                 kind,
-                chrome: Color32::from_rgb(28, 28, 28),
-                canvas: Color32::from_rgb(18, 18, 18),
-                canvas_dot: Color32::from_rgb(18, 18, 18),
-                dock: Color32::from_rgb(15, 15, 15),
-                card: Color32::from_rgb(28, 28, 28),
-                card_border: Color32::from_rgb(15, 15, 15),
-                field: Color32::from_rgb(21, 21, 21),
-                field_border: Color32::from_rgb(70, 54, 50),
-                hover: Color32::from_rgb(52, 40, 37),
-                pressed: Color32::from_rgb(72, 46, 40),
-                text: Color32::from_rgb(236, 236, 236),
-                text_dim: Color32::from_rgb(190, 184, 182),
-                text_faint: Color32::from_rgb(134, 127, 125),
-                icon: Color32::from_rgb(218, 212, 210),
-                accent: Color32::from_rgb(232, 92, 59),
-                accent_soft: Color32::from_rgb(74, 44, 37),
-                accent_border: Color32::from_rgb(232, 92, 59),
-                accent_text: Color32::WHITE,
-                separator: Color32::from_rgb(12, 12, 12),
+                chrome: Color32::from_rgb(42, 39, 39),
+                canvas: Color32::from_rgb(20, 19, 20),
+                canvas_dot: Color32::from_rgb(20, 19, 20),
+                dock: Color32::from_rgb(30, 28, 28),
+                card: Color32::from_rgb(42, 39, 39),
+                card_border: Color32::from_rgb(28, 26, 26),
+                field: Color32::from_rgb(28, 26, 26),
+                field_border: Color32::from_rgb(68, 61, 58),
+                hover: Color32::from_rgb(58, 52, 50),
+                pressed: Color32::from_rgb(76, 62, 54),
+                text: Color32::from_rgb(243, 239, 232),
+                text_dim: Color32::from_rgb(196, 189, 180),
+                text_faint: Color32::from_rgb(140, 132, 124),
+                icon: Color32::from_rgb(222, 216, 207),
+                accent: Color32::from_rgb(234, 153, 63),
+                accent_soft: Color32::from_rgb(77, 55, 32),
+                accent_border: Color32::from_rgb(234, 153, 63),
+                accent_text: Color32::from_rgb(20, 19, 20),
+                separator: Color32::from_rgb(20, 19, 20),
                 shadow: Color32::from_black_alpha(160),
-                primary_bg: Color32::from_rgb(196, 50, 31),
-                primary_text: Color32::WHITE,
+                primary_bg: Color32::from_rgb(214, 60, 50),
+                primary_text: Color32::from_rgb(243, 239, 232),
                 danger: Color32::from_rgb(255, 112, 112),
-                warning: Color32::from_rgb(251, 191, 36),
+                warning: Color32::from_rgb(242, 193, 78),
                 radius_sm: 4.0,
                 radius: 6.0,
                 radius_lg: 8.0,
                 bevel: false,
                 pro: true,
-                tab_strip: Color32::from_rgb(21, 21, 21),
-                row_selected: Color32::from_rgb(92, 40, 30),
+                tab_strip: Color32::from_rgb(30, 28, 28),
+                row_selected: Color32::from_rgb(77, 55, 32),
             },
 """
-    path.write_text(text[:start] + maro + text[end:], encoding="utf-8")
+    path.write_text(text[:start] + horix + text[end:], encoding="utf-8")
+    # Display face for headlines: Barlow Condensed ExtraBold (OFL), falling back to Inter.
+    shutil.copyfile(HERE / "assets/fonts/BarlowCondensed-ExtraBold.ttf", root / "crates/ui-egui/src/horix_display.ttf")
+    edit(root, rel, [
+        ('    add(&mut fonts, "JetBrainsMono", photocraft_text::fonts::JETBRAINS_MONO_REGULAR);\n',
+         '    add(&mut fonts, "JetBrainsMono", photocraft_text::fonts::JETBRAINS_MONO_REGULAR);\n'
+         '    add(&mut fonts, "HorixDisplay", include_bytes!("horix_display.ttf").as_slice());\n'),
+        ('for (fam, primary) in [("medium", "Inter-Medium"), ("semibold", "Inter-SemiBold")] {',
+         'for (fam, primary) in [("medium", "Inter-Medium"), ("semibold", "Inter-SemiBold"), ("display", "HorixDisplay")] {'),
+        ("pub fn mono(size: f32) -> FontId {",
+         "/// HORIX: the brand's display face (condensed, heavy) for headlines.\n"
+         "pub fn display(size: f32) -> FontId {\n    FontId::new(size, FontFamily::Name(\"display\".into()))\n}\n"
+         "pub fn mono(size: f32) -> FontId {"),
+    ])
     edit(root, "crates/engine/src/prefs.rs", [
         ('Classic = "classic" } default ProMedium);', 'Classic = "classic" } default Pro);'),
         ("            theme: Theme::ProMedium,", "            theme: Theme::Pro,"),
@@ -689,10 +725,10 @@ KEYBOARD_SCRIPT = """  <script>
   <style>
     #sgps_hint { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 10;
       max-width: calc(100% - 32px); display: flex; gap: 12px; align-items: center; padding: 10px 14px;
-      background: #1c1c1c; color: #ececec; border: 1px solid #c4321f; border-radius: 8px;
-      font: 13px/1.5 system-ui, 'Segoe UI', Tahoma, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
-    #sgps_hint b { color: #fbbf24; }
-    #sgps_hint button { background: none; border: 0; color: #e85c3b; font-size: 18px; cursor: pointer; padding: 0 4px; }
+      background: #2A2727; color: #F3EFE8; border: 1px solid #443D3A; border-radius: 8px;
+      font: 13px/1.5 Inter, system-ui, 'Segoe UI', Tahoma, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+    #sgps_hint b { color: #EA993F; }
+    #sgps_hint button { background: none; border: 0; color: #EA993F; font-size: 18px; cursor: pointer; padding: 0 4px; }
   </style>
 """
 
@@ -775,9 +811,9 @@ FONTS_SCRIPT = """  <script>
   </script>
   <style>
     #sgps_toast { display: none; position: fixed; right: 16px; bottom: 36px; z-index: 11; max-width: min(460px, calc(100% - 32px));
-      padding: 10px 14px; background: #1c1c1c; color: #ececec; border: 1px solid #c4321f; border-radius: 8px;
-      font: 13px/1.5 system-ui, 'Segoe UI', Tahoma, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
-    #sgps_toast b { color: #fbbf24; }
+      padding: 10px 14px; background: #2A2727; color: #F3EFE8; border: 1px solid #443D3A; border-radius: 8px;
+      font: 13px/1.5 Inter, system-ui, 'Segoe UI', Tahoma, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+    #sgps_toast b { color: #EA993F; }
   </style>
 """
 
@@ -879,28 +915,28 @@ WAITLIST_SCRIPT = """  <div id="sgps_wl" dir="rtl" hidden>
   </script>
   <style>
     #sgps_wl { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
-      padding: 16px; background: rgba(0,0,0,.6); font: 14px/1.6 system-ui, 'Segoe UI', Tahoma, sans-serif; color: #ececec; }
+      padding: 16px; background: rgba(0,0,0,.6); font: 14px/1.6 Inter, system-ui, 'Segoe UI', Tahoma, sans-serif; color: #F3EFE8; }
     #sgps_wl[hidden], #sgps_wl [hidden] { display: none !important; }
     #sgps_wl form, #sgps_wl_done { position: relative; width: min(460px, 100%); max-height: calc(100vh - 32px); overflow: auto;
-      background: #1c1c1c; border: 1px solid #c4321f; border-radius: 12px; padding: 20px 22px; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
-    #sgps_wl h2 { margin: 0 0 6px; font-size: 20px; color: #fff; }
-    #sgps_wl p { margin: 0 0 14px; color: #c9c3c1; }
-    #sgps_wl .badge { display: inline-block; margin-bottom: 8px; padding: 2px 10px; border-radius: 999px; background: #c4321f; color: #fff; font-size: 12px; }
+      background: #2A2727; border: 1px solid #443D3A; border-radius: 12px; padding: 20px 22px; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+    #sgps_wl h2 { margin: 0 0 6px; font-size: 20px; color: #F3EFE8; }
+    #sgps_wl p { margin: 0 0 14px; color: #C4BDB4; }
+    #sgps_wl .badge { display: inline-block; margin-bottom: 8px; padding: 2px 10px; border-radius: 999px; background: #D63C32; color: #F3EFE8; font-size: 12px; }
     #sgps_wl label { display: block; margin-bottom: 10px; color: #ddd; }
     #sgps_wl input[name=name], #sgps_wl input[name=phone] { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 9px 10px;
-      background: #121212; color: #fff; border: 1px solid #463632; border-radius: 8px; font: inherit; }
-    #sgps_wl input:focus { outline: 2px solid #e85c3b; outline-offset: -1px; }
-    #sgps_wl fieldset { border: 1px solid #333; border-radius: 8px; margin: 4px 0 12px; padding: 8px 12px 2px; }
-    #sgps_wl legend { padding: 0 6px; color: #fbbf24; }
+      background: #141314; color: #F3EFE8; border: 1px solid #443D3A; border-radius: 8px; font: inherit; }
+    #sgps_wl input:focus { outline: 2px solid #EA993F; outline-offset: -1px; }
+    #sgps_wl fieldset { border: 1px solid #443D3A; border-radius: 8px; margin: 4px 0 12px; padding: 8px 12px 2px; }
+    #sgps_wl legend { padding: 0 6px; color: #EA993F; }
     #sgps_wl .chk { display: flex; gap: 8px; align-items: baseline; margin-bottom: 8px; }
-    #sgps_wl .chk input { accent-color: #e85c3b; }
+    #sgps_wl .chk input { accent-color: #EA993F; }
     #sgps_wl .chk small { color: #8f8885; margin-inline-start: auto; direction: ltr; }
-    #sgps_wl .consent { color: #fff; }
+    #sgps_wl .consent { color: #F3EFE8; }
     #sgps_wl .err { color: #ff8a70; min-height: 1.2em; margin: 0 0 8px; }
-    #sgps_wl .go { display: block; width: 100%; box-sizing: border-box; padding: 10px; border: 0; border-radius: 8px; background: #c4321f;
-      color: #fff; font: inherit; font-weight: 700; text-align: center; text-decoration: none; cursor: pointer; }
+    #sgps_wl .go { display: block; width: 100%; box-sizing: border-box; padding: 10px; border: 0; border-radius: 8px; background: #D63C32;
+      color: #F3EFE8; font: inherit; font-weight: 700; text-align: center; text-decoration: none; cursor: pointer; }
     #sgps_wl .go:disabled { opacity: .6; cursor: wait; }
-    #sgps_wl .x { position: absolute; top: 8px; left: 10px; background: none; border: 0; color: #e85c3b; font-size: 22px; cursor: pointer; }
+    #sgps_wl .x { position: absolute; top: 8px; left: 10px; background: none; border: 0; color: #EA993F; font-size: 22px; cursor: pointer; }
   </style>
 """
 
@@ -1003,13 +1039,18 @@ def web_page_behaviour(root: Path) -> None:
 
 def web(root: Path) -> None:
     edit(root, "apps/photocraft-web/Cargo.toml", [('name = "photocraft-web"\npath = "src/main.rs"', 'name = "sg-ps"\npath = "src/main.rs"')])
-    shutil.copyfile(HERE / "assets" / "sg-ps-logo.svg", root / "apps/photocraft-web/sg-ps-logo.svg")
+    shutil.copyfile(HERE / "assets" / "horix-favicon.svg", root / "apps/photocraft-web/horix-favicon.svg")
+    # The HORIX logo on the loading screen, inline so it shows before anything else downloads.
+    loading_logo = (HERE / "assets" / "horix-lockup.svg").read_text(encoding="utf-8").strip().replace(
+        "<svg ", '<svg width="150" style="display:block;margin:0 auto 22px" ', 1)
     edit(root, "apps/photocraft-web/index.html", [
         ('data-bin="photocraft-web"', 'data-bin="sg-ps"'),
-        ("<title>PhotoCraft</title>", f'<title>{APP_NAME}</title>\n  <link data-trunk rel="icon" href="sg-ps-logo.svg">\n'
-                                      f'  <meta name="theme-color" content="#151515">'),
-        ("background: #262626;", "background: #151515;"),
-        ("color: #e0e0e0;", "color: #e85c3b;"),
+        ("<title>PhotoCraft</title>", f'<title>{APP_NAME}</title>\n  <link data-trunk rel="icon" href="horix-favicon.svg">\n'
+                                      f'  <meta name="theme-color" content="#141314">'),
+        ("background: #262626;", "background: #141314;"),
+        ("color: #b8b8b8;", "color: #C4BDB4;"),
+        ("color: #e0e0e0;", "color: #EA993F;"),
+        ("<p>Loading PhotoCraft&hellip;</p>", loading_logo + "\n    <p>Loading PhotoCraft&hellip;</p>"),
     ])
     for rel in ("apps/photocraft-web/index.html", "apps/photocraft-web/src/web.rs", "apps/photocraft-web/src/main.rs"):
         path = root / rel
@@ -1038,20 +1079,20 @@ def rename_everywhere(root: Path) -> int:
 
 
 def desktop(root: Path) -> None:
-    """The native desktop app (Windows/macOS): Maro icons, Saber names, own data folder."""
+    """The native desktop app (Windows/macOS): HORIX icons, Saber names, own data folder."""
     icons = HERE / "assets" / "desktop"
     app_icon = root / "assets/app-icon"
-    shutil.copyfile(icons / "sg-ps-1024.png", app_icon / "photocraft-1024.png")
-    shutil.copyfile(icons / "sg-ps.ico", app_icon / "photocraft.ico")
-    shutil.copyfile(icons / "sg-ps.icns", app_icon / "photocraft.icns")
-    shutil.copyfile(icons / "sg-ps-256.png", app_icon / "hicolor/256x256/apps/ai.storyteller.photocraft.png")
+    shutil.copyfile(icons / "horix-1024.png", app_icon / "photocraft-1024.png")
+    shutil.copyfile(icons / "horix.ico", app_icon / "photocraft.ico")
+    shutil.copyfile(icons / "horix.icns", app_icon / "photocraft.icns")
+    shutil.copyfile(icons / "horix-256.png", app_icon / "hicolor/256x256/apps/ai.storyteller.photocraft.png")
     edit(root, "apps/photocraft/build.rs", [
         ('.set("CompanyName", "Learning Machines LLC")', '.set("CompanyName", "Saber Group Academy")'),
-        ('.set("OriginalFilename", "photocraft.exe")', '.set("OriginalFilename", "SG-PS.exe")'),
-        ('.set("InternalName", "photocraft")', '.set("InternalName", "SG-PS")'),
+        ('.set("OriginalFilename", "photocraft.exe")', '.set("OriginalFilename", "HORIX.exe")'),
+        ('.set("InternalName", "photocraft")', '.set("InternalName", "HORIX")'),
     ])
     edit(root, "apps/photocraft/src/app_dirs.rs", [
-        ('pub const PORTABLE_DATA_DIR: &str = "PhotoCraftData";', 'pub const PORTABLE_DATA_DIR: &str = "SG-PS-Data";'),
+        ('pub const PORTABLE_DATA_DIR: &str = "PhotoCraftData";', 'pub const PORTABLE_DATA_DIR: &str = "HORIX-Data";'),
     ])
     edit(root, "apps/photocraft/src/main.rs", [
         ('const APP_ID: &str = "ai.storyteller.photocraft";', 'const APP_ID: &str = "com.sabergroup.sgps";'),
@@ -1243,16 +1284,16 @@ CRASH_SCRIPT = """  <script>
   </script>
   <style>
     #sgps_crash { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
-      padding: 16px; background: rgba(0,0,0,.7); font: 14px/1.6 system-ui, 'Segoe UI', Tahoma, sans-serif; color: #ececec; }
-    #sgps_crash .box { width: min(520px, 100%); background: #1c1c1c; border: 1px solid #c4321f; border-radius: 12px; padding: 20px 22px; }
-    #sgps_crash h2 { margin: 0 0 6px; font-size: 20px; color: #fff; }
-    #sgps_crash p { margin: 0 0 10px; color: #c9c3c1; }
+      padding: 16px; background: rgba(0,0,0,.7); font: 14px/1.6 Inter, system-ui, 'Segoe UI', Tahoma, sans-serif; color: #F3EFE8; }
+    #sgps_crash .box { width: min(520px, 100%); background: #2A2727; border: 1px solid #443D3A; border-radius: 12px; padding: 20px 22px; }
+    #sgps_crash h2 { margin: 0 0 6px; font-size: 20px; color: #F3EFE8; }
+    #sgps_crash p { margin: 0 0 10px; color: #C4BDB4; }
     #sgps_crash pre { direction: ltr; text-align: left; max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-all;
-      background: #111; border: 1px solid #333; border-radius: 8px; padding: 8px; font-size: 11px; color: #ff8a70; }
+      background: #141314; border: 1px solid #443D3A; border-radius: 8px; padding: 8px; font-size: 11px; color: #ff8a70; }
     #sgps_crash .row { display: flex; gap: 10px; }
-    #sgps_crash button, #sgps_crash a { flex: 1; padding: 10px; border-radius: 8px; border: 0; background: #c4321f; color: #fff;
+    #sgps_crash button, #sgps_crash a { flex: 1; padding: 10px; border-radius: 8px; border: 0; background: #D63C32; color: #F3EFE8;
       font: inherit; font-weight: 700; text-align: center; text-decoration: none; cursor: pointer; }
-    #sgps_crash a { background: #2a2a2a; }
+    #sgps_crash a { background: #3A3535; }
   </style>
 """
 

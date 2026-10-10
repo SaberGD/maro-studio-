@@ -1,7 +1,7 @@
-# Builds SG - PS and publishes it to https://studio.engsaber.space on every push to the default
+# Builds HORIX (apps/sg-ps) and publishes it to https://studio.engsaber.space on every push to the default
 # branch that touches the app. Needs the repository secret HOSTINGER_API_TOKEN
 # (hPanel > Account > API). Optional repository variables: HOSTINGER_USERNAME, SGPS_DOMAIN.
-name: Deploy SG - PS
+name: Deploy HORIX
 
 on:
   push:

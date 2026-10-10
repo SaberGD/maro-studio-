@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build SG - PS (rebranded PhotoCraft Web) and package it for Hostinger.
+# Build HORIX (rebranded PhotoCraft Web) and package it for Hostinger.
 #
 # Usage: apps/sg-ps/build.sh [photocraft-source.tar.gz]
 #   default source: archive/photocraft/photocraft-source-0.3.0.tar.gz
@@ -27,7 +27,10 @@ cp "$HERE/hosting/.htaccess" "$WORK/site/.htaccess"
 cp "$HERE/hosting/waitlist.php" "$WORK/site/waitlist.php"
 # Desktop download page (studio.engsaber.space/download/); the zips live on engsaber.space.
 cp -R "$HERE/hosting/download" "$WORK/site/download"
-cp "$HERE/assets/sg-ps-logo.svg" "$WORK/site/download/logo.svg"
+cp "$HERE/assets/horix-lockup.svg" "$WORK/site/download/logo.svg"
+cp "$HERE/assets/horix-favicon.svg" "$WORK/site/download/favicon.svg"
+mkdir -p "$WORK/site/download/fonts"
+cp "$HERE"/assets/fonts/*.woff2 "$WORK/site/download/fonts/"
 # n8n webhook for new leads (GitHub secret SGPS_LEAD_WEBHOOK); server-side only, never in the page.
 if [ -n "${SGPS_LEAD_WEBHOOK:-}" ]; then
   python3 -c 'import sys; u = sys.argv[1].replace("\\", "\\\\").replace("\x27", "\\\x27"); open(sys.argv[2], "w").write("<?php return [\x27lead_webhook\x27 => \x27" + u + "\x27];\n")' \
@@ -37,11 +40,15 @@ fi
 # fonts and icons compiled into the app. They are plain files on the server, not shown in the UI.
 cp "$WORK/src/LICENSE-MIT" "$WORK/site/LICENSE.txt"
 {
-  echo "SG - PS includes the following third-party material."
+  echo "HORIX includes the following third-party material."
   for f in assets/fonts/OFL-Inter.txt assets/fonts/OFL-JetBrainsMono.txt assets/icons/LICENSE-lucide.txt assets/dict/LICENSE-SCOWL.txt; do
     printf '\n==== %s ====\n\n' "$(basename "$f")"
     cat "$WORK/src/$f"
   done
+  printf '\n==== OFL-BarlowCondensed.txt ====\n\n'
+  cat "$HERE/assets/fonts/OFL-BarlowCondensed.txt"
+  printf '\n==== OFL-Cairo.txt (download page) ====\n\n'
+  cat "$HERE/assets/fonts/OFL-Cairo.txt"
 } > "$WORK/site/THIRD-PARTY-NOTICES.txt"
 
 # Nothing from the old name may be left in file names.

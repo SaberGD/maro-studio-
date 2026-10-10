@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build the SG - PS desktop app and package it.
+# Build the HORIX desktop app and package it.
 #
 # Usage: apps/sg-ps/desktop/package.sh windows|macos
-#   windows -> deploy/sg-ps-desktop/SG-PS-<version>-windows-x64-portable.zip  (unzip and run SG-PS.exe)
-#   macos   -> deploy/sg-ps-desktop/SG-PS-<version>-macos-universal.zip       ("SG - PS.app", Apple Silicon + Intel)
+#   windows -> deploy/sg-ps-desktop/HORIX-<version>-windows-x64-portable.zip  (unzip and run HORIX.exe)
+#   macos   -> deploy/sg-ps-desktop/HORIX-<version>-macos-universal.zip       ("HORIX.app", Apple Silicon + Intel)
 # Runs on the matching OS (Git Bash on Windows). Needs Rust; on macOS the aarch64-apple-darwin and
 # x86_64-apple-darwin targets. Not code-signed: Windows SmartScreen and macOS Gatekeeper warn on
 # first launch (see apps/sg-ps/README.md).
@@ -36,11 +36,13 @@ VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$WORK/src/Cargo.toml" | head -1)
 licences() {
   cp "$WORK/src/LICENSE-MIT" "$1/LICENSE.txt"
   {
-    echo "SG - PS includes the following third-party material."
+    echo "HORIX includes the following third-party material."
     for f in assets/fonts/OFL-Inter.txt assets/fonts/OFL-JetBrainsMono.txt assets/icons/LICENSE-lucide.txt assets/dict/LICENSE-SCOWL.txt; do
       printf '\n==== %s ====\n\n' "$(basename "$f")"
       cat "$WORK/src/$f"
     done
+    printf '\n==== OFL-BarlowCondensed.txt ====\n\n'
+    cat "$HERE/../assets/fonts/OFL-BarlowCondensed.txt"
   } >"$1/THIRD-PARTY-NOTICES.txt"
 }
 
@@ -51,35 +53,35 @@ case "$OS" in
     export CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS="-C target-feature=+crt-static"
     export PHOTOCRAFT_REQUIRE_WINRES=1
     (cd "$WORK/src" && cargo build --release --locked -p photocraft --target "$T")
-    PKG="$WORK/pkg/SG-PS"
+    PKG="$WORK/pkg/HORIX"
     mkdir -p "$PKG"
-    cp "$TARGET_DIR/$T/release/photocraft.exe" "$PKG/SG-PS.exe"
+    cp "$TARGET_DIR/$T/release/photocraft.exe" "$PKG/HORIX.exe"
     cat >"$PKG/portable.txt" <<'TXT'
-SG - PS portable mode
+HORIX portable mode
 
-While this file sits next to SG-PS.exe, SG - PS keeps its preferences, brushes and recovery
-autosaves in the SG-PS-Data folder beside it and writes nothing to %APPDATA%. Copy the whole
-folder to move SG - PS with its settings. Delete this file to use %APPDATA%\SG - PS instead.
+While this file sits next to HORIX.exe, HORIX keeps its preferences, brushes and recovery
+autosaves in the HORIX-Data folder beside it and writes nothing to %APPDATA%. Copy the whole
+folder to move HORIX with its settings. Delete this file to use %APPDATA%\HORIX instead.
 
 Saber Group Academy - https://www.facebook.com/SABERGROUP.Courses/
 TXT
     licences "$PKG"
-    ZIP="$OUT/SG-PS-$VERSION-windows-x64-portable.zip"
+    ZIP="$OUT/HORIX-$VERSION-windows-x64-portable.zip"
     rm -f "$ZIP"
-    (cd "$WORK/pkg" && 7z a -tzip -mx=9 "$ZIP" SG-PS >/dev/null)
+    (cd "$WORK/pkg" && 7z a -tzip -mx=9 "$ZIP" HORIX >/dev/null)
     ;;
   macos)
     export MACOSX_DEPLOYMENT_TARGET=11.0
     (cd "$WORK/src" && cargo build --release --locked -p photocraft --target aarch64-apple-darwin --target x86_64-apple-darwin)
-    APP="$WORK/pkg/SG - PS.app"
+    APP="$WORK/pkg/HORIX.app"
     mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-    lipo -create -output "$APP/Contents/MacOS/SG-PS" \
+    lipo -create -output "$APP/Contents/MacOS/HORIX" \
       "$TARGET_DIR/aarch64-apple-darwin/release/photocraft" \
       "$TARGET_DIR/x86_64-apple-darwin/release/photocraft"
-    lipo -info "$APP/Contents/MacOS/SG-PS"
-    cp "$WORK/src/assets/app-icon/photocraft.icns" "$APP/Contents/Resources/SG-PS.icns"
+    lipo -info "$APP/Contents/MacOS/HORIX"
+    cp "$WORK/src/assets/app-icon/photocraft.icns" "$APP/Contents/Resources/HORIX.icns"
     licences "$APP/Contents/Resources"
-    # Upstream's Info.plist (document types, Retina, minimum macOS) with SG - PS names.
+    # Upstream's Info.plist (document types, Retina, minimum macOS) with HORIX names.
     "$PY" -I - "$WORK/src/packaging/macos/Info.plist.in" "$APP/Contents/Info.plist" "$VERSION" <<'PYEOF'
 import plistlib, re, sys
 src, dst, version = sys.argv[1:4]
@@ -87,14 +89,14 @@ text = open(src, encoding="utf-8").read()
 short = version.split("-")[0]
 text = text.replace("@VERSION@", version).replace("@SHORT_VERSION@", short).replace("@BUILD_SHA@", "sg-ps")
 text = text.replace("ai.storyteller.photocraft", "com.sabergroup.sgps")
-text = re.sub(r"PhotoCraft Document", "SG - PS Document", text)
-text = text.replace("<string>PhotoCraft</string>", "<string>SG-PS</string>").replace("x-photocraft", "x-sgps")
+text = re.sub(r"PhotoCraft Document", "HORIX Document", text)
+text = text.replace("<string>PhotoCraft</string>", "<string>HORIX</string>").replace("x-photocraft", "x-sgps")
 p = plistlib.loads(text.encode())
 p.update({
-    "CFBundleName": "SG - PS",
-    "CFBundleDisplayName": "SG - PS",
-    "CFBundleExecutable": "SG-PS",
-    "CFBundleIconFile": "SG-PS",
+    "CFBundleName": "HORIX",
+    "CFBundleDisplayName": "HORIX",
+    "CFBundleExecutable": "HORIX",
+    "CFBundleIconFile": "HORIX",
     "NSHumanReadableCopyright": "Saber Group Academy. Built on open-source software (MIT).",
 })
 for k in [k for k in p if k.startswith("PhotoCraft")]:
@@ -107,9 +109,9 @@ PYEOF
     # Ad-hoc signature: required for Apple Silicon to run it at all; not a Developer ID.
     codesign --force --deep --sign - "$APP"
     codesign --verify --deep --strict --verbose=2 "$APP"
-    ZIP="$OUT/SG-PS-$VERSION-macos-universal.zip"
+    ZIP="$OUT/HORIX-$VERSION-macos-universal.zip"
     rm -f "$ZIP"
-    (cd "$WORK/pkg" && ditto -c -k --keepParent "SG - PS.app" "$ZIP")
+    (cd "$WORK/pkg" && ditto -c -k --keepParent "HORIX.app" "$ZIP")
     ;;
   *)
     echo "usage: package.sh windows|macos" >&2
