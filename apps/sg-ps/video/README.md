@@ -44,3 +44,10 @@ python3 sfx.py tutorial-sfx.wav 58.5 tutorial-sfx.json
 node render.mjs tutorial.html tutorial-noaudio.mp4 30
 ffmpeg -i tutorial-noaudio.mp4 -i tutorial-sfx.wav -c:v copy -c:a aac -b:a 192k -shortest SG-PS-install-guide.mp4
 ```
+
+## Beat-synced versions (music: Percussion.wav, 126 BPM)
+
+`beats.py` finds the tempo and beat grid of a track. `*-warp.json` retimes a video so every scene
+cut lands on a kick (pairs of [new time, original time]; `render.mjs page out 30 warp.json`), and
+`*-sfx-sync.json` holds the sound effects moved to the new times and snapped to the 16th-note grid.
+`*-sync.json` gives the music offset (the first cut meets the drop at 7.595 s) and the duration.
