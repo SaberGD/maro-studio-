@@ -28,7 +28,8 @@ window.splitWords = (el) => {
   const units = [];
   for (const w of words) {
     const last = units[units.length - 1];
-    if (isLatin(w) && last && last.latin) last.text += ' ' + w; else units.push({ text: w, latin: isLatin(w) });
+    const punct = /^[-\u2013&+·/]$/.test(w);
+    if ((isLatin(w) || punct) && last && last.latin) last.text += ' ' + w; else units.push({ text: w, latin: isLatin(w) });
   }
   el.innerHTML = units.map((u) => `<span class="w"${u.latin ? ' dir="ltr"' : ''}><span>${u.text}</span></span>`).join(' ');
   return Array.from(el.querySelectorAll('.w > span'));

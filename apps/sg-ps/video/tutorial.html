@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: Cairo; font-weight: 400; src: url(fonts/cairo-arabic-400-normal.woff2) format('woff2'); unicode-range: U+0600-06FF, U+200C-200E, U+FE70-FEFF; }
+  @font-face { font-family: Cairo; font-weight: 700; src: url(fonts/cairo-arabic-700-normal.woff2) format('woff2'); unicode-range: U+0600-06FF, U+200C-200E, U+FE70-FEFF; }
+  @font-face { font-family: Cairo; font-weight: 900; src: url(fonts/cairo-arabic-900-normal.woff2) format('woff2'); unicode-range: U+0600-06FF, U+200C-200E, U+FE70-FEFF; }
+  @font-face { font-family: Cairo; font-weight: 400; src: url(fonts/cairo-latin-400-normal.woff2) format('woff2'); }
+  @font-face { font-family: Cairo; font-weight: 700; src: url(fonts/cairo-latin-700-normal.woff2) format('woff2'); }
+  @font-face { font-family: Cairo; font-weight: 900; src: url(fonts/cairo-latin-900-normal.woff2) format('woff2'); }
+  :root { --red: #e0402a; --gold: #fbbf24; --ok: #22c55e; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0a0a0a; }
+  body { font-family: Cairo, sans-serif; color: #fff; }
+  #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; }
+  .bg { position: absolute; inset: -10%; background: radial-gradient(55% 60% at 80% 10%, rgba(224,64,42,.22), transparent 65%), radial-gradient(40% 40% at 10% 90%, rgba(251,191,36,.08), transparent 60%), #0a0a0a; }
+  .grid { position: absolute; inset: -20%; background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px); background-size: 80px 80px; }
+  .scene { position: absolute; inset: 0; opacity: 0; display: none; }
+  .w { display: inline-block; overflow: hidden; vertical-align: bottom; padding: 0 .04em; }
+  .w > span { display: inline-block; }
+  .ltr { direction: ltr; unicode-bidi: isolate; }
+  .h1 { font-weight: 900; font-size: 110px; line-height: 1.15; }
+  .sub { font-weight: 700; font-size: 40px; color: rgba(255,255,255,.75); }
+  /* Step caption (right side) */
+  .cap { position: absolute; right: 110px; top: 300px; width: 620px; text-align: right; }
+  .step { display: inline-flex; align-items: center; gap: 14px; font-weight: 900; font-size: 30px; color: var(--gold); }
+  .step b { display: inline-flex; width: 64px; height: 64px; border-radius: 18px; background: linear-gradient(140deg, var(--red), #9e2614); color: #fff; align-items: center; justify-content: center; font-size: 34px; box-shadow: 0 14px 40px rgba(224,64,42,.45); }
+  .cap h2 { font-weight: 900; font-size: 58px; line-height: 1.3; margin-top: 18px; }
+  .cap p { font-weight: 700; font-size: 32px; color: rgba(255,255,255,.7); margin-top: 14px; line-height: 1.5; }
+  .warn { display: inline-block; margin-top: 18px; padding: 8px 20px; border-radius: 12px; background: rgba(239,68,68,.15); border: 2px solid rgba(239,68,68,.5); color: #fca5a5; font-weight: 700; font-size: 28px; }
+  .os-badge { position: absolute; top: 70px; right: 110px; display: flex; align-items: center; gap: 16px; padding: 12px 28px; border-radius: 999px; background: rgba(255,255,255,.06); border: 2px solid rgba(255,255,255,.12); font-weight: 900; font-size: 34px; direction: ltr; }
+  .os-badge svg { width: 40px; height: 40px; fill: #fff; }
+  /* Device area (left) */
+  .screen { position: absolute; left: 90px; top: 150px; width: 1060px; height: 790px; border-radius: 26px; overflow: hidden; box-shadow: 0 40px 120px rgba(0,0,0,.7), 0 0 0 2px rgba(255,255,255,.08); direction: ltr; font-family: -apple-system, 'Segoe UI', Cairo, sans-serif; }
+  .mac-wall { position: absolute; inset: 0; background: radial-gradient(80% 90% at 30% 20%, #3a2a5a, #12121c 70%); }
+  .win-wall { position: absolute; inset: 0; background: radial-gradient(90% 90% at 70% 30%, #1d4f91, #0b1c3a 70%); }
+  .menubar { position: absolute; left: 0; right: 0; top: 0; height: 30px; background: rgba(20,20,28,.6); color: #ddd; font-size: 15px; display: flex; align-items: center; gap: 22px; padding: 0 16px; font-weight: 600; }
+  /* mac dialog (replica) */
+  .macdlg { position: absolute; width: 400px; padding: 26px 24px 20px; border-radius: 26px; background: rgba(42,42,46,.97); box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.12); text-align: left; color: #f2f2f2; }
+  .macdlg .tri { width: 96px; height: 84px; }
+  .macdlg h3 { font-size: 21px; margin: 14px 0 8px; font-weight: 700; }
+  .macdlg p { font-size: 17px; line-height: 1.45; color: #e5e5e5; }
+  .mbtn { display: flex; align-items: center; justify-content: center; height: 44px; border-radius: 22px; font-size: 18px; font-weight: 600; margin-top: 12px; background: #4a4a4e; color: #f5f5f5; position: relative; }
+  .mbtn.blue { background: #2f7cf6; color: #fff; }
+  /* mac settings (replica) */
+  .settings { position: absolute; left: 70px; top: 80px; width: 920px; height: 640px; border-radius: 16px; overflow: hidden; background: #1f1f22; box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.1); color: #eee; }
+  .settings .side { position: absolute; left: 0; top: 0; bottom: 0; width: 260px; background: #2a2a2e; padding: 52px 12px 12px; }
+  .settings .side .it { height: 38px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 8px; font-size: 16px; }
+  .settings .side .ico { width: 24px; height: 24px; border-radius: 6px; flex: none; }
+  .settings .side .it.on { background: #2f7cf6; color: #fff; }
+  .settings .tl { position: absolute; left: 18px; top: 18px; display: flex; gap: 8px; }
+  .settings .tl i { width: 13px; height: 13px; border-radius: 50%; display: block; }
+  .settings .main { position: absolute; left: 260px; right: 0; top: 0; bottom: 0; overflow: hidden; }
+  .settings .scroll { position: absolute; left: 0; right: 0; top: 0; padding: 22px 30px; }
+  .settings h4 { font-size: 22px; font-weight: 700; margin-bottom: 16px; }
+  .settings .grp { background: #2a2a2e; border-radius: 12px; padding: 4px 16px; margin-bottom: 18px; }
+  .settings .row { min-height: 46px; display: flex; align-items: center; justify-content: space-between; font-size: 15px; border-bottom: 1px solid #3a3a3e; gap: 12px; }
+  .settings .row:last-child { border-bottom: 0; }
+  .settings .lbl { font-size: 14px; color: #aaa; margin: 4px 4px 8px; font-weight: 600; }
+  .sbtn { padding: 6px 16px; border-radius: 8px; background: #4a4a4e; font-size: 15px; font-weight: 600; white-space: nowrap; position: relative; }
+  .pwdlg { position: absolute; left: 50%; top: 50%; width: 380px; margin: -150px 0 0 -190px; border-radius: 22px; background: rgba(42,42,46,.98); box-shadow: 0 30px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.12); padding: 24px; text-align: center; color: #eee; }
+  .pwdlg .lock { font-size: 44px; }
+  .pwdlg .f { height: 40px; border-radius: 10px; background: #1b1b1e; border: 2px solid #2f7cf6; margin: 14px 0 6px; display: flex; align-items: center; padding: 0 12px; font-size: 22px; letter-spacing: 4px; color: #fff; }
+  /* Windows: explorer + smartscreen (replica) */
+  .explorer { position: absolute; left: 80px; top: 90px; width: 900px; height: 560px; background: #202020; border-radius: 10px; box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.1); color: #eee; overflow: hidden; }
+  .explorer .bar { height: 42px; background: #2b2b2b; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; font-size: 15px; }
+  .explorer .files { position: absolute; left: 24px; top: 70px; display: flex; gap: 40px; }
+  .file { width: 130px; text-align: center; font-size: 15px; padding: 10px; border-radius: 8px; position: relative; }
+  .file .ic { width: 84px; height: 84px; margin: 0 auto 8px; border-radius: 10px; }
+  .ctx { position: absolute; width: 250px; background: #2c2c2c; border-radius: 8px; box-shadow: 0 16px 40px rgba(0,0,0,.5); padding: 6px; font-size: 15px; color: #eee; }
+  .ctx div { padding: 8px 14px; border-radius: 6px; }
+  .smart { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background: rgba(0,0,0,.35); }
+  .smart .pan { position: absolute; left: 110px; top: 120px; width: 840px; min-height: 470px; background: #0f5aa7; color: #fff; padding: 46px 48px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+  .smart h3 { font-size: 40px; font-weight: 300; margin-bottom: 26px; font-family: 'Segoe UI', Cairo, sans-serif; }
+  .smart p { font-size: 19px; line-height: 1.55; max-width: 680px; }
+  .smart .more { margin-top: 18px; font-size: 19px; text-decoration: underline; position: relative; display: inline-block; }
+  .smart .det { margin-top: 18px; font-size: 19px; line-height: 1.8; }
+  .smart .btns { position: absolute; right: 48px; bottom: 36px; display: flex; gap: 14px; }
+  .wbtn { width: 160px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; border: 2px solid #fff; position: relative; }
+  .wbtn.on { background: #fff; color: #0f5aa7; }
+  /* app opened */
+  .appwin { position: absolute; left: 60px; top: 70px; width: 940px; height: 650px; border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.7); }
+  .appwin img { width: 100%; height: 100%; object-fit: cover; }
+  .done-badge { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 170px; height: 170px; border-radius: 50%; background: var(--ok); display: flex; align-items: center; justify-content: center; font-size: 100px; font-weight: 900; box-shadow: 0 20px 70px rgba(34,197,94,.55); }
+  /* cursor + click ripple */
+  #cursor { position: absolute; width: 38px; height: 38px; z-index: 40; filter: drop-shadow(0 3px 6px rgba(0,0,0,.6)); }
+  #ripple { position: absolute; width: 70px; height: 70px; margin: -35px 0 0 -35px; border-radius: 50%; border: 4px solid var(--gold); z-index: 39; opacity: 0; }
+  .hl { position: absolute; border-radius: 14px; border: 4px solid var(--gold); box-shadow: 0 0 0 9999px rgba(0,0,0,.35), 0 0 30px rgba(251,191,36,.6); pointer-events: none; z-index: 30; opacity: 0; }
+  .wipe { position: absolute; inset: 0; background: var(--red); transform: scaleX(0); z-index: 50; }
+</style>
+</head>
+<body>
+<div id="stage">
+<div class="bg"></div><div class="grid" id="grid"></div>
+
+<!-- Intro -->
+<section class="scene" id="intro">
+  <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center">
+    <img src="a/logo.svg" id="ilogo" style="width:180px; margin-bottom:18px; filter:drop-shadow(0 20px 50px rgba(224,64,42,.5))">
+    <div class="h1" id="it1">تشغيل <span class="ltr">SG - PS</span> لأول مرة</div>
+    <div class="sub" id="it2" style="margin-top:14px">خطوات بسيطة على الماك والويندوز · مرة واحدة بس</div>
+  </div>
+</section>
+
+<!-- Section titles -->
+<section class="scene" id="secmac">
+  <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px">
+    <svg viewBox="0 0 24 24" id="macicon" style="width:150px; height:150px; fill:#fff"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.2 1-4 2.5-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.5-1-2.5-4zM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg>
+    <div class="h1" id="smt">على الماك</div>
+  </div>
+</section>
+<section class="scene" id="secwin">
+  <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px">
+    <svg viewBox="0 0 24 24" id="winicon" style="width:150px; height:150px; fill:#fff"><path d="M3 5.5 10.5 4.5v7H3zM11.5 4.4 21 3v8.5h-9.5zM3 12.5h7.5v7L3 18.5zM11.5 12.5H21V21l-9.5-1.4z"/></svg>
+    <div class="h1" id="swt">على الويندوز</div>
+  </div>
+</section>
+
+<!-- MAC steps share one screen -->
+<section class="scene" id="mac">
+  <div class="os-badge"><svg viewBox="0 0 24 24"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.2 1-4 2.5-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.5-1-2.5-4zM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg>macOS</div>
+  <div class="cap" id="mcap"></div>
+  <div class="screen" id="mscreen">
+    <div class="mac-wall"></div>
+    <div class="menubar"><span style="font-size:18px"></span><span>Finder</span><span>File</span><span>Edit</span><span>View</span><span>Go</span><span>Window</span><span>Help</span></div>
+    <!-- step 1: finder -->
+    <div id="m1" style="position:absolute; inset:0">
+      <div style="position:absolute; left:90px; top:110px; width:860px; height:520px; border-radius:14px; background:#1f1f22; box-shadow:0 30px 80px rgba(0,0,0,.6); overflow:hidden">
+        <div style="height:46px; background:#2a2a2e; display:flex; align-items:center; gap:8px; padding:0 16px"><i style="width:13px;height:13px;border-radius:50%;background:#ff5f57;display:block"></i><i style="width:13px;height:13px;border-radius:50%;background:#febc2e;display:block"></i><i style="width:13px;height:13px;border-radius:50%;background:#28c840;display:block"></i><span style="margin-left:20px;font-size:16px;color:#ccc;font-weight:600">Downloads</span></div>
+        <div class="file" id="m1zip" style="position:absolute; left:80px; top:110px; color:#eee"><div class="ic" style="background:#e9e9ee; display:flex; align-items:center; justify-content:center; color:#888; font-weight:700">ZIP</div>SG-PS-macos-universal.zip</div>
+        <div class="file" id="m1app" style="position:absolute; left:300px; top:110px; color:#eee; opacity:0"><img src="a/logo.svg" class="ic" style="display:block">SG - PS</div>
+        <div class="file" id="m1apps" style="position:absolute; left:620px; top:110px; color:#eee"><div class="ic" style="background:linear-gradient(#6aa8ff,#2f6fe0); display:flex; align-items:center; justify-content:center; font-size:40px">A</div>Applications</div>
+        <img src="a/logo.svg" id="m1drag" style="position:absolute; width:84px; opacity:0">
+      </div>
+    </div>
+    <!-- step 2: blocked dialog -->
+    <div id="m2" style="position:absolute; inset:0; background:rgba(0,0,0,.35)">
+      <div class="macdlg" style="left:330px; top:120px">
+        <svg class="tri" viewBox="0 0 100 88"><path d="M50 4 96 84H4z" fill="#f2c94c" stroke="#d9a520" stroke-width="3" stroke-linejoin="round"/><rect x="45" y="28" width="10" height="34" rx="5" fill="#fff"/><circle cx="50" cy="72" r="6" fill="#fff"/></svg>
+        <h3>“SG - PS” Not Opened</h3>
+        <p>Apple could not verify “SG - PS” is free of malware that may harm your Mac or compromise your privacy.</p>
+        <div class="mbtn blue" style="margin-top:22px">Move to Trash</div>
+        <div class="mbtn" id="m2done">Done</div>
+      </div>
+    </div>
+    <!-- step 3+4: settings -->
+    <div id="m3" style="position:absolute; inset:0">
+      <div class="settings">
+        <div class="tl"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+        <div class="side">
+          <div class="it"><span class="ico" style="background:#2f7cf6"></span>Wi‑Fi</div>
+          <div class="it"><span class="ico" style="background:#2f7cf6"></span>Bluetooth</div>
+          <div class="it"><span class="ico" style="background:#8e8e93"></span>General</div>
+          <div class="it"><span class="ico" style="background:#5856d6"></span>Appearance</div>
+          <div class="it"><span class="ico" style="background:#ff9500"></span>Notifications</div>
+          <div class="it" id="m3priv"><span class="ico" style="background:#3478f6"></span>Privacy &amp; Security</div>
+          <div class="it"><span class="ico" style="background:#8e8e93"></span>Desktop &amp; Dock</div>
+          <div class="it"><span class="ico" style="background:#34c759"></span>Displays</div>
+          <div class="it"><span class="ico" style="background:#ff2d55"></span>Touch ID &amp; Password</div>
+        </div>
+        <div class="main">
+          <div id="m3home" class="scroll"><h4>General</h4><div class="grp"><div class="row">About</div><div class="row">Software Update</div><div class="row">Storage</div><div class="row">AirDrop &amp; Handoff</div></div></div>
+          <div id="m3scroll" class="scroll" style="opacity:0">
+            <h4>Privacy &amp; Security</h4>
+            <div class="grp"><div class="row">Location Services</div><div class="row">Contacts</div><div class="row">Calendars</div><div class="row">Photos</div><div class="row">Camera</div><div class="row">Microphone</div><div class="row">Full Disk Access</div><div class="row">Accessibility</div></div>
+            <div class="lbl">Security</div>
+            <div class="grp">
+              <div class="row">Allow applications from <span style="color:#aaa">App Store &amp; Known Developers</span></div>
+              <div class="row" style="min-height:70px"><span>“SG - PS” was blocked to protect your Mac.</span><span class="sbtn" id="m3open">Open Anyway</span></div>
+            </div>
+            <div class="grp"><div class="row">FileVault</div><div class="row">Lockdown Mode</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="pwdlg" id="m4pw" style="opacity:0">
+        <div class="lock">🔒</div>
+        <div style="font-weight:700;font-size:18px;margin-top:6px">Privacy &amp; Security</div>
+        <div style="font-size:15px;color:#bbb;margin-top:4px">is trying to modify your system settings. Enter your password to allow this.</div>
+        <div class="f" id="m4dots"></div>
+        <div class="mbtn blue" id="m4ok" style="margin-top:12px">Modify Settings</div>
+      </div>
+      <div class="macdlg" id="m4open" style="left:330px; top:140px; opacity:0">
+        <svg class="tri" viewBox="0 0 100 88"><path d="M50 4 96 84H4z" fill="#f2c94c" stroke="#d9a520" stroke-width="3" stroke-linejoin="round"/><rect x="45" y="28" width="10" height="34" rx="5" fill="#fff"/><circle cx="50" cy="72" r="6" fill="#fff"/></svg>
+        <h3>Open “SG - PS”?</h3>
+        <p>Apple is not able to verify that it is free from malware. Open only if you trust its source.</p>
+        <div class="mbtn blue" id="m4any" style="margin-top:22px">Open Anyway</div>
+        <div class="mbtn">Done</div>
+      </div>
+    </div>
+    <!-- step 5: opened -->
+    <div id="m5" style="position:absolute; inset:0">
+      <div class="appwin"><img src="a/03-placed.png"></div>
+      <div class="done-badge" id="m5ok">✓</div>
+    </div>
+  </div>
+</section>
+
+<!-- WINDOWS steps -->
+<section class="scene" id="win">
+  <div class="os-badge"><svg viewBox="0 0 24 24"><path d="M3 5.5 10.5 4.5v7H3zM11.5 4.4 21 3v8.5h-9.5zM3 12.5h7.5v7L3 18.5zM11.5 12.5H21V21l-9.5-1.4z"/></svg>Windows</div>
+  <div class="cap" id="wcap"></div>
+  <div class="screen" id="wscreen">
+    <div class="win-wall"></div>
+    <div id="w1" style="position:absolute; inset:0">
+      <div class="explorer">
+        <div class="bar"><span>📁 Downloads</span><span style="letter-spacing:18px;color:#aaa">— ☐ ✕</span></div>
+        <div class="files">
+          <div class="file" id="w1zip"><div class="ic" style="background:#f2c94c; display:flex; align-items:center; justify-content:center; color:#6b5200; font-weight:900">ZIP</div>SG-PS-windows-x64.zip</div>
+          <div class="file" id="w1dir" style="opacity:0"><div class="ic" style="background:#f2c94c"></div>SG-PS</div>
+          <div class="file" id="w1exe" style="opacity:0"><img src="a/logo.svg" class="ic" style="display:block">SG-PS.exe</div>
+        </div>
+        <div class="ctx" id="w1ctx" style="left:120px; top:200px; opacity:0"><div>Open</div><div id="w1ext">Extract All...</div><div>Share</div><div>Properties</div></div>
+      </div>
+    </div>
+    <div id="w2" class="smart" style="opacity:0">
+      <div class="pan">
+        <h3>Windows protected your PC</h3>
+        <p>Microsoft Defender SmartScreen prevented an unrecognized app from starting. Running this app might put your PC at risk.</p>
+        <div class="more" id="w2more">More info</div>
+        <div class="det" id="w2det" style="opacity:0">App: &nbsp;SG-PS.exe<br>Publisher: &nbsp;Unknown publisher</div>
+        <div class="btns"><div class="wbtn" id="w2run" style="opacity:0">Run anyway</div><div class="wbtn on">Don't run</div></div>
+      </div>
+    </div>
+    <div id="w3" style="position:absolute; inset:0; opacity:0">
+      <div class="appwin"><img src="a/05-subject.png"></div>
+      <div class="done-badge" id="w3ok">✓</div>
+    </div>
+  </div>
+</section>
+
+<!-- Outro -->
+<section class="scene" id="outro">
+  <img src="a/maro-wave.png" id="omaro" style="position:absolute; left:140px; bottom:-30px; width:470px; filter:drop-shadow(0 30px 60px rgba(0,0,0,.6))">
+  <div style="position:absolute; right:150px; top:220px; width:1050px; text-align:right">
+    <div class="h1" id="ot1">خلاص، استمتع بالبرنامج</div>
+    <div class="sub" id="ot2" style="margin-top:14px">الخطوات دي مرة واحدة بس · محتاج مساعدة؟ كلّمنا على واتساب</div>
+    <div style="margin-top:50px"><span id="obtn" class="ltr" style="display:inline-flex; padding:24px 60px; border-radius:22px; background:var(--red); font-weight:900; font-size:46px; box-shadow:0 20px 60px rgba(224,64,42,.5)">studio.engsaber.space/download</span></div>
+    <img src="a/saber-group-wordmark.webp" id="obrand" style="height:56px; margin-top:60px">
+  </div>
+</section>
+
+<svg id="cursor" viewBox="0 0 24 24"><path d="M4 2 4 20 9 15.5 12.5 22 15.5 20.6 12 14.2 18.5 14.2Z" fill="#fff" stroke="#000" stroke-width="1.4" stroke-linejoin="round"/></svg>
+<div id="ripple"></div>
+<div class="hl" id="hl"></div>
+<div class="wipe" id="wipe"></div>
+</div>
+
+<script src="lib.js"></script>
+<script>
+// Timeline (seconds).
+const T = { intro: [0, 3.8], secmac: [3.8, 6.0], mac: [6.0, 33.5], secwin: [33.5, 35.7], win: [35.7, 52.5], outro: [52.5, 58.5] };
+const DURATION = 58.5;
+// Mac sub-steps (absolute times).
+const M = { s1: 6.0, s2: 11.5, s3: 17.0, s4: 23.0, s5: 29.5 };
+const Wt = { s1: 35.7, s2: 41.2, s3: 47.2 };
+const MCAP = [
+  [M.s1, '1', 'فك الضغط واسحب البرنامج لـ Applications', 'دبل كليك على الملف المضغوط، وبعدين اسحب SG - PS لفولدر Applications'],
+  [M.s2, '2', 'افتح البرنامج ودوس Done', 'أول مرة هتظهر الرسالة دي لأن البرنامج لسه مش متسجل عند أبل.', 'ماتدوسش Move to Trash'],
+  [M.s3, '3', 'افتح System Settings وبعدين Privacy & Security', 'انزل لتحت لحد قسم Security'],
+  [M.s4, '4', 'دوس Open Anyway واكتب باسورد الماك', 'وبعدين دوس Open Anyway تاني في الرسالة.'],
+  [M.s5, '✓', 'خلاص! البرنامج اشتغل', 'من المرة الجاية هيفتح عادي بدبل كليك.'],
+];
+const WCAP = [
+  [Wt.s1, '1', 'فك الضغط: كليك يمين واختار Extract All', 'وبعدين افتح فولدر SG-PS وشغّل SG-PS.exe'],
+  [Wt.s2, '2', 'لو ظهرت الشاشة الزرقا دوس More info', 'ويندوز بيظهرها لأي برنامج جديد مش متوقّع.'],
+  [Wt.s3, '3', 'دوس Run anyway', 'البرنامج هيفتح، ومن المرة الجاية على طول.'],
+];
+function capHTML(c) {
+  return `<div class="step"><b>${c[1]}</b>${c[1] === '✓' ? 'تمام' : 'الخطوة ' + c[1]}</div><h2 class="t">${c[2]}</h2><p class="p">${c[3]}</p>` + (c[4] ? `<div class="warn">⚠ ${c[4]}</div>` : '');
+}
+const capState = { mac: -1, win: -1, words: null, pwords: null };
+function caption(el, list, key, t) {
+  let idx = -1; list.forEach((c, i) => { if (t >= c[0]) idx = i; });
+  if (idx < 0) return;
+  if (capState[key] !== idx) {
+    el.innerHTML = capHTML(list[idx]);
+    capState[key] = idx;
+    capState[key + 'w'] = splitWords(el.querySelector('.t'));
+    capState[key + 'p'] = splitWords(el.querySelector('.p'));
+  }
+  const t0 = list[idx][0];
+  const lt = t - t0;
+  set(el.querySelector('.step'), { transform: `scale(${k(lt, 0, 0.45, E.outBack)})`, transformOrigin: 'right center' });
+  revealWords(capState[key + 'w'], lt, 0.1, 0.07, 0.5);
+  revealWords(capState[key + 'p'], lt, 0.5, 0.03, 0.45);
+  const wn = el.querySelector('.warn'); if (wn) set(wn, { opacity: k(lt, 1.6, 1.9), transform: `translateY(${(1 - k(lt, 1.6, 1.9, E.outBack)) * 20}px)` });
+}
+// Cursor targets are elements (their centre, plus an offset) or fixed stage points.
+const stageBox = () => $('#stage').getBoundingClientRect();
+function C(sel, dx, dy) {
+  const r = $(sel).getBoundingClientRect(), s0 = stageBox();
+  return [r.left - s0.left + r.width / 2 + (dx || 0), r.top - s0.top + r.height / 2 + (dy || 0)];
+}
+const P = (x, y) => () => [x, y];
+const at = (sel, dx, dy) => () => C(sel, dx, dy);
+const MAC_KF = [
+  [6.0, P(700, 800)], [7.0, at('#m1zip', 0, -20)], [7.5, at('#m1zip', 0, -20)], [8.6, at('#m1app', 0, -20)], [9.0, at('#m1app', 0, -20)], [10.2, at('#m1apps', 0, -20)], [11.0, at('#m1apps', 0, -20)],
+  [12.2, P(700, 850)], [13.6, at('#m2done')], [16.0, at('#m2done')],
+  [17.6, P(500, 600)], [18.6, at('#m3priv')], [20.5, at('#m3priv')], [22.3, at('#m3open', 0, 30)],
+  [23.0, at('#m3open', 0, 30)], [23.6, at('#m3open')], [25.6, at('#m4dots')], [26.6, at('#m4ok')], [27.4, at('#m4ok')], [28.4, at('#m4any')], [29.6, P(1000, 900)],
+];
+const MAC_CLICKS = [7.5, 7.7, 9.0, 13.6, 18.6, 23.6, 26.6, 28.4];
+const WIN_KF = [
+  [35.7, P(800, 850)], [36.6, at('#w1zip', 0, -10)], [37.4, at('#w1ext')], [38.6, at('#w1exe', 0, -10)], [39.4, at('#w1exe', 0, -10)], [40.8, P(800, 800)],
+  [41.6, P(800, 800)], [43.0, at('#w2more')], [46.0, at('#w2more')], [47.4, at('#w2run', 0, 30)], [47.9, at('#w2run')], [49.0, P(1000, 950)],
+];
+const WIN_CLICKS = [36.6, 37.4, 39.0, 39.2, 43.0, 47.9];
+function cursorAt(t, kf) {
+  const pt = (i) => kf[i][1]();
+  if (t <= kf[0][0]) return pt(0);
+  for (let i = 1; i < kf.length; i++) if (t <= kf[i][0]) {
+    const a = pt(i - 1), b = pt(i), x = E.inOutCubic((t - kf[i - 1][0]) / (kf[i][0] - kf[i - 1][0]));
+    return [mix(a[0], b[0], x), mix(a[1], b[1], x)];
+  }
+  return pt(kf.length - 1);
+}
+function show(id, t0, t1, fin, fout) {
+  const v = env(window.T, t0, t1, fin || 0.3, fout || 0.3);
+  set(id, { opacity: v, display: v > 0.001 ? 'block' : 'none' });
+  return window.T >= t0 && window.T <= t1;
+}
+function layer(id, a, b, t) { set(id, { opacity: env(t, a, b, 0.25, 0.25), display: t >= a && t <= b ? 'block' : 'none' }); }
+function highlight(t, list) {
+  // list: [t0, t1, selector, pad]
+  let on = null; for (const h of list) if (t >= h[0] && t <= h[1]) on = h;
+  if (!on) { set('#hl', { opacity: 0 }); return; }
+  const r = $(on[2]).getBoundingClientRect(), s0 = stageBox(), pd = on[3] || 8;
+  set('#hl', { left: `${r.left - s0.left - pd}px`, top: `${r.top - s0.top - pd}px`, width: `${r.width + 2 * pd}px`, height: `${r.height + 2 * pd}px`, opacity: env(t, on[0], on[1], 0.25, 0.2) });
+}
+const WI = { it2: splitWords($('#it2')), ot1: splitWords($('#ot1')), ot2: splitWords($('#ot2')) };
+
+window.render = (t) => {
+  window.T = t;
+  set('#grid', { transform: `translate(${-t * 12}px, ${-t * 6}px) rotate(-6deg)` });
+  let cur = null, clicks = [];
+  if (show('#intro', ...T.intro, 0.01)) {
+    set('#ilogo', { transform: `scale(${k(t, 0.1, 0.8, E.outBack)}) rotate(${(1 - k(t, 0.1, 0.8)) * -30}deg)` });
+    const h = k(t, 0.5, 1.2, E.outExpo);
+    set('#it1', { transform: `translateY(${(1 - h) * 80}px)`, opacity: h });
+    revealWords(WI.it2, t, 1.1, 0.08, 0.5);
+  }
+  if (show('#secmac', ...T.secmac)) {
+    const x = k(t, T.secmac[0], T.secmac[0] + 0.7, E.outBack);
+    set('#macicon', { transform: `scale(${x}) rotate(${(1 - x) * 40}deg)` }); set('#smt', { transform: `translateY(${(1 - k(t, T.secmac[0] + 0.2, T.secmac[0] + 0.8, E.outExpo)) * 60}px)` });
+  }
+  if (show('#secwin', ...T.secwin)) {
+    const x = k(t, T.secwin[0], T.secwin[0] + 0.7, E.outBack);
+    set('#winicon', { transform: `scale(${x}) rotate(${(1 - x) * 40}deg)` }); set('#swt', { transform: `translateY(${(1 - k(t, T.secwin[0] + 0.2, T.secwin[0] + 0.8, E.outExpo)) * 60}px)` });
+  }
+  if (show('#mac', ...T.mac)) {
+    set('#mscreen', { transform: `translateY(${(1 - k(t, T.mac[0], T.mac[0] + 0.7, E.outExpo)) * 200}px)` });
+    caption($('#mcap'), MCAP, 'mac', t);
+    layer('#m1', M.s1, M.s2, t);
+    // step 1: zip -> app appears, drag to Applications.
+    set('#m1app', { opacity: k(t, 7.8, 8.1), transform: `scale(${0.6 + 0.4 * k(t, 7.8, 8.2, E.outBack)})` });
+    const dg = k(t, 9.0, 10.2, E.inOutCubic);
+    { const a = C('#m1app', 0, -20), b = C('#m1apps', 0, -20), sb = $('#m1drag').parentElement.getBoundingClientRect(), s0 = stageBox();
+      set('#m1drag', { left: `${mix(a[0], b[0], dg) - (sb.left - s0.left) - 42}px`, top: `${mix(a[1], b[1], dg) - (sb.top - s0.top) - 42}px`, opacity: t > 9.0 && t < 10.4 ? 0.85 : 0 }); }
+    set('#m1app', { visibility: t > 9.0 ? 'hidden' : 'visible' });
+    set('#m1apps', { transform: `scale(${1 + 0.12 * Math.sin(Math.PI * k(t, 10.1, 10.6))})` });
+    layer('#m2', M.s2, M.s3, t);
+    set('#m2 .macdlg', { transform: `scale(${0.85 + 0.15 * k(t, M.s2 + 0.1, M.s2 + 0.5, E.outBack)})` });
+    set('#m2done', { background: t > 13.6 && t < 14.0 ? '#6a6a6e' : '' });
+    layer('#m3', M.s3, M.s5, t);
+    set('#m3priv', { background: t > 18.6 ? '#2f7cf6' : '', color: t > 18.6 ? '#fff' : '' });
+    set('#m3home', { opacity: t > 18.7 ? 0 : 1 });
+    set('#m3scroll', { opacity: t > 18.7 ? 1 : 0, transform: `translateY(${-300 * k(t, 19.6, 21.6, E.inOutCubic)}px)` });
+    set('#m3open', { background: t > 23.6 && t < 24.0 ? '#2f7cf6' : '' });
+    set('#m4pw', { opacity: env(t, 24.0, 27.0, 0.25, 0.2), transform: `scale(${0.9 + 0.1 * k(t, 24.0, 24.4, E.outBack)})` });
+    $('#m4dots').textContent = '•'.repeat(Math.round(8 * k(t, 24.8, 26.0, E.lin)));
+    set('#m4open', { opacity: env(t, 27.0, 29.4, 0.25, 0.2), transform: `scale(${0.9 + 0.1 * k(t, 27.0, 27.4, E.outBack)})` });
+    layer('#m5', M.s5, T.mac[1] + 1, t);
+    set('#m5ok', { transform: `translate(-50%,-50%) scale(${k(t, M.s5 + 0.5, M.s5 + 1.0, E.outBack)})` });
+    set('#m5 .appwin', { transform: `scale(${0.85 + 0.15 * k(t, M.s5, M.s5 + 0.6, E.outBack)})` });
+    highlight(t, [[13.0, 15.8, '#m2done'], [18.2, 20.4, '#m3priv'], [22.2, 23.9, '#m3open'], [27.6, 28.9, '#m4any']]);
+    if (t < T.mac[1] - 0.4) { cur = cursorAt(t, MAC_KF); clicks = MAC_CLICKS; }
+  }
+  if (show('#win', ...T.win)) {
+    set('#wscreen', { transform: `translateY(${(1 - k(t, T.win[0], T.win[0] + 0.7, E.outExpo)) * 200}px)` });
+    caption($('#wcap'), WCAP, 'win', t);
+    set('#w1ctx', { opacity: env(t, 36.7, 37.6, 0.15, 0.15) });
+    set('#w1dir', { opacity: k(t, 37.7, 38.0), transform: `scale(${0.6 + 0.4 * k(t, 37.7, 38.1, E.outBack)})` });
+    set('#w1exe', { opacity: k(t, 38.2, 38.5), transform: `scale(${0.6 + 0.4 * k(t, 38.2, 38.6, E.outBack)})` });
+    set('#w1zip', { background: t > 36.6 && t < 37.6 ? 'rgba(255,255,255,.1)' : '' });
+    set('#w1ext', { background: t > 37.2 && t < 37.6 ? '#3d3d3d' : '' });
+    set('#w2', { opacity: env(t, 39.5, 49.0, 0.3, 0.3), display: t > 39.5 && t < 49 ? 'block' : 'none' });
+    set('#w2det', { opacity: k(t, 43.1, 43.4) }); set('#w2run', { opacity: k(t, 43.1, 43.4) });
+    set('#w2run', { background: t > 47.9 && t < 48.3 ? 'rgba(255,255,255,.25)' : '' });
+    set('#w3', { opacity: k(t, 48.6, 49.0), display: t > 48.5 ? 'block' : 'none' });
+    set('#w3ok', { transform: `translate(-50%,-50%) scale(${k(t, 49.4, 49.9, E.outBack)})` });
+    highlight(t, [[37.0, 37.6, '#w1ext', 4], [42.2, 44.2, '#w2more'], [46.6, 48.0, '#w2run']]);
+    if (t < 50.0) { cur = cursorAt(t, WIN_KF); clicks = WIN_CLICKS; }
+  }
+  if (show('#outro', ...T.outro, 0.3, 0.01)) {
+    const o0 = T.outro[0];
+    set('#omaro', { transform: `translateY(${(1 - k(t, o0 + 0.1, o0 + 1.0, E.outBack)) * 600}px) rotate(${Math.sin((t - o0) * 3) * 2}deg)` });
+    revealWords(WI.ot1, t, o0 + 0.25, 0.1, 0.6);
+    revealWords(WI.ot2, t, o0 + 0.7, 0.05, 0.5);
+    set('#obtn', { transform: `scale(${k(t, o0 + 1.2, o0 + 1.7, E.outBack)})` });
+    set('#obrand', { opacity: k(t, o0 + 1.8, o0 + 2.3) });
+  }
+  // cursor + clicks
+  if (cur) {
+    let press = 0, ripple = 0, rpos = cur;
+    for (const c of clicks) { if (t >= c - 0.05 && t <= c + 0.12) press = 1; if (t >= c && t <= c + 0.5) ripple = (t - c) / 0.5; }
+    set('#cursor', { display: 'block', left: `${cur[0] - 6}px`, top: `${cur[1] - 4}px`, transform: `scale(${press ? 0.85 : 1})` });
+    set('#ripple', { left: `${rpos[0]}px`, top: `${rpos[1]}px`, opacity: ripple ? 1 - ripple : 0, transform: `scale(${0.4 + ripple})` });
+  } else { set('#cursor', { display: 'none' }); set('#ripple', { opacity: 0 }); }
+  // wipes at section changes
+  const cuts = [T.secmac[0], T.mac[0], T.secwin[0], T.win[0], T.outro[0]];
+  let wv = 0, org = 'right';
+  for (const c of cuts) if (t > c - 0.25 && t < c + 0.25) { wv = t < c ? k(t, c - 0.25, c, E.inOutExpo) : 1 - k(t, c, c + 0.25, E.inOutExpo); org = t < c ? 'right' : 'left'; }
+  set('#wipe', { transform: `scaleX(${wv})`, transformOrigin: org });
+};
+window.DURATION = DURATION;
+window.CLICKS = [...MAC_CLICKS, ...WIN_CLICKS];
+document.fonts.ready.then(() => { window.READY = true; render(0); });
+</script>
+</body>
+</html>

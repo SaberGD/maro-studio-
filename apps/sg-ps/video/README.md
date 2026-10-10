@@ -32,3 +32,15 @@ ffmpeg -i promo-noaudio.mp4 -i promo-sfx.wav -c:v copy -c:a aac -b:a 192k -short
 python3 sfx.py fixes-sfx.wav 41.8 fixes-sfx.json
 ffmpeg -i fixes-noaudio.mp4 -i fixes-sfx.wav -c:v copy -c:a aac -b:a 192k -shortest SG-PS-update-before-after-sfx.mp4
 ```
+
+## Install guide (first launch on macOS and Windows)
+
+`tutorial.html` (58.5 s): step-by-step first launch, with replicas of the macOS "Not Opened" dialog,
+System Settings > Privacy & Security > Open Anyway, and the Windows SmartScreen screen. The cursor
+finds its targets from the page elements, so layout changes keep the clicks on the buttons.
+
+```bash
+python3 sfx.py tutorial-sfx.wav 58.5 tutorial-sfx.json
+node render.mjs tutorial.html tutorial-noaudio.mp4 30
+ffmpeg -i tutorial-noaudio.mp4 -i tutorial-sfx.wav -c:v copy -c:a aac -b:a 192k -shortest SG-PS-install-guide.mp4
+```
