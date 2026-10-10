@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: Cairo; font-weight: 400; src: url(a/cairo-arabic-400-normal.woff2); unicode-range: U+0600-06FF, U+FE70-FEFF; }
+@font-face { font-family: Cairo; font-weight: 700; src: url(a/cairo-arabic-700-normal.woff2); unicode-range: U+0600-06FF, U+FE70-FEFF; }
+@font-face { font-family: Cairo; font-weight: 800; src: url(a/cairo-arabic-800-normal.woff2); unicode-range: U+0600-06FF, U+FE70-FEFF; }
+@font-face { font-family: Cairo; font-weight: 900; src: url(a/cairo-arabic-900-normal.woff2); unicode-range: U+0600-06FF, U+FE70-FEFF; }
+@font-face { font-family: Cairo; font-weight: 400; src: url(a/cairo-latin-400-normal.woff2); unicode-range: U+0000-00FF; }
+@font-face { font-family: Cairo; font-weight: 700; src: url(a/cairo-latin-700-normal.woff2); unicode-range: U+0000-00FF; }
+@font-face { font-family: Cairo; font-weight: 800; src: url(a/cairo-latin-800-normal.woff2); unicode-range: U+0000-00FF; }
+@font-face { font-family: Cairo; font-weight: 900; src: url(a/cairo-latin-900-normal.woff2); unicode-range: U+0000-00FF; }
+@font-face { font-family: Barlow; font-weight: 700; src: url(a/barlow-condensed-latin-700-normal.woff2); }
+@font-face { font-family: Barlow; font-weight: 800; src: url(a/barlow-condensed-latin-800-normal.woff2); }
+@font-face { font-family: Inter; font-weight: 500; src: url(a/inter-latin-500-normal.woff2); }
+@font-face { font-family: Inter; font-weight: 600; src: url(a/inter-latin-600-normal.woff2); }
+:root { --ink: #141314; --amber: #EA993F; --red: #D63C32; --ivory: #F3EFE8; --graphite: #2A2727; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ink); color: var(--ivory); font-family: Cairo, sans-serif; }
+#stage { position: absolute; inset: 0; overflow: hidden; direction: ltr; }
+.layer { position: absolute; inset: 0; display: none; }
+.lat { font-family: Barlow, sans-serif; font-weight: 800; letter-spacing: 0; direction: ltr; }
+.ar { direction: rtl; font-weight: 900; }
+.red { color: var(--red); }
+.center { display: flex; align-items: center; justify-content: center; }
+#glow { position: absolute; inset: -20%; }
+.blob { position: absolute; border-radius: 50%; filter: blur(120px); }
+#grain { position: absolute; inset: 0; opacity: .06; mix-blend-mode: overlay; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+#vig { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,.55) 100%); pointer-events: none; }
+#macro { position: absolute; inset: 0; background-repeat: no-repeat; }
+#flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.word { display: inline-block; white-space: nowrap; }
+.line { position: absolute; left: 0; right: 0; text-align: center; direction: rtl; white-space: nowrap; }
+.win { position: absolute; border-radius: 16px; overflow: hidden; box-shadow: 0 40px 120px rgba(0,0,0,.65), 0 0 0 1px rgba(243,239,232,.10); background: #0d0c0d; }
+.win img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
+.chip { position: absolute; padding: 18px 34px; border-radius: 14px; background: var(--ivory); color: var(--ink); font-size: 54px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.cap { position: absolute; font-size: 104px; line-height: 1.15; direction: rtl; text-align: right; }
+#cursor { position: absolute; width: 46px; height: 46px; display: none; filter: drop-shadow(0 6px 10px rgba(0,0,0,.6)); }
+.clip { -webkit-background-clip: text; background-clip: text; color: transparent; background-size: cover; background-position: center; }
+.plat { display: inline-flex; align-items: center; gap: 22px; padding: 22px 44px; border-radius: 999px; border: 2px solid rgba(243,239,232,.25); font-size: 58px; font-weight: 800; margin: 0 18px; }
+.btn { display: inline-block; padding: 26px 70px; border-radius: 16px; background: var(--red); color: var(--ivory); font-size: 64px; font-weight: 900; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"><div class="blob" id="b1"></div><div class="blob" id="b2"></div><div class="blob" id="b3"></div></div>
+
+  <!-- 0: macro shots of the real app on the claps -->
+  <div class="layer" id="L_macro"><div id="macro"></div><div id="eye"></div></div>
+
+  <!-- 1: the question on the stomps -->
+  <div class="layer" id="L_q">
+    <div class="line ar" id="q1" style="top:380px;font-size:150px"><span class="word">لسه</span> <span class="word">بتدفع</span> <span class="word">اشتراك</span> <span class="word red">شهري</span></div>
+    <div class="line ar" id="q2" style="top:380px;font-size:150px"><span class="word">عشان</span> <span class="word">تعدّل</span> <span class="word red">صورة؟</span></div>
+    <div id="dot" style="position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px;border-radius:50%;background:var(--amber)"></div>
+  </div>
+
+  <!-- 2: logo drop -->
+  <div class="layer" id="L_logo">
+    <img id="lockup" src="a/horix-wordmark-dark.svg" style="position:absolute;left:50%;top:50%;width:760px;height:760px;margin:-380px">
+    <div class="line ar" id="tag" style="top:850px;font-size:76px"><span class="word">محرّر</span> <span class="word">صور</span> <span class="word">احترافي</span> <span class="word" style="color:var(--amber)">·</span> <span class="word red">مجاني</span></div>
+  </div>
+
+  <!-- 3: demo in the app -->
+  <div class="layer" id="L_demo">
+    <div class="win" id="win"><img id="wimg0"><img id="wimg1"></div>
+    <div class="chip lat" id="chip">Select Subject</div>
+    <div class="cap ar" id="cap1" style="right:80px;top:300px"><div><span class="word">تفصل</span> <span class="word">أي</span> <span class="word">حد</span></div><div><span class="word red">بضغطة</span></div></div>
+    <div class="cap ar" id="cap2" style="right:80px;top:300px"><div><span class="word">وتغيّر</span></div><div><span class="word red">الألوان</span></div></div>
+  </div>
+
+  <!-- 4: before / after -->
+  <div class="layer" id="L_ba">
+    <div id="baBox" style="position:absolute;left:663px;top:95px;width:594px;height:890px;border-radius:18px;overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.6)">
+      <img src="hero/crop-11-open.png" style="position:absolute;inset:0">
+      <img id="baAfter" src="hero/crop-18-final.png" style="position:absolute;inset:0">
+      <div id="baLine" style="position:absolute;top:0;bottom:0;width:6px;margin-left:-3px;background:var(--ivory);box-shadow:0 0 30px rgba(0,0,0,.6)"></div>
+    </div>
+    <div class="cap ar" id="baL" style="left:auto;right:1340px;top:440px;font-size:120px">قبل</div>
+    <div class="cap ar red" id="baR" style="right:170px;top:440px;font-size:120px">بعد</div>
+  </div>
+
+  <!-- 5: menus cascade -->
+  <div class="layer" id="L_menus">
+    <div class="win" id="mw0" style="width:460px;height:930px"><img src="hd/m-Filter.png" style="width:auto;height:auto;object-fit:none;transform-origin:0 0;transform:scale(.5) translate(-490px,-215px)"></div>
+    <div class="win" id="mw1" style="width:510px;height:930px"><img src="hd/m-Image.png" style="width:auto;height:auto;object-fit:none;transform-origin:0 0;transform:scale(.5) translate(-140px,-215px)"></div>
+    <div class="win" id="mw2" style="width:450px;height:930px"><img src="hd/m-Edit.png" style="width:auto;height:auto;object-fit:none;transform-origin:0 0;transform:scale(.5) translate(0px,-215px)"></div>
+    <div class="line ar" id="mcap" style="top:880px;font-size:84px"><span class="word">كل</span> <span class="word">الأدوات</span> <span class="word">اللي</span> <span class="word red">متعوّد عليها</span></div>
+  </div>
+
+  <!-- 6: all you need -->
+  <div class="layer" id="L_need">
+    <div class="line ar" id="need" style="z-index:2;top:150px;font-size:96px;font-weight:800"><span class="word">كل</span> <span class="word">اللي</span> <span class="word">محتاجه</span><span class="word red" id="dots">…</span></div>
+    <div id="itemBg" style="position:absolute;inset:-40px;background-size:cover;background-position:center;filter:blur(24px) brightness(.5) saturate(1.2);opacity:0"></div>
+    <div id="itemBox" style="position:absolute;left:0;right:0;top:330px;height:520px;display:flex;align-items:center;justify-content:center">
+      <div id="item" class="ar" style="font-size:330px;line-height:1;white-space:nowrap"></div>
+    </div>
+  </div>
+
+  <!-- 7: free slam -->
+  <div class="layer" id="L_free" style="background:var(--red)">
+    <div class="line ar" id="free" style="top:200px;font-size:520px;line-height:1">مجاني</div>
+    <div class="line lat" id="free2" style="top:120px;font-size:120px;opacity:.85">100%</div>
+  </div>
+
+  <!-- 8: claim -->
+  <div class="layer" id="L_claim">
+    <div class="line ar" id="claim" style="top:300px;font-size:170px"><span class="word">أقوى</span> <span class="word">بديل</span> <span class="word">مجاني</span></div>
+    <div class="line ar" id="claim2" style="top:520px;font-size:150px"><span class="word red">للفوتوشوب</span></div>
+    <div class="line" id="plats" style="top:800px;direction:ltr">
+      <span class="plat lat" style="font-size:60px">WINDOWS</span><span class="plat lat" style="font-size:60px">MAC</span><span class="plat lat" style="font-size:60px">WEB</span>
+    </div>
+  </div>
+
+  <!-- 9: end card -->
+  <div class="layer" id="L_end">
+    <img id="endLogo" src="a/horix-wordmark-dark.svg" style="position:absolute;left:50%;top:40px;width:640px;height:640px;margin-left:-320px">
+    <div class="line" id="endBtn" style="top:690px"><span class="btn ar">حمّله مجانًا</span></div>
+    <div class="line lat" id="endUrl" style="top:870px;font-size:62px;font-weight:700;color:rgba(243,239,232,.8)">sabergroupacademy.com/<span style="color:var(--amber)">horix</span></div>
+  </div>
+
+  <svg id="cursor" viewBox="0 0 24 24"><path d="M3 2l16 9.5-7 1.6L8.5 20z" fill="#F3EFE8" stroke="#141314" stroke-width="1.4" stroke-linejoin="round"/></svg>
+  <div id="grain"></div>
+  <div id="vig"></div>
+  <div id="flash"></div>
+</div>
+<script src="lib.js"></script>
+<script>
+window.DURATION = 24.84;
+// Hits measured from the track (Stomp Clap, 128 BPM): claps in the intro, stomps, drop at 7.595.
+const CLAPS = [0.365, 0.835, 1.19, 1.54, 1.89, 2.245, 2.73, 3.065, 3.415];
+const STOMP = 3.77, DROP = 7.595;
+
+const MACROS = [ // [image, focusX, focusY, zoom, driftX, driftY, zoomDrift]
+  ['hd/02-open.png', 0.035, 0.45, 3.2, 0, -0.04, 0.10],
+  ['hd/02-open.png', 0.80, 0.27, 2.6, -0.03, 0, 0.08],
+  ['hd/m-Filter.png', 0.24, 0.32, 2.4, 0, 0.04, 0.10],
+  ['hd/m-Layer.png', 0.72, 0.68, 2.8, 0.03, 0, 0.08],
+  ['hd/05-hs0.png', 0.82, 0.28, 2.6, -0.04, 0, 0.06],
+  ['hd/m-Image.png', 0.17, 0.33, 2.5, 0, 0.04, 0.10],
+  ['hd/cmd-SelectSubject.png', 0.17, 0.30, 2.6, 0.02, 0, 0.10],
+  ['hd/03-ants.png', 0.81, 0.40, 2.8, 0, 0.03, 0.12],
+  ['hd/m-Edit.png', 0.07, 0.30, 2.4, 0, 0.05, 0.10],
+];
+
+const show = (id, on) => { const el = document.getElementById(id); el.style.display = on ? 'block' : 'none'; return el; };
+const flashAt = (t, times, dur, amt) => { let v = 0; for (const x of times) if (t >= x && t < x + dur) v = Math.max(v, amt * (1 - (t - x) / dur)); return v; };
+// punch: quick overshoot scale on a hit
+const punch = (t, t0, amt) => (t < t0 ? 0 : amt * Math.exp(-(t - t0) * 9) * Math.cos((t - t0) * 18));
+const pop = (el, t, t0, from) => { const x = k(t, t0, t0 + 0.22, E.outBack); el.style.opacity = clamp((t - t0) / 0.06, 0, 1); el.style.transform = `scale(${mix(from || 1.6, 1, x)})`; el.style.filter = `blur(${(1 - k(t, t0, t0 + 0.16)) * 14}px)`; };
+const wordsIn = (sel, t, times, from) => $$(sel + ' .word').forEach((w, i) => { if (t < times[i]) { w.style.display = 'none'; return; } w.style.display = 'inline-block'; pop(w, t, times[i], from); });
+
+function bg(t, amt) {
+  const b1 = $('#b1'), b2 = $('#b2'), b3 = $('#b3');
+  set(b1, { width: '900px', height: '900px', left: `${50 + 260 * Math.sin(t * 0.35)}px`, top: `${300 + 120 * Math.cos(t * 0.4)}px`, background: 'rgba(214,60,50,.55)', opacity: 0.55 * amt });
+  set(b2, { width: '1100px', height: '800px', left: `${1300 + 200 * Math.cos(t * 0.3)}px`, top: `${600 + 150 * Math.sin(t * 0.33)}px`, background: 'rgba(120,30,28,.7)', opacity: 0.7 * amt });
+  set(b3, { width: '520px', height: '520px', left: `${1100 + 300 * Math.sin(t * 0.5)}px`, top: `${80 + 80 * Math.sin(t * 0.7)}px`, background: 'rgba(234,153,63,.35)', opacity: 0.35 * amt });
+}
+
+function macro(t) {
+  const m = $('#macro');
+  let i = -1; for (let j = 0; j < CLAPS.length; j++) if (t >= CLAPS[j]) i = j;
+  const eye = $('#eye');
+  if (i < 0) { // black open: the amber eye blinks once
+    m.style.opacity = 0;
+    const s = env(t, 0.02, 0.36, 0.08, 0.1);
+    set(eye, { position: 'absolute', left: '50%', top: '50%', width: '26px', height: `${26 * s}px`, marginLeft: '-13px', marginTop: `${-13 * s}px`, borderRadius: '50%', background: 'var(--amber)', display: 'block' });
+    return;
+  }
+  eye.style.display = 'none';
+  const [src, fx0, fy0, z0, dx, dy, dz] = MACROS[i];
+  const t0 = CLAPS[i], t1 = i + 1 < CLAPS.length ? CLAPS[i + 1] : STOMP;
+  const p = clamp((t - t0) / (t1 - t0), 0, 1);
+  const e = E.outCubic(p);
+  const z = z0 * (1 + dz * e) * (1 + 0.25 * (1 - k(t, t0, t0 + 0.18, E.outExpo))); // snap-in then slow push
+  const fx = fx0 + dx * e, fy = fy0 + dy * e;
+  const W = 1920 * z, H = 1080 * z;
+  const x = clamp(960 - fx * W, 1920 - W, 0), y = clamp(540 - fy * H, 1080 - H, 0);
+  set(m, { backgroundImage: `url(${src})`, backgroundSize: `${W}px ${H}px`, backgroundPosition: `${x}px ${y}px`, opacity: 1,
+    filter: `brightness(${1 + 0.5 * (1 - k(t, t0, t0 + 0.12))}) blur(${(1 - k(t, t0, t0 + 0.1)) * 6}px)` });
+}
+
+function question(t) {
+  const q1 = $('#q1'), q2 = $('#q2'), dot = $('#dot');
+  const T1 = [3.77, 4.14, 4.485, 4.95], T2 = [5.655, 6.02, 6.36];
+  q1.style.display = t < 5.655 ? 'block' : 'none';
+  q2.style.display = t >= 5.655 ? 'block' : 'none';
+  wordsIn('#q1', t, T1, 1.7);
+  wordsIn('#q2', t, T2, 1.7);
+  // 6.59: the question shakes, then collapses into the amber eye for the break
+  const c = k(t, 6.62, 7.05, E.inCubic);
+  const sh = t > 6.59 && t < 6.75 ? Math.sin(t * 160) * 10 * (1 - (t - 6.59) / 0.16) : 0;
+  q2.style.transform = `translateX(${sh}px) scale(${1 - 0.95 * c})`;
+  q2.style.opacity = 1 - c;
+  q1.style.transform = `scale(${1 + punch(t, 4.95, 0.04)})`;
+  const ds = t < 6.9 ? 0 : mix(0.2, 1, k(t, 6.9, 7.2)) * (1 + 0.6 * k(t, 7.2, DROP, E.inCubic));
+  set(dot, { transform: `scale(${ds})`, boxShadow: `0 0 ${60 * k(t, 7.1, DROP)}px ${20 * k(t, 7.1, DROP)}px rgba(234,153,63,.5)` });
+}
+
+function logo(t) {
+  const L = $('#lockup');
+  const x = k(t, DROP, DROP + 0.35, E.outExpo);
+  const up = k(t, 8.2, 8.6, E.inOutCubic);
+  L.style.transform = `translateY(${-110 * up}px) scale(${mix(1.5, 1, x) * mix(1, 0.82, up) * (1 + punch(t, 7.87, 0.03))})`;
+  L.style.filter = `blur(${(1 - k(t, DROP, DROP + 0.2)) * 20}px)`;
+  L.style.opacity = clamp((t - DROP) / 0.05, 0, 1);
+  wordsIn('#tag', t, [8.27, 8.43, 8.585, 8.75, 8.93], 1.5);
+  const out = k(t, 9.25, 9.4, E.inCubic);
+  $('#L_logo').style.opacity = 1 - out;
+}
+
+function demo(t) {
+  const win = $('#win'), i0 = $('#wimg0'), i1 = $('#wimg1');
+  // timeline of window screenshots: [time, image, crossfade]
+  const SEQ = [[9.4, 'hero/11-open.png'], [10.105, 'hd/cmd-SelectSubject.png'], [10.455, 'hero/12-subject.png'], [10.8, 'hero/14-cutout.png'],
+    [11.285, 'hero/15-both.png'], [11.865, 'hero/16-hs-open.png'], [12.215, 'hero/17-hs-hue.png', 0.25], [12.48, 'hero/18-final.png']];
+  let a = 0; for (let j = 0; j < SEQ.length; j++) if (t >= SEQ[j][0]) a = j;
+  const cur = SEQ[a], prev = SEQ[Math.max(0, a - 1)];
+  const fade = cur[2] ? k(t, cur[0], cur[0] + cur[2], E.inOutCubic) : 1;
+  if (i1.getAttribute('src') !== cur[1]) i1.setAttribute('src', cur[1]);
+  if (i0.getAttribute('src') !== prev[1]) i0.setAttribute('src', prev[1]);
+  i1.style.opacity = fade;
+  // window: flies in tilted at 9.4, sits left-of-center, punches on the hits
+  const fin = k(t, 9.4, 9.85, E.outExpo);
+  const zoomSubj = k(t, 10.455, 10.7, E.outExpo) * (1 - k(t, 11.2, 11.45, E.inOutCubic));
+  const zoomFinal = k(t, 12.48, 12.75, E.outExpo);
+  const out = k(t, 12.95, 13.18, E.inCubic);
+  const w = 1240, h = 698;
+  const p = punch(t, 10.105, 0.03) + punch(t, 10.8, 0.03) + punch(t, 11.285, 0.02) + punch(t, 11.865, 0.02);
+  const s = mix(0.8, 1, fin) * (1 + 0.16 * zoomSubj + 0.28 * zoomFinal + p) * (1 + 0.6 * out);
+  // zoom towards the canvas (the photo sits at ~42% x / 54% y of the screenshot)
+  const ox = -(0.42 - 0.5) * w * (s - 1), oy = -(0.54 - 0.5) * h * (s - 1);
+  set(win, { width: w + 'px', height: h + 'px', left: '60px', top: '191px',
+    transform: `perspective(1800px) translate(${ox}px, ${oy + (1 - fin) * 500}px) rotateY(${(1 - fin) * 24 + 6 * (1 - k(t, 9.4, 12.5, E.inOutCubic))}deg) rotateX(${(1 - fin) * 12}deg) scale(${s})`,
+    opacity: (1 - out) * clamp((t - 9.4) / 0.08, 0, 1) });
+  // label chip for the command
+  const chip = $('#chip');
+  chip.style.display = t >= 10.105 && t < 10.8 ? 'block' : 'none';
+  if (t >= 10.105) { pop(chip, t, 10.105, 1.8); set(chip, { right: '120px', top: '220px' }); }
+  // captions
+  const c1 = $('#cap1'), c2 = $('#cap2');
+  c1.style.display = t >= 10.8 && t < 11.285 ? 'block' : 'none';
+  c2.style.display = t >= 11.285 && t < 13.18 ? 'block' : 'none';
+  wordsIn('#cap1', t, [10.8, 10.9, 11.0, 11.03], 1.6);
+  wordsIn('#cap2', t, [11.285, 11.515], 1.6);
+  c2.style.opacity = 1 - out;
+  // cursor moves to the command, then clicks
+  const cu = $('#cursor');
+  if (t >= 9.7 && t < 10.5) {
+    const m = k(t, 9.7, 10.05, E.inOutCubic);
+    const cl = t > 10.05 && t < 10.2 ? 0.85 : 1;
+    set(cu, { display: 'block', left: `${mix(1100, 640, m)}px`, top: `${mix(860, 470, m)}px`, transform: `scale(${cl})` });
+  } else cu.style.display = 'none';
+}
+
+function beforeAfter(t) {
+  const x = k(t, 13.39, 13.745, E.inOutCubic) * (1 - 0) ; // wipe from right (after) to left
+  const wipe = 594 * (1 - x);
+  $('#baAfter').style.clipPath = `inset(0 0 0 ${wipe}px)`;
+  $('#baLine').style.left = wipe + 'px';
+  $('#baLine').style.opacity = x > 0 && x < 1 ? 1 : 0;
+  const box = $('#baBox');
+  const fin = k(t, 13.18, 13.4, E.outExpo);
+  box.style.transform = `scale(${mix(1.25, 1, fin) * (1 + punch(t, 13.745, 0.03))})`;
+  box.style.opacity = clamp((t - 13.18) / 0.06, 0, 1);
+  pop($('#baL'), t, 13.18, 1.5);
+  const r = $('#baR'); if (t < 13.745) r.style.opacity = 0; else pop(r, t, 13.745, 1.5);
+}
+
+function menus(t) {
+  const T = [14.095, 14.33, 14.685];
+  const pos = [[1240, 10, 10], [705, 30, 0], [220, 10, -10]];
+  for (let i = 0; i < 3; i++) {
+    const el = $('#mw' + i);
+    if (t < T[i]) { el.style.opacity = 0; continue; }
+    const x = k(t, T[i], T[i] + 0.3, E.outExpo);
+    const drift = (t - T[i]) * 14;
+    set(el, { left: pos[i][0] + 'px', top: pos[i][1] + 'px', opacity: 1,
+      transform: `perspective(1600px) translateY(${(1 - x) * 400 - drift}px) rotateY(${pos[i][2] * (1 - 0.5 * x)}deg) rotateZ(${pos[i][2] * 0.25}deg) scale(${mix(0.6, 0.8, x)})` });
+  }
+  wordsIn('#mcap', t, [14.92, 15.0, 15.08, 15.16], 1.4);
+  $('#L_menus').style.opacity = 1 - k(t, 15.3, 15.42);
+}
+
+const ITEMS = [ // [time, text, latin?, clip image]
+  [16.455, 'طبقات', false, 'hero/crop-18-final.png'],
+  [16.915, 'ماسكات', false, 'hero/crop-11-open.png'],
+  [17.31, 'فلاتر', false, 'img/1470071459604-3b5ec3a7fe05.jpg'],
+  [17.855, 'Select Subject', true, 'hero/crop-12-subject.png'],
+  [18.325, 'PSD', true, 'img/1506744038136-46273834b3fb.jpg'],
+  [18.805, 'ويندوز', false, null],
+  [19.045, 'ماك', false, null],
+  [19.51, 'المتصفح', false, null],
+];
+function need(t) {
+  wordsIn('#need', t, [15.42, 15.62, 15.86, 16.095], 1.6);
+  let a = -1; for (let j = 0; j < ITEMS.length; j++) if (t >= ITEMS[j][0]) a = j;
+  const it = $('#item');
+  if (a < 0) { it.style.opacity = 0; return; }
+  const [t0, txt, lat, img] = ITEMS[a];
+  if (it.dataset.i !== String(a)) {
+    it.dataset.i = a; it.textContent = txt;
+    it.className = lat ? 'lat' : 'ar';
+    it.style.fontSize = lat ? (txt.length > 4 ? '250px' : '340px') : '330px';
+    it.style.color = a === ITEMS.length - 1 ? 'var(--red)' : 'var(--ivory)';
+    it.style.textShadow = '0 20px 80px rgba(0,0,0,.6)';
+  }
+  pop(it, t, t0, 1.35);
+  const ib = $('#itemBg'); ib.style.backgroundImage = img ? `url(${img})` : 'none'; ib.style.opacity = img ? 0.9 * k(t, t0, t0 + 0.15) * (1 - k(t, 19.85, 19.99)) : 0; ib.style.transform = `scale(${1.1 + (t - t0) * 0.08})`;
+  $('#need').style.opacity = 1 - k(t, 19.8, 19.99);
+  it.style.opacity = Math.min(parseFloat(it.style.opacity), 1 - k(t, 19.85, 19.99));
+}
+
+function free(t) {
+  const f = $('#free');
+  const x = k(t, 19.99, 20.2, E.outExpo);
+  f.style.transform = `scale(${mix(2.2, 1, x) * (1 + punch(t, 20.44, 0.04))})`;
+  f.style.filter = `blur(${(1 - x) * 16}px)`;
+  const f2 = $('#free2'); if (t < 20.205) f2.style.opacity = 0; else pop(f2, t, 20.205, 1.6);
+}
+
+function claim(t) {
+  wordsIn('#claim', t, [20.68, 21.05, 21.375], 1.6);
+  wordsIn('#claim2', t, [21.61], 1.8);
+  const pl = $$('#plats .plat'); const T = [21.85, 22.085, 22.315];
+  pl.forEach((p, i) => { if (t < T[i]) p.style.opacity = 0; else pop(p, t, T[i], 1.5); });
+  $('#claim').style.transform = `scale(${1 + punch(t, 21.61, 0.03)})`;
+}
+
+function endCard(t) {
+  const L = $('#endLogo');
+  const x = k(t, 22.565, 22.85, E.outExpo);
+  L.style.transform = `scale(${mix(1.35, 1, x)})`; L.style.filter = `blur(${(1 - x) * 14}px)`; L.style.opacity = x;
+  const b = $('#endBtn .btn');
+  if (t < 22.915) b.style.opacity = 0; else pop(b, t, 22.915, 1.5);
+  const press = t >= 23.27 ? 1 - 0.08 * Math.exp(-(t - 23.27) * 14) : 1;
+  if (t >= 22.915) b.style.transform = `scale(${parseFloat(b.style.transform.replace(/[^0-9.]/g, '')) * press})`;
+  b.style.boxShadow = t >= 23.495 ? `0 0 0 ${40 * k(t, 23.495, 24.0)}px rgba(214,60,50,${0.5 * (1 - k(t, 23.495, 24.0))})` : 'none';
+  const u = $('#endUrl'); if (t < 23.27) u.style.opacity = 0; else { u.style.opacity = k(t, 23.27, 23.5); u.style.transform = `translateY(${(1 - k(t, 23.27, 23.6, E.outExpo)) * 30}px)`; }
+  // cursor clicks the button
+  const cu = $('#cursor');
+  if (t >= 22.95 && t < 24.84) {
+    const m = k(t, 22.95, 23.25, E.inOutCubic);
+    set(cu, { display: 'block', left: `${mix(1400, 1010, m)}px`, top: `${mix(1000, 760, m)}px`, transform: `scale(${t > 23.27 && t < 23.4 ? 0.85 : 1})` });
+  }
+}
+
+function render(t) {
+  bg(t, t < 3.77 ? 0.0 : t < DROP ? 0.15 : 1);
+  show('L_macro', t < STOMP) && t < STOMP && macro(t);
+  show('L_q', t >= STOMP && t < DROP) && t >= STOMP && t < DROP && question(t);
+  if (show('L_logo', t >= DROP && t < 9.4).style.display === 'block') logo(t);
+  if (show('L_demo', t >= 9.4 && t < 13.18).style.display === 'block') demo(t); else if (t < 22.95) $('#cursor').style.display = 'none';
+  if (show('L_ba', t >= 13.18 && t < 14.095).style.display === 'block') beforeAfter(t);
+  if (show('L_menus', t >= 14.095 && t < 15.42).style.display === 'block') menus(t);
+  if (show('L_need', t >= 15.42 && t < 19.99).style.display === 'block') need(t);
+  if (show('L_free', t >= 19.99 && t < 20.68).style.display === 'block') free(t);
+  if (show('L_claim', t >= 20.68 && t < 22.565).style.display === 'block') claim(t);
+  if (show('L_end', t >= 22.565).style.display === 'block') endCard(t);
+  // white flashes on the big moments, fade to black at the end
+  $('#flash').style.opacity = flashAt(t, [DROP, 9.4, 13.18, 19.99, 22.565], 0.18, 0.55) + flashAt(t, CLAPS, 0.06, 0.12);
+  $('#stage').style.opacity = 1 - k(t, 24.25, 24.84, E.inCubic);
+}
+const PRE = ['hero/11-open.png','hd/cmd-SelectSubject.png','hero/12-subject.png','hero/14-cutout.png','hero/15-both.png','hero/16-hs-open.png','hero/17-hs-hue.png','hero/18-final.png',
+  ...MACROS.map(m => m[0]), ...ITEMS.filter(i => i[3]).map(i => i[3])];
+window.__keep = PRE.map(src => { const im = new Image(); im.src = src; return im; });
+document.fonts.ready.then(() => Promise.all([...document.images, ...window.__keep].map(i => i.decode().catch(() => 0)))).then(() => { render(0); window.READY = true; });
+</script>
+</body>
+</html>

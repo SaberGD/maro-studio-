@@ -1,0 +1,33 @@
+import pw from '/opt/node22/lib/node_modules/playwright/index.js'; const { chromium } = pw;
+const D = process.cwd() + '/hd', I = process.cwd() + '/img/';
+const b = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] });
+const ctx = await b.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2, userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36' });
+const p = await ctx.newPage();
+p.on('pageerror', (e) => console.log('ERR', String(e)));
+const shot = async (n) => { await p.waitForTimeout(500); await p.screenshot({ path: `${D}/${n}.png` }); console.log('shot', n); };
+await p.goto('https://sabergroupacademy.com/horix/?webgl');
+await p.waitForTimeout(400); await shot('00-splash');
+await p.waitForTimeout(9000);
+await p.mouse.click(1268*2-1920, 506*2); await p.waitForTimeout(500);
+await p.mouse.click(1300, 700);
+await shot('01-home');
+const open = async (f) => { const ch = p.waitForEvent('filechooser', { timeout: 10000 }).catch(() => null); await p.keyboard.press('Control+O'); const fc = await ch; if (fc) await fc.setFiles(I + f); await p.waitForTimeout(5000); };
+const cmd = async (name, wait=1500) => { await p.keyboard.press('Control+K'); await p.waitForTimeout(500); await p.keyboard.type(name); await p.waitForTimeout(700); await shot('cmd-' + name.replace(/\W/g,'')); await p.keyboard.press('Enter'); await p.waitForTimeout(wait); };
+await open('1517841905240-472988babdf9.jpg');
+await shot('02-open');
+await cmd('Select Subject', 7000);
+await shot('03-ants');
+await p.keyboard.press('Control+J'); await p.waitForTimeout(1500);
+await p.mouse.click(1610, 464); await p.waitForTimeout(1200);
+await p.keyboard.press('Control+D'); await p.waitForTimeout(800);
+await shot('04-cutout');
+await p.mouse.click(1610, 464); await p.waitForTimeout(800);
+await p.mouse.click(1700, 464); await p.waitForTimeout(600);
+await p.keyboard.press('Control+U'); await p.waitForTimeout(1500);
+await shot('05-hs0');
+for (const v of [-40, -80, -120, -150]) { await p.mouse.dblclick(1134, 432); await p.waitForTimeout(200); await p.keyboard.press('Control+A'); await p.keyboard.type(String(v)); await p.keyboard.press('Tab'); await p.waitForTimeout(1500); await shot('06-hs' + (-v)); }
+await p.keyboard.press('Enter'); await p.waitForTimeout(1500);
+await shot('07-final');
+const menus = { Edit: 30, Image: 50, Layer: 73, Select: 117, Filter: 140 };
+for (const [n, x] of Object.entries(menus)) { await p.mouse.click(x, 9); await p.waitForTimeout(900); await shot('m-' + n); await p.keyboard.press('Escape'); await p.waitForTimeout(500); }
+await b.close();
