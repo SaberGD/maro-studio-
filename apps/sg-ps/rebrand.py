@@ -1233,6 +1233,46 @@ def desktop(root: Path) -> None:
     ])
     edit(root, "apps/photocraft/src/app_dirs.rs", [
         ('pub const PORTABLE_DATA_DIR: &str = "PhotoCraftData";', 'pub const PORTABLE_DATA_DIR: &str = "HORIX-Data";'),
+        ("""    let platform = platform_dir(&env);
+    let Some((exe_dir, marker)) = exe_dir.and_then(|d| portable_marker(d).map(|m| (d, m))) else {
+        return DataDir { dir: platform, mode: Mode::Platform, warning: None };
+    };""", """    let platform = platform_dir(&env);
+    // HORIX's Windows ZIP is compiled as portable, so it needs no marker file beside the EXE.
+    // Other native builds retain the upstream marker behaviour.
+    let packaged_portable = cfg!(windows) && option_env!("HORIX_PORTABLE") == Some("1");
+    let Some((exe_dir, marker)) = exe_dir.and_then(|d| {
+        portable_marker(d).map(|m| (d, Some(m))).or_else(|| packaged_portable.then_some((d, None)))
+    }) else {
+        return DataDir { dir: platform, mode: Mode::Platform, warning: None };
+    };"""),
+        ("""            let warning =
+                format!("portable mode ({} found) but {} isn't writable ({e}); settings are kept in {fallback} instead", marker.display(), data.display());""", """            let source = marker.as_ref().map_or_else(|| "portable Windows build".to_string(), |m| format!("{} found", m.display()));
+            let warning =
+                format!("portable mode ({source}) but {} isn't writable ({e}); settings are kept in {fallback} instead", data.display());"""),
+    ])
+    notices = [
+        ("HORIX application core — MIT License", root / "LICENSE-MIT"),
+        ("Upstream notice", root / "NOTICE"),
+        ("Inter font — SIL Open Font License 1.1", root / "assets/fonts/OFL-Inter.txt"),
+        ("JetBrains Mono font — SIL Open Font License 1.1", root / "assets/fonts/OFL-JetBrainsMono.txt"),
+        ("Lucide icons — ISC License", root / "assets/icons/LICENSE-lucide.txt"),
+        ("SCOWL dictionaries", root / "assets/dict/LICENSE-SCOWL.txt"),
+        ("Barlow Condensed font — SIL Open Font License 1.1", HERE / "assets/fonts/OFL-BarlowCondensed.txt"),
+    ]
+    licence_text = "HORIX OPEN-SOURCE LICENCES AND NOTICES\n\n" + "\n\n".join(
+        f"{'=' * 72}\n{title}\n{'=' * 72}\n\n{path.read_text(encoding='utf-8').strip()}"
+        for title, path in notices
+    ) + "\n"
+    (root / "crates/ui-egui/src/horix_licenses.txt").write_text(licence_text, encoding="utf-8")
+    edit(root, "crates/ui-egui/src/dialogs.rs", [
+        ('                    ui.weak("Built on open-source software (MIT / Apache-2.0). Licence texts ship with the app.");',
+         '                    ui.weak("Built on open-source software. Required licence texts are included in the app.");\n'
+         '                    ui.add_space(6.0);\n'
+         '                    ui.collapsing("Open-source licences", |ui| {\n'
+         '                        egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {\n'
+         '                            ui.add(egui::Label::new(egui::RichText::new(include_str!("horix_licenses.txt")).font(crate::theme::mono(10.0))).selectable(true));\n'
+         '                        });\n'
+         '                    });'),
     ])
     edit(root, "apps/photocraft/src/main.rs", [
         ('const APP_ID: &str = "ai.storyteller.photocraft";', 'const APP_ID: &str = "com.sabergroup.sgps";'),
@@ -1438,6 +1478,34 @@ CRASH_SCRIPT = """  <script>
 """
 
 
+def selection_quality(root: Path) -> None:
+    """Spend more pixels on native selections and refine Quick Selection edges by default."""
+    edit(root, "crates/algo/src/segment/quick.rs", [
+        (
+            "/// Default working-resolution budget (pixels) for a stroke.\npub const WORK_PX: usize = 160_000;",
+            "/// Keep browser work bounded, while native HORIX uses a denser edge map for cleaner selections.\n"
+            "#[cfg(target_arch = \"wasm32\")]\n"
+            "pub const WORK_PX: usize = 160_000;\n"
+            "#[cfg(not(target_arch = \"wasm32\"))]\n"
+            "pub const WORK_PX: usize = 280_000;",
+        ),
+        (
+            "Raster-scan approximation (two forward/backward sweeps,",
+            "Raster-scan approximation (three forward/backward sweeps,",
+        ),
+        ("    for _ in 0..2 {", "    for _ in 0..3 {"),
+    ])
+    edit(root, "crates/algo/src/segment/subject.rs", [(
+        "/// Working-resolution budget (pixels).\npub const WORK_PX: usize = 110_000;",
+        "/// The browser keeps the conservative budget; native HORIX resolves finer subject boundaries.\n"
+        "#[cfg(target_arch = \"wasm32\")]\n"
+        "pub const WORK_PX: usize = 110_000;\n"
+        "#[cfg(not(target_arch = \"wasm32\"))]\n"
+        "pub const WORK_PX: usize = 220_000;",
+    )])
+    edit(root, "crates/ui-egui/src/state.rs", [("            enhance_edge: false,", "            enhance_edge: true,")])
+
+
 def stability(root: Path) -> None:
     """Free Transform never stays pending behind other edits; crash safety on the web and desktop."""
     edit(root, "crates/ui-egui/src/lib.rs", [(
@@ -1512,6 +1580,7 @@ def main() -> None:
     desktop(root)
     web_place(root)
     proportional_edges(root)
+    selection_quality(root)
     stability(root)
     apply_patches(root)
     check(root)

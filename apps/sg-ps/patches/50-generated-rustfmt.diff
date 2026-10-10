@@ -1,0 +1,136 @@
+--- a/apps/photocraft/src/app_dirs.rs
++++ b/apps/photocraft/src/app_dirs.rs
+@@ -69,9 +69,7 @@
+     // HORIX's Windows ZIP is compiled as portable, so it needs no marker file beside the EXE.
+     // Other native builds retain the upstream marker behaviour.
+     let packaged_portable = cfg!(windows) && option_env!("HORIX_PORTABLE") == Some("1");
+-    let Some((exe_dir, marker)) = exe_dir.and_then(|d| {
+-        portable_marker(d).map(|m| (d, Some(m))).or_else(|| packaged_portable.then_some((d, None)))
+-    }) else {
++    let Some((exe_dir, marker)) = exe_dir.and_then(|d| portable_marker(d).map(|m| (d, Some(m))).or_else(|| packaged_portable.then_some((d, None)))) else {
+         return DataDir { dir: platform, mode: Mode::Platform, warning: None };
+     };
+     let data = exe_dir.join(PORTABLE_DATA_DIR);
+@@ -80,8 +78,7 @@
+         Err(e) => {
+             let fallback = platform.as_ref().map_or_else(|| "nowhere (no user folder found)".to_string(), |p| p.display().to_string());
+             let source = marker.as_ref().map_or_else(|| "portable Windows build".to_string(), |m| format!("{} found", m.display()));
+-            let warning =
+-                format!("portable mode ({source}) but {} isn't writable ({e}); settings are kept in {fallback} instead", data.display());
++            let warning = format!("portable mode ({source}) but {} isn't writable ({e}); settings are kept in {fallback} instead", data.display());
+             DataDir { dir: platform, mode: Mode::Platform, warning: Some(warning) }
+         }
+     }
+--- a/apps/photocraft-web/src/web.rs
++++ b/apps/photocraft-web/src/web.rs
+@@ -63,7 +63,9 @@
+         if let Some(el) = document.get_element_by_id("sgps_loading") {
+             match result {
+                 Ok(()) => el.remove(),
+-                Err(e) => el.set_inner_html(&format!("<p>HORIX مقدرش يشتغل على المتصفح ده. جرّب آخر نسخة من Chrome أو Edge (محتاج WebGPU أو WebGL2).</p><p dir=\"ltr\">{e:?}</p>")),
++                Err(e) => el.set_inner_html(&format!(
++                    "<p>HORIX مقدرش يشتغل على المتصفح ده. جرّب آخر نسخة من Chrome أو Edge (محتاج WebGPU أو WebGL2).</p><p dir=\"ltr\">{e:?}</p>"
++                )),
+             }
+         }
+     });
+--- a/crates/algo/src/segment/subject.rs
++++ b/crates/algo/src/segment/subject.rs
+@@ -24,9 +24,9 @@
+ 
+ use photocraft_geom::Rect;
+ 
++use super::gmm::{DEFAULT_REG, Gmm};
+ use super::grabcut::{self, BG, PR_BG, PR_FG};
+ use super::slic::{rgb_to_lab, slic_lab};
+-use super::gmm::{DEFAULT_REG, Gmm};
+ use super::{Region, Sampler, subsample};
+ 
+ /// The browser keeps the conservative budget; native HORIX resolves finer subject boundaries.
+@@ -156,10 +156,12 @@
+ /// Pixels of `mask` 4-connected to the image border through `mask`.
+ fn border_flood(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
+     let mut out = vec![false; w * h];
+-    let mut stack: Vec<usize> = (0..w * h).filter(|i| {
+-        let (x, y) = (i % w, i / w);
+-        mask[*i] && (x == 0 || y == 0 || x + 1 == w || y + 1 == h)
+-    }).collect();
++    let mut stack: Vec<usize> = (0..w * h)
++        .filter(|i| {
++            let (x, y) = (i % w, i / w);
++            mask[*i] && (x == 0 || y == 0 || x + 1 == w || y + 1 == h)
++        })
++        .collect();
+     for i in &stack {
+         out[*i] = true;
+     }
+@@ -229,7 +231,13 @@
+         for y in 0..sh {
+             for x in 0..w {
+                 let c = boxsum(&ih, x, y, e);
+-                sure[y * w + x] = if c >= full(x, y) - 0.5 { 1 } else if c < 0.5 { 2 } else { 0 };
++                sure[y * w + x] = if c >= full(x, y) - 0.5 {
++                    1
++                } else if c < 0.5 {
++                    2
++                } else {
++                    0
++                };
+             }
+         }
+         if sure.iter().all(|v| *v != 0) {
+--- a/crates/ui-egui/src/links.rs
++++ b/crates/ui-egui/src/links.rs
+@@ -15,8 +15,7 @@
+ pub const ISSUES: &str = "https://sabergroupacademy.com";
+ 
+ /// Help-menu link commands: (id, url). Labels live in `menus::UI_COMMANDS`.
+-pub const COMMANDS: &[(&str, &str)] =
+-    &[("help.discord", DISCORD), ("help.contact", CONTACT), ("help.download", DOWNLOAD), ("help.website", APP_PAGE)];
++pub const COMMANDS: &[(&str, &str)] = &[("help.discord", DISCORD), ("help.contact", CONTACT), ("help.download", DOWNLOAD), ("help.website", APP_PAGE)];
+ 
+ /// SG - PS: "Contact us" (WhatsApp, courses and services), next to the Facebook button.
+ pub fn contact_button(app: &mut PhotocraftApp, ui: &mut egui::Ui, min_width: f32) -> egui::Response {
+--- a/crates/ui-egui/src/shortcut_dispatch/tests.rs
++++ b/crates/ui-egui/src/shortcut_dispatch/tests.rs
+@@ -408,10 +408,7 @@
+         let st = h.state().session.active().unwrap();
+         let bounds = st.doc.bounds();
+         let layer = st.doc.layer(st.active_layer.unwrap()).unwrap();
+-        (
+-            layer.surface().unwrap().read_region(bounds),
+-            layer.mask.as_ref().unwrap().surface.read_region(bounds),
+-        )
++        (layer.surface().unwrap().read_region(bounds), layer.mask.as_ref().unwrap().surface.read_region(bounds))
+     };
+ 
+     press(&mut h, "Alt+Backspace");
+--- a/crates/ui-egui/src/shortcut_dispatch.rs
++++ b/crates/ui-egui/src/shortcut_dispatch.rs
+@@ -220,11 +220,8 @@
+ 
+ /// Run a shortcut's command like its menu item (dialogs included), or say why it can't run.
+ pub fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str) {
+-    let id = if id == "edit.clear" && app.ui.transform.is_none() && app.session.active().is_some_and(|d| d.doc.selection.is_none()) {
+-        "layer.delete"
+-    } else {
+-        id
+-    };
++    let id =
++        if id == "edit.clear" && app.ui.transform.is_none() && app.session.active().is_some_and(|d| d.doc.selection.is_none()) { "layer.delete" } else { id };
+     let outcome = if !crate::menus::is_enabled(app, id) {
+         let why = disabled_reason(app, id);
+         app.ui.status = format!("{} is not available: {why}", label(id));
+@@ -239,11 +236,7 @@
+         } else {
+             // Fill shortcuts target the layer thumbnail or its mask thumbnail exactly like
+             // Brush, Gradient and Paint Bucket. The engine cannot infer the selected thumbnail.
+-            let params = if photocraft_engine::fill_key_cmds::IDS.contains(&id) {
+-                json!({"target": crate::canvas::paint_target(app)})
+-            } else {
+-                json!({})
+-            };
++            let params = if photocraft_engine::fill_key_cmds::IDS.contains(&id) { json!({"target": crate::canvas::paint_target(app)}) } else { json!({}) };
+             crate::menus::invoke(app, ctx, id, params)
+         };
+         match r {

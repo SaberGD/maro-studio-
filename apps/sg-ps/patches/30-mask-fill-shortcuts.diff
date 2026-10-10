@@ -1,0 +1,51 @@
+--- a/crates/ui-egui/src/shortcut_dispatch.rs
++++ b/crates/ui-egui/src/shortcut_dispatch.rs
+@@ -237,7 +237,14 @@ pub fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str) {
+             crate::adjust_dialog::open(app, id);
+             Ok(serde_json::Value::Null)
+         } else {
+-            crate::menus::invoke(app, ctx, id, json!({}))
++            // Fill shortcuts target the layer thumbnail or its mask thumbnail exactly like
++            // Brush, Gradient and Paint Bucket. The engine cannot infer the selected thumbnail.
++            let params = if photocraft_engine::fill_key_cmds::IDS.contains(&id) {
++                json!({"target": crate::canvas::paint_target(app)})
++            } else {
++                json!({})
++            };
++            crate::menus::invoke(app, ctx, id, params)
+         };
+         match r {
+             Ok(_) => Outcome::Ran,
+--- a/crates/ui-egui/src/shortcut_dispatch/tests.rs
++++ b/crates/ui-egui/src/shortcut_dispatch/tests.rs
+@@ -395,3 +395,30 @@ fn a_shortcut_opening_a_dialog_takes_the_frames_later_keys() {
+     assert_eq!(layer_count(&h), 5, "⌘Z didn't undo behind the dialog");
+     assert_eq!(logged(&h), ["image.adjustments.levels"]);
+ }
++
++/// Alt+Backspace follows the selected mask thumbnail instead of changing layer pixels.
++#[test]
++fn foreground_fill_shortcut_targets_the_active_mask() {
++    let mut h = harness();
++    h.state_mut().run("layer.layerMask.revealAll", json!({})).unwrap();
++    h.state_mut().ui.mask_target = true;
++    h.run_steps(2);
++
++    let before = {
++        let st = h.state().session.active().unwrap();
++        let bounds = st.doc.bounds();
++        let layer = st.doc.layer(st.active_layer.unwrap()).unwrap();
++        (
++            layer.surface().unwrap().read_region(bounds),
++            layer.mask.as_ref().unwrap().surface.read_region(bounds),
++        )
++    };
++
++    press(&mut h, "Alt+Backspace");
++
++    let st = h.state().session.active().unwrap();
++    let bounds = st.doc.bounds();
++    let layer = st.doc.layer(st.active_layer.unwrap()).unwrap();
++    assert_eq!(layer.surface().unwrap().read_region(bounds), before.0, "layer pixels stay unchanged");
++    assert_ne!(layer.mask.as_ref().unwrap().surface.read_region(bounds), before.1, "mask receives the foreground fill");
++}

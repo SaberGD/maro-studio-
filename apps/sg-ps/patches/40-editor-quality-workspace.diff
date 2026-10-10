@@ -1,0 +1,1266 @@
+--- a/crates/engine/src/retouch_cmds.rs
++++ b/crates/engine/src/retouch_cmds.rs
+@@ -380,7 +380,9 @@
+ fn spot_heal_surface(surf: &mut Surface, area: Rect, stroke: &Stroke, kind: SpotType, sel: Option<&Surface>, lock: bool) -> Rect {
+     let (bounds, cov) = stroke_coverage(stroke);
+     let size = stroke.brush.size;
+-    let margin = (size.max(8.0) * 1.0).ceil() as i32 + 8;
++    // Healing needs enough clean context around the blemish for PatchMatch to find structure.
++    // A one-brush margin made broad strokes repeat nearby damage and look like a soft blur.
++    let margin = (size.max(8.0) * 2.5).ceil() as i32 + 16;
+     let region_rect = bounds.inflate(margin).intersect(&area);
+     if region_rect.is_empty() {
+         return Rect::EMPTY;
+@@ -396,17 +398,20 @@
+             stroke_cov[img.index(x, y)] = *c;
+         }
+     }
+-    let hole: Vec<bool> = stroke_cov.iter().map(|c| *c > 0.0).collect();
++    // Ignore the almost-transparent fringe as source context, then feather it back at composite.
++    let hole: Vec<bool> = stroke_cov.iter().map(|c| *c > 0.04).collect();
+     if !hole.iter().any(|h| *h) {
+         return Rect::EMPTY;
+     }
+     // Synthesise over a slightly larger domain than the Poisson region, so the solve's boundary pixels
+     // carry synthesised values that differ from the untouched surroundings: that mismatch is what the
+     // membrane corrects (otherwise the Dirichlet data would be all zero and the blend a no-op).
+-    let domain = dilate(w, h, &hole, 2);
+-    let heal_mask = dilate(w, h, &hole, 1);
+-    let content_aware =
+-        |img: &[f32]| inpaint::complete(w, h, ch, img, &domain, &CompleteParams::default()).unwrap_or_else(|| poisson::membrane_fill(w, h, ch, img, &domain));
++    let grow = (size * 0.08).round().clamp(2.0, 12.0) as usize;
++    let domain = dilate(w, h, &hole, grow);
++    let heal_mask = dilate(w, h, &hole, (grow / 2).max(1));
++    let quality =
++        CompleteParams { patch_radius: (size * 0.12).round().clamp(3.0, 9.0) as usize, em_iters: 12, min_em_iters: 3, pm_iters: 3, ..Default::default() };
++    let content_aware = |img: &[f32]| inpaint::complete(w, h, ch, img, &domain, &quality).unwrap_or_else(|| poisson::membrane_fill(w, h, ch, img, &domain));
+     let filled = match kind {
+         SpotType::ContentAware => content_aware(&img.data),
+         SpotType::CreateTexture => inpaint::synthesize(w, h, ch, &img.data, &domain, (size / 4.0).clamp(6.0, 32.0) as usize, 0x5eed),
+--- a/crates/engine/src/selection_cmds.rs
++++ b/crates/engine/src/selection_cmds.rs
+@@ -297,24 +297,85 @@
+     set_selection(s, if contiguous { "Grow" } else { "Similar" }, area, out, SelectionMode::Replace)
+ }
+ 
+-fn lasso(s: &mut Session, p: &Value) -> Result<Value> {
+-    let pts: Vec<(f32, f32)> = p
+-        .get("points")
++fn lasso_points(p: &Value) -> Vec<(f32, f32)> {
++    p.get("points")
+         .and_then(Value::as_array)
+         .map(|a| a.iter().filter_map(|q| Some((q.get(0)?.as_f64()? as f32, q.get(1)?.as_f64()? as f32))).collect())
+-        .unwrap_or_default();
++        .unwrap_or_default()
++}
++
++fn apply_lasso(s: &mut Session, p: &Value, pts: &[(f32, f32)], label: &str, command: &str) -> Result<Value> {
+     if pts.len() < 3 {
+-        return Err(EngineError::BadParams { cmd: "select.lasso".into(), msg: "needs at least 3 points".into() });
++        return Err(EngineError::BadParams { cmd: command.into(), msg: "needs at least 3 points".into() });
+     }
+     let area = s.active().ok_or(EngineError::NoDocument)?.doc.bounds();
+-    let mut mask = sel::polygon(&pts, area, b(p, "antiAlias", true));
++    let mut mask = sel::polygon(pts, area, b(p, "antiAlias", true));
+     let feather = f(p, "feather", 0.0);
+     if feather > 0.0 {
+         mask = sel::feather(&mask, area.width() as usize, area.height() as usize, feather);
+     }
+-    set_selection(s, "Lasso", area, mask, mode(p))
++    set_selection(s, label, area, mask, mode(p))
+ }
+ 
++fn lasso(s: &mut Session, p: &Value) -> Result<Value> {
++    apply_lasso(s, p, &lasso_points(p), "Lasso", "select.lasso")
++}
++
++fn magnetic_lasso(s: &mut Session, p: &Value) -> Result<Value> {
++    const CMD: &str = "select.magneticLasso";
++    let raw = lasso_points(p);
++    if raw.len() < 3 {
++        return Err(EngineError::BadParams { cmd: CMD.into(), msg: "needs at least 3 points".into() });
++    }
++    let (area, pixels) = sample_rgba8(s, true)?;
++    let w = area.width() as usize;
++    let radius = f(p, "width", 10.0).round().clamp(2.0, 64.0) as i32;
++    let lum = |x: i32, y: i32| {
++        let x = x.clamp(area.x0, area.x1 - 1);
++        let y = y.clamp(area.y0, area.y1 - 1);
++        let c = pixels[(y - area.y0) as usize * w + (x - area.x0) as usize];
++        0.2126 * f32::from(c[0]) + 0.7152 * f32::from(c[1]) + 0.0722 * f32::from(c[2]) + 0.25 * f32::from(c[3])
++    };
++    let edge = |x: i32, y: i32| {
++        let gx = lum(x + 1, y - 1) + 2.0 * lum(x + 1, y) + lum(x + 1, y + 1) - lum(x - 1, y - 1) - 2.0 * lum(x - 1, y) - lum(x - 1, y + 1);
++        let gy = lum(x - 1, y + 1) + 2.0 * lum(x, y + 1) + lum(x + 1, y + 1) - lum(x - 1, y - 1) - 2.0 * lum(x, y - 1) - lum(x + 1, y - 1);
++        gx.hypot(gy)
++    };
++    let mut snapped: Vec<(f32, f32)> = Vec::with_capacity(raw.len());
++    for &(rx, ry) in &raw {
++        let (cx, cy) = (rx.round() as i32, ry.round() as i32);
++        let mut best = (rx, ry);
++        let mut best_score = f32::NEG_INFINITY;
++        for dy in -radius..=radius {
++            for dx in -radius..=radius {
++                let distance = ((dx * dx + dy * dy) as f32).sqrt();
++                if distance > radius as f32 {
++                    continue;
++                }
++                let (x, y) = (cx + dx, cy + dy);
++                if !area.contains(x, y) {
++                    continue;
++                }
++                // Prefer a strong Sobel edge, while keeping the path close to the pointer and
++                // discouraging discontinuous jumps between opposite sides of a thin object.
++                let continuity = snapped.last().map_or(0.0, |q| {
++                    let raw_step = (rx - q.0).hypot(ry - q.1);
++                    ((x as f32 - q.0).hypot(y as f32 - q.1) - raw_step).abs()
++                });
++                let score = edge(x, y) - distance * 5.0 - continuity * 1.5;
++                if score > best_score {
++                    best_score = score;
++                    best = (x as f32, y as f32);
++                }
++            }
++        }
++        if snapped.last().is_none_or(|q| (q.0 - best.0).hypot(q.1 - best.1) >= 1.0) {
++            snapped.push(best);
++        }
++    }
++    apply_lasso(s, p, &snapped, "Magnetic Lasso", CMD)
++}
++
+ macro_rules! spec {
+     ($id:literal, $label:literal, [$($m:literal),*], $params:literal, $en:expr, $run:expr) => {
+         CommandSpec { id: $id, label: $label, menu: &[$($m),*], shortcut: None, params: $params, enabled: $en, run: $run, journal: true }
+@@ -357,6 +418,14 @@
+             has_doc,
+             lasso
+         ),
++        spec!(
++            "select.magneticLasso",
++            "Magnetic Lasso",
++            [],
++            r##"{"points":[[x,y],…],"width":2..64=10,"mode":"replace|add|subtract|intersect"="replace","antiAlias":bool=true,"feather":px=0}"##,
++            has_doc,
++            magnetic_lasso
++        ),
+     ]
+ }
+ 
+@@ -555,4 +624,12 @@
+         s.execute("edit.undo", json!({})).unwrap();
+         assert_eq!(coverage(&s, 2, 2), 1.0);
+     }
++
++    #[test]
++    fn magnetic_lasso_follows_a_high_contrast_edge() {
++        let mut s = session();
++        s.execute("select.magneticLasso", json!({"points": [[3, 3], [17, 3], [17, 17], [3, 17]], "width": 5, "antiAlias": true})).unwrap();
++        assert!(coverage(&s, 10, 10) > 0.9, "inside the red square");
++        assert!(coverage(&s, 2, 2) < 0.1, "outside the snapped edge");
++    }
+ }
+--- a/crates/ui-egui/src/camera_raw_ui.rs
++++ b/crates/ui-egui/src/camera_raw_ui.rs
+@@ -243,37 +243,48 @@
+     // Interaction.
+     let drag_id = ui.id().with("cr-curve-drag");
+     let mut dragging: Option<usize> = ui.data(|d| d.get_temp(drag_id));
+-    if let Some(pos) = resp.interact_pointer_pos() {
++    let pressed = resp.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_pressed());
++    if pressed && let Some(pos) = ui.input(|i| i.pointer.press_origin()) {
+         let q = from_screen(pos);
+-        if resp.drag_started() || resp.clicked() {
+-            let near = p.point_curve.iter().position(|c| (to_screen(c[0], c[1]) - pos).length() < 8.0);
+-            if resp.secondary_clicked() {
+-                if let Some(i) = near.filter(|i| *i != 0 && *i + 1 != p.point_curve.len()) {
+-                    p.point_curve.remove(i);
+-                    *dirty = true;
+-                }
+-            } else {
+-                dragging = Some(near.unwrap_or_else(|| {
+-                    p.point_curve.push(q);
+-                    p.point_curve.sort_by(|a, b| a[0].total_cmp(&b[0]));
+-                    *dirty = true;
+-                    p.point_curve.iter().position(|c| *c == q).unwrap_or(0)
+-                }));
+-            }
+-        }
+-        if resp.dragged()
+-            && let Some(i) = dragging
+-        {
+-            let n = p.point_curve.len();
+-            let lo = if i == 0 { 0.0 } else { p.point_curve[i - 1][0] + 1.0 };
+-            let hi = if i + 1 == n { 255.0 } else { p.point_curve[i + 1][0] - 1.0 };
+-            p.point_curve[i] = [q[0].clamp(lo, hi.max(lo)), q[1]];
++        let near = p.point_curve.iter().position(|c| (to_screen(c[0], c[1]) - pos).length() < 10.0);
++        dragging = Some(near.unwrap_or_else(|| {
++            p.point_curve.push(q);
++            p.point_curve.sort_by(|a, b| a[0].total_cmp(&b[0]));
+             *dirty = true;
+-        }
++            p.point_curve.iter().position(|c| *c == q).unwrap_or(0)
++        }));
+     }
+-    if resp.drag_stopped() {
++    if resp.secondary_clicked()
++        && let Some(pos) = resp.interact_pointer_pos()
++        && let Some(i) = p.point_curve.iter().position(|c| (to_screen(c[0], c[1]) - pos).length() < 10.0)
++        && i != 0
++        && i + 1 != p.point_curve.len()
++    {
++        p.point_curve.remove(i);
+         dragging = None;
++        *dirty = true;
+     }
++    if resp.is_pointer_button_down_on()
++        && !pressed
++        && let (Some(i), Some(pos)) = (dragging, ui.input(|input| input.pointer.interact_pos()))
++    {
++        let q = from_screen(pos);
++        let n = p.point_curve.len();
++        let lo = if i == 0 { 0.0 } else { p.point_curve[i - 1][0] + 1.0 };
++        let hi = if i + 1 == n { 255.0 } else { p.point_curve[i + 1][0] - 1.0 };
++        let x = if i == 0 {
++            0.0
++        } else if i + 1 == n {
++            255.0
++        } else {
++            q[0].clamp(lo, hi.max(lo))
++        };
++        p.point_curve[i] = [x, q[1]];
++        *dirty = true;
++    }
++    if dragging.is_some() && !resp.is_pointer_button_down_on() {
++        dragging = None;
++    }
+     ui.data_mut(|d| d.insert_temp(drag_id, dragging));
+     // Curve (point curve after the parametric one).
+     let lut = curve_lut(&p.point_curve, 256);
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -281,6 +281,7 @@
+             | Tool::Burn
+             | Tool::Sponge
+             | Tool::Lasso
++            | Tool::MagneticLasso
+             | Tool::QuickSelection
+     )
+ }
+@@ -2014,7 +2015,7 @@
+             };
+             crate::tool_feedback::draw_ants(painter, &pts, true);
+         }
+-        Tool::Lasso => {
++        Tool::Lasso | Tool::MagneticLasso => {
+             let pts: Vec<Pos2> = d.points.iter().map(|p| xf.to_screen(p[0] as f32, p[1] as f32)).collect();
+             crate::tool_feedback::draw_ants(painter, &pts, false);
+         }
+@@ -2341,11 +2342,15 @@
+             let (aa, feather) = (app.ui.tool_options.anti_alias, app.ui.tool_options.feather);
+             let _ = app.run("select.rect", json!({"x": x0, "y": y0, "width": x1 - x0, "height": y1 - y0, "mode": mode, "ellipse": d.tool == Tool::EllipseMarquee, "antiAlias": aa, "feather": feather}));
+         }
+-        Tool::Lasso => {
++        Tool::Lasso | Tool::MagneticLasso => {
+             let pts: Vec<[f64; 2]> = d.points.iter().map(|p| [p[0], p[1]]).collect();
+             if pts.len() >= 3 {
+                 let mode = selection_mode(app, d.modifiers);
+-                let _ = app.run("select.lasso", json!({"points": pts, "mode": mode, "antiAlias": app.ui.tool_options.anti_alias}));
++                let command = if d.tool == Tool::MagneticLasso { "select.magneticLasso" } else { "select.lasso" };
++                let _ = app.run(
++                    command,
++                    json!({"points": pts, "mode": mode, "antiAlias": app.ui.tool_options.anti_alias, "feather": app.ui.tool_options.feather, "width": app.ui.tool_options.magnetic_width}),
++                );
+             } else if app.session.is_enabled("select.deselect") {
+                 let _ = app.run("select.deselect", json!({}));
+             }
+@@ -2473,9 +2478,18 @@
+ 
+     #[test]
+     fn freehand_tools_are_the_ones_that_follow_a_path() {
+-        for t in
+-            [Tool::Brush, Tool::Pencil, Tool::Eraser, Tool::BackgroundEraser, Tool::CloneStamp, Tool::Smudge, Tool::Dodge, Tool::Lasso, Tool::QuickSelection]
+-        {
++        for t in [
++            Tool::Brush,
++            Tool::Pencil,
++            Tool::Eraser,
++            Tool::BackgroundEraser,
++            Tool::CloneStamp,
++            Tool::Smudge,
++            Tool::Dodge,
++            Tool::Lasso,
++            Tool::MagneticLasso,
++            Tool::QuickSelection,
++        ] {
+             assert!(freehand_tool(t), "{t:?} paints or retouches along a path");
+         }
+         for t in [Tool::Move, Tool::Eyedropper, Tool::Gradient, Tool::Crop, Tool::RectMarquee, Tool::Type, Tool::Hand] {
+--- a/crates/ui-egui/src/color_picker_ui.rs
++++ b/crates/ui-egui/src/color_picker_ui.rs
+@@ -218,7 +218,23 @@
+     m
+ }
+ 
+-pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
++/// Sample the composited document while the picker is in eyedropper mode.
++pub fn canvas_sample(app: &mut PhotocraftApp, ctx: &egui::Context, f: &Map<String, Value>) -> Option<[f32; 3]> {
++    if f.get("__eyedropper").and_then(Value::as_bool) != Some(true) || !ctx.input(|i| i.pointer.primary_pressed()) {
++        return None;
++    }
++    let screen = crate::dialogs::free_pointer_over(ctx, app.last_canvas_rect)?;
++    let doc = crate::canvas::ViewXform::active(app)?.to_doc(screen);
++    let value = app.session.execute("document.pixel", json!({"x": doc[0].floor(), "y": doc[1].floor()})).ok()?;
++    let rgba: Vec<f32> = serde_json::from_value(value).ok()?;
++    (rgba.len() == 4 && rgba[3] > 0.0).then_some([rgba[0], rgba[1], rgba[2]])
++}
++
++pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>, sampled: Option<[f32; 3]>) {
++    if let Some(rgb) = sampled {
++        set_rgb(f, rgb, Keep::Nothing);
++        f.insert("__eyedropper".into(), json!(false));
++    }
+     let t = Tokens::get(ui.ctx());
+     let mode = f.get("__mode").and_then(Value::as_str).unwrap_or("h").to_string();
+     let now = current(f);
+@@ -284,7 +300,17 @@
+             if widgets::checkbox(ui, &mut web, tl!("Only Web Colors")).changed() {
+                 f.insert("__webOnly".into(), json!(web));
+                 set_rgb(f, rgb, Keep::Nothing);
++            }
++            ui.add_space(8.0);
++            let mut eyedropper = f.get("__eyedropper").and_then(Value::as_bool).unwrap_or(false);
++            let label = if eyedropper { tl!("Click a color in the image") } else { tl!("Pick from Image") };
++            if ui.selectable_label(eyedropper, label).on_hover_text(tl!("Sample a color directly from the open document")).clicked() {
++                eyedropper = !eyedropper;
++                f.insert("__eyedropper".into(), json!(eyedropper));
+             }
++            if eyedropper {
++                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
++            }
+         });
+         ui.add_space(10.0);
+         ui.vertical(|ui| fields(ui, f, &mode, &now));
+@@ -407,7 +433,7 @@
+         let mut h = Harness::builder().with_size(vec2(700.0, 500.0)).build_ui_state(
+             |ui, f: &mut Map<String, Value>| {
+                 if ui.ctx().fonts(|fonts| fonts.families().contains(&egui::FontFamily::Name("medium".into()))) {
+-                    body(ui, f);
++                    body(ui, f, None);
+                 }
+             },
+             f,
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -120,7 +120,10 @@
+                 DialogKind::Command if crate::rasterize_prompt::owns(&fields) => crate::rasterize_prompt::body(ui, &fields),
+                 DialogKind::Command if crate::variables_ui::owns(&fields) => crate::variables_ui::body(app, ui, &mut fields),
+                 DialogKind::Command if crate::file_ui::owns(&fields) => crate::file_ui::body(app, ui, &mut fields),
+-                DialogKind::Command if crate::color_picker_ui::owns(&fields) => crate::color_picker_ui::body(ui, &mut fields),
++                DialogKind::Command if crate::color_picker_ui::owns(&fields) => {
++                    let sampled = crate::color_picker_ui::canvas_sample(app, ui.ctx(), &fields);
++                    crate::color_picker_ui::body(ui, &mut fields, sampled);
++                }
+                 DialogKind::Command if crate::color_range_ui::owns(&fields) => crate::color_range_ui::body(app, ui, &mut fields),
+                 DialogKind::Command if crate::prefs_ui::owns(&fields) => crate::prefs_ui::body(app, ui, &mut fields),
+                 DialogKind::Command if fields.contains_key("__export") => crate::export_dialog::body(app, ui, &mut fields),
+--- a/crates/ui-egui/src/dock.rs
++++ b/crates/ui-egui/src/dock.rs
+@@ -115,7 +115,7 @@
+         matches!((self, tab), (Group::Layers, 0) | (Group::History, 0))
+     }
+ 
+-    fn tab_mut(self, tabs: &mut DockTabs) -> &mut usize {
++    pub(crate) fn tab_mut(self, tabs: &mut DockTabs) -> &mut usize {
+         match self {
+             Group::Color => &mut tabs.color,
+             Group::Properties => &mut tabs.properties,
+@@ -142,7 +142,7 @@
+         }
+     }
+ 
+-    fn shown_mut(self, panels: &mut Panels) -> &mut bool {
++    pub(crate) fn shown_mut(self, panels: &mut Panels) -> &mut bool {
+         match self {
+             Group::Color => &mut panels.color,
+             Group::Properties => &mut panels.properties,
+@@ -165,6 +165,8 @@
+     pub heights: BTreeMap<Group, f32>,
+     /// Groups collapsed to their tab strip.
+     pub collapsed: Vec<Group>,
++    /// Groups detached from the right dock, with their last screen position.
++    pub floating: BTreeMap<Group, [f32; 2]>,
+ }
+ 
+ /// Gap between groups; it is also the splitter's grab area.
+@@ -207,6 +209,24 @@
+         }
+     }
+ 
++    pub fn is_floating(&self, g: Group) -> bool {
++        self.floating.contains_key(&g)
++    }
++
++    pub fn float_group(&mut self, g: Group, at: [f32; 2]) {
++        self.set_collapsed(g, false);
++        self.floating.insert(g, at);
++    }
++
++    pub fn dock_group(&mut self, g: Group) {
++        self.floating.remove(&g);
++        self.set_collapsed(g, false);
++    }
++
++    pub fn floating_groups(&self) -> Vec<(Group, [f32; 2])> {
++        self.floating.iter().map(|(g, p)| (*g, *p)).collect()
++    }
++
+     /// The stored (or default) height, sanitised.
+     pub fn height(&self, g: Group) -> f32 {
+         match self.heights.get(&g) {
+@@ -308,7 +328,7 @@
+ pub fn rail_click(app: &mut PhotocraftApp, g: Group, docked: bool) {
+     if !g.shown(&app.ui.panels) {
+         reveal(app, g);
+-    } else if !docked {
++    } else if !docked || app.ui.dock.is_floating(g) {
+         *g.shown_mut(&mut app.ui.panels) = false;
+     } else {
+         let collapse = !app.ui.dock.is_collapsed(g);
+@@ -321,6 +341,7 @@
+     ToggleCollapse(Group),
+     Close(Group),
+     Move(Group, Option<Group>),
++    Float(Group, [f32; 2]),
+ }
+ 
+ /// Rects of the groups drawn last frame (screen points), for tests and automation.
+@@ -358,7 +379,7 @@
+ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut body: impl FnMut(&mut PhotocraftApp, &mut egui::Ui, Group, usize)) {
+     let t = Tokens::get(ui.ctx());
+     let strip = if t.pro { 28.0 } else { 40.0 };
+-    let order: Vec<Group> = app.ui.dock.order().into_iter().filter(|g| shown.contains(g)).collect();
++    let order: Vec<Group> = app.ui.dock.order().into_iter().filter(|g| shown.contains(g) && !app.ui.dock.is_floating(*g)).collect();
+     let area = ui.available_rect_before_wrap();
+     let heights = app.ui.dock.heights_for(&order, area.height(), strip);
+     let locked = app.session.prefs().workspace_locked;
+@@ -402,7 +423,11 @@
+             && resp.strip.drag_stopped()
+             && let Some(p) = ui.ctx().pointer_interact_pos()
+         {
+-            actions.push(Action::Move(g, drop_before(&order, &rects, g, p.y)));
++            if p.x < area.left() - 12.0 {
++                actions.push(Action::Float(g, [p.x - 150.0, p.y - 18.0]));
++            } else {
++                actions.push(Action::Move(g, drop_before(&order, &rects, g, p.y)));
++            }
+         }
+         if dragging == Some(g) {
+             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+@@ -426,6 +451,11 @@
+                 actions.push(Action::Move(g, order.get(pos + 2).copied()));
+                 ui.close();
+             }
++            if ui.add_enabled(!locked, egui::Button::new(tl!("Float Panel Group"))).clicked() {
++                let p = resp.strip.rect.left_top();
++                actions.push(Action::Float(g, [p.x - 320.0, p.y]));
++                ui.close();
++            }
+             ui.separator();
+             if ui.button(tl!("Close Tab Group")).clicked() {
+                 actions.push(Action::Close(g));
+@@ -446,7 +476,9 @@
+         }
+     }
+     // Drop indicator while a group is dragged by its tab strip.
+-    if let (Some(g), Some(p)) = (dragging, ui.ctx().pointer_interact_pos()) {
++    if let (Some(g), Some(p)) = (dragging, ui.ctx().pointer_interact_pos())
++        && p.x >= area.left() - 12.0
++    {
+         let before = drop_before(&order, &rects, g, p.y);
+         let line_y = match before.and_then(|b| rects.iter().find(|(x, _)| *x == b)) {
+             Some((_, r)) => r.top() - GAP / 2.0,
+@@ -471,6 +503,7 @@
+                     app.ui.dock.move_group(g, before);
+                 }
+             }
++            Action::Float(g, at) => app.ui.dock.float_group(g, at),
+         }
+     }
+ }
+--- a/crates/ui-egui/src/dock_tests.rs
++++ b/crates/ui-egui/src/dock_tests.rs
+@@ -211,6 +211,21 @@
+ }
+ 
+ #[test]
++fn floating_groups_can_be_docked_and_reset() {
++    let (mut app, _, _) = app_with_layers();
++    app.ui.dock.float_group(Group::Color, [180.0, 90.0]);
++    assert!(app.ui.dock.is_floating(Group::Color));
++    assert_eq!(app.ui.dock.floating_groups(), vec![(Group::Color, [180.0, 90.0])]);
++    app.ui.dock.dock_group(Group::Color);
++    assert!(!app.ui.dock.is_floating(Group::Color));
++    app.ui.dock.float_group(Group::Layers, [240.0, 120.0]);
++    let ctx = egui::Context::default();
++    crate::menus::invoke(&mut app, &ctx, "window.workspace.resetWorkspace", json!({})).unwrap();
++    assert_eq!(app.ui.workspace, "Essentials");
++    assert_eq!(app.ui.dock, DockLayout::default());
++}
++
++#[test]
+ fn double_clicking_a_tab_collapses_and_dragging_a_strip_reorders() {
+     let (app, _, _) = app_with_layers();
+     let mut h = harness(app, vec2(1200.0, 800.0), ThemeKind::ProMedium);
+--- a/crates/ui-egui/src/hold_keys.rs
++++ b/crates/ui-egui/src/hold_keys.rs
+@@ -100,7 +100,7 @@
+ 
+ /// Tools whose in-progress drag the reposition key moves.
+ pub fn repositions(t: Tool) -> bool {
+-    matches!(t, Tool::RectMarquee | Tool::EllipseMarquee | Tool::Lasso | Tool::ObjectSelection) || crate::vector_ui::is_shape_tool(t)
++    matches!(t, Tool::RectMarquee | Tool::EllipseMarquee | Tool::Lasso | Tool::MagneticLasso | Tool::ObjectSelection) || crate::vector_ui::is_shape_tool(t)
+ }
+ 
+ fn latch_id() -> egui::Id {
+--- a/crates/ui-egui/src/icons.rs
++++ b/crates/ui-egui/src/icons.rs
+@@ -58,6 +58,7 @@
+         Tool::Count => "circle-dot",
+         Tool::Lasso => "lasso",
+         Tool::PolygonLasso => "pentagon",
++        Tool::MagneticLasso => "magnet",
+         Tool::MagicWand => "wand-sparkles",
+         Tool::Crop => "crop",
+         Tool::Slice => "slice-knife",
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -938,6 +938,7 @@
+             canvas::document_area(self, ui);
+         });
+         if hidden == 0 {
++            panels::floating_dock_windows(self, &ctx);
+             panels::properties_window(self, &ctx);
+             brush_panel::window(self, &ctx);
+             preset_panels::windows(self, &ctx);
+--- a/crates/ui-egui/src/menu_catalog.rs
++++ b/crates/ui-egui/src/menu_catalog.rs
+@@ -729,7 +729,7 @@
+     (&["Window", "Workspace"], "Graphic and Web", None, "window.workspace.graphicAndWeb"),
+     (&["Window", "Workspace"], "Motion", None, "window.workspace.motion"),
+     (&["Window", "Workspace"], "---", None, "---"),
+-    (&["Window", "Workspace"], "Reset Workspace", None, "window.workspace.resetWorkspace"),
++    (&["Window", "Workspace"], "Reset Essentials", None, "window.workspace.resetWorkspace"),
+     (&["Window", "Workspace"], "New Workspace…", None, "window.workspace.newWorkspace"),
+     (&["Window", "Workspace"], "Delete Workspace…", None, "window.workspace.deleteWorkspace"),
+     (&["Window", "Workspace"], "---", None, "---"),
+--- a/crates/ui-egui/src/menus.rs
++++ b/crates/ui-egui/src/menus.rs
+@@ -199,9 +199,9 @@
+         return invoke(app, ctx, alias, params);
+     }
+     if let Some(ws) = workspace_name(id) {
+-        // Reset re-applies the current workspace; Essentials is the default layout.
++        // Reset Essentials always restores the known default panel layout.
+         match (ws, id) {
+-            (_, "window.workspace.resetWorkspace") => {}
++            (_, "window.workspace.resetWorkspace") => app.ui.workspace = "Essentials".into(),
+             ("", _) => app.ui.workspace = "Essentials".into(),
+             (name, _) => app.ui.workspace = name.into(),
+         }
+--- a/crates/ui-egui/src/panels.rs
++++ b/crates/ui-egui/src/panels.rs
+@@ -18,7 +18,7 @@
+     &[&[Tool::Move]],
+     &[
+         &[Tool::RectMarquee, Tool::EllipseMarquee],
+-        &[Tool::Lasso, Tool::PolygonLasso],
++        &[Tool::Lasso, Tool::PolygonLasso, Tool::MagneticLasso],
+         &[Tool::ObjectSelection, Tool::QuickSelection, Tool::MagicWand],
+         &[Tool::Crop, Tool::Slice, Tool::SliceSelect],
+         &[Tool::Eyedropper, Tool::Ruler, Tool::Note, Tool::Count],
+@@ -578,12 +578,16 @@
+                             let _ = crate::menus::invoke(app, ui.ctx(), "select.selectAndMask", json!({}));
+                         }
+                     }
+-                    Tool::Lasso | Tool::PolygonLasso if FULL_TOOL_OPTIONS => {
++                    Tool::Lasso | Tool::PolygonLasso | Tool::MagneticLasso if FULL_TOOL_OPTIONS => {
+                         selection_mode_buttons(app, ui);
+                         widgets::vline(ui, 22.0);
+                         opt_label(ui, tl!("Feather"));
+                         widgets::value_field(ui, &mut app.ui.tool_options.feather, 0.0..=1000.0, "px", 62.0);
+                         widgets::checkbox(ui, &mut app.ui.tool_options.anti_alias, tl!("Anti-alias"));
++                        if app.ui.tool == Tool::MagneticLasso {
++                            opt_label(ui, tl!("Width"));
++                            widgets::value_field(ui, &mut app.ui.tool_options.magnetic_width, 2.0..=64.0, "px", 58.0);
++                        }
+                         widgets::vline(ui, 22.0);
+                         if widgets::secondary_button(ui, tl!("Select and Mask…"), 0.0).clicked() {
+                             let _ = crate::menus::invoke(app, ui.ctx(), "select.selectAndMask", json!({}));
+@@ -782,10 +786,10 @@
+                         }
+                     }
+                     Tool::Hand => hint(ui, tl!("Drag to pan  ·  hold Space with any tool")),
+-                    Tool::Lasso | Tool::PolygonLasso => hint(
++                    Tool::Lasso | Tool::PolygonLasso | Tool::MagneticLasso => hint(
+                         ui,
+                         &crate::i18n::fmt(
+-                            tl!("Drag (lasso) or click points (polygonal) · {add} add · {sub} subtract"),
++                            tl!("Drag to select; Magnetic Lasso follows nearby edges · {add} add · {sub} subtract"),
+                             &[("add", &crate::shortcuts::pretty("Shift")), ("sub", &crate::shortcuts::pretty("Alt"))],
+                         ),
+                     ),
+@@ -995,6 +999,62 @@
+         (Group::Layers, 0) => layers(app, ui),
+         (Group::Layers, 1) => channels(app, ui),
+         (Group::Layers, _) => crate::vector_ui::paths_panel(app, ui),
++    }
++}
++
++/// Detached panel groups. Drag a dock tab strip out to float it; Dock returns it to the column.
++pub fn floating_dock_windows(app: &mut PhotocraftApp, ctx: &egui::Context) {
++    let pro = Tokens::get(ctx).pro;
++    for (group, at) in app.ui.dock.floating_groups() {
++        if !group.shown(&app.ui.panels) {
++            continue;
++        }
++        let tabs = group.tabs(pro);
++        let mut selected = (*group.tab_mut(&mut app.ui.dock_tabs)).min(tabs.len().saturating_sub(1));
++        let mut open = true;
++        let mut dock = false;
++        let shown = egui::Window::new(tl!(tabs.get(selected).copied().unwrap_or("Panel")))
++            .id(egui::Id::new(("floating-dock-group", group.key())))
++            .default_pos(egui::pos2(at[0], at[1]))
++            .default_size(egui::vec2(320.0, group.default_height()))
++            .min_width(240.0)
++            .resizable(true)
++            .open(&mut open)
++            .show(ctx, |ui| {
++                ui.horizontal(|ui| {
++                    for (i, tab) in tabs.iter().enumerate() {
++                        if ui.selectable_label(selected == i, tl!(tab)).clicked() {
++                            selected = i;
++                        }
++                    }
++                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
++                        if ui.small_button(tl!("Dock")).on_hover_text(tl!("Return this panel group to the right dock")).clicked() {
++                            dock = true;
++                        }
++                    });
++                });
++                ui.separator();
++                let available = ui.available_height().max(group.min_height());
++                if group.scrolls_itself(selected) {
++                    ui.set_min_height(available);
++                    dock_body(app, ui, group, selected);
++                } else {
++                    egui::ScrollArea::vertical()
++                        .id_salt(("floating-dock-scroll", group.key(), selected))
++                        .auto_shrink([false, false])
++                        .show(ui, |ui| dock_body(app, ui, group, selected));
++                }
++            });
++        *group.tab_mut(&mut app.ui.dock_tabs) = selected;
++        if let Some(inner) = shown {
++            let p = inner.response.rect.min;
++            app.ui.dock.floating.insert(group, [p.x, p.y]);
++        }
++        if dock {
++            app.ui.dock.dock_group(group);
++        } else if !open {
++            *group.shown_mut(&mut app.ui.panels) = false;
++        }
+     }
+ }
+ 
+--- a/crates/ui-egui/src/state.rs
++++ b/crates/ui-egui/src/state.rs
+@@ -10,6 +10,7 @@
+     EllipseMarquee,
+     Lasso,
+     PolygonLasso,
++    MagneticLasso,
+     MagicWand,
+     Crop,
+     Eyedropper,
+@@ -51,12 +52,13 @@
+ }
+ 
+ impl Tool {
+-    pub const ALL: [Tool; 43] = [
++    pub const ALL: [Tool; 44] = [
+         Tool::Move,
+         Tool::RectMarquee,
+         Tool::EllipseMarquee,
+         Tool::Lasso,
+         Tool::PolygonLasso,
++        Tool::MagneticLasso,
+         Tool::MagicWand,
+         Tool::Crop,
+         Tool::Eyedropper,
+@@ -113,6 +115,7 @@
+             Tool::Count => "Count Tool",
+             Tool::Lasso => "Lasso Tool",
+             Tool::PolygonLasso => "Polygonal Lasso Tool",
++            Tool::MagneticLasso => "Magnetic Lasso Tool",
+             Tool::MagicWand => "Magic Wand Tool",
+             Tool::Crop => "Crop Tool",
+             Tool::Slice => "Slice Tool",
+@@ -172,7 +175,7 @@
+             Tool::Brush | Tool::Pencil => 'B',
+             Tool::Eraser | Tool::BackgroundEraser | Tool::MagicEraser => 'E',
+             Tool::Eyedropper | Tool::Ruler | Tool::Note | Tool::Count => 'I',
+-            Tool::Lasso | Tool::PolygonLasso => 'L',
++            Tool::Lasso | Tool::PolygonLasso | Tool::MagneticLasso => 'L',
+             Tool::MagicWand => 'W',
+             Tool::Crop | Tool::Slice | Tool::SliceSelect => 'C',
+             Tool::Gradient | Tool::PaintBucket => 'G',
+@@ -199,7 +202,7 @@
+             Tool::Brush => "🖌",
+             Tool::Eraser => "⌫",
+             Tool::Eyedropper => "💧",
+-            Tool::Lasso | Tool::PolygonLasso => "L",
++            Tool::Lasso | Tool::PolygonLasso | Tool::MagneticLasso => "L",
+             Tool::MagicWand => "W",
+             Tool::Crop => "C",
+             Tool::Gradient | Tool::PaintBucket => "G",
+@@ -311,6 +314,8 @@
+     pub anti_alias: bool,
+     pub sample_all_layers: bool,
+     pub feather: f32,
++    /// Magnetic Lasso edge-search radius in document pixels.
++    pub magnetic_width: f32,
+     /// linear | radial | angle | reflected | diamond
+     pub gradient_style: String,
+     pub gradient_reverse: bool,
+@@ -347,11 +352,15 @@
+     pub finger_painting: bool,
+     /// Quick Selection enhance edge.
+     pub enhance_edge: bool,
+-    /// Pen: "path" (work path) or "shape" (shape layer).
++    /// Pen output: "path" (work path) or "shape" (shape layer).
+     pub vector_mode: String,
+-    /// Shape tools: fill with the foreground colour, stroke width (0 = none), rectangle corner
+-    /// radius, polygon sides, line weight.
++    /// Pen construction: "standard" or "curvature".
++    pub pen_kind: String,
++    /// Shape tools: independent fill and stroke colours, stroke width (0 = none), rectangle
++    /// corner radius, polygon sides, line weight.
+     pub shape_fill: bool,
++    pub shape_fill_color: String,
++    pub shape_stroke_color: String,
+     pub stroke_width: f32,
+     pub corner_radius: f32,
+     pub polygon_sides: u32,
+@@ -418,6 +427,7 @@
+             anti_alias: true,
+             sample_all_layers: false,
+             feather: 0.0,
++            magnetic_width: 10.0,
+             gradient_style: "linear".into(),
+             gradient_reverse: false,
+             gradient_dither: true,
+@@ -442,7 +452,10 @@
+             finger_painting: false,
+             enhance_edge: true,
+             vector_mode: "path".into(),
++            pen_kind: "standard".into(),
+             shape_fill: true,
++            shape_fill_color: "#000000".into(),
++            shape_stroke_color: "#ffffff".into(),
+             stroke_width: 0.0,
+             corner_radius: 0.0,
+             polygon_sides: 5,
+--- a/crates/ui-egui/src/tool_feedback.rs
++++ b/crates/ui-egui/src/tool_feedback.rs
+@@ -33,7 +33,17 @@
+ 
+ /// Tools whose cursor carries the selection-mode badge.
+ pub fn is_selection_tool(tool: Tool) -> bool {
+-    matches!(tool, Tool::RectMarquee | Tool::EllipseMarquee | Tool::Lasso | Tool::PolygonLasso | Tool::MagicWand | Tool::QuickSelection | Tool::ObjectSelection)
++    matches!(
++        tool,
++        Tool::RectMarquee
++            | Tool::EllipseMarquee
++            | Tool::Lasso
++            | Tool::PolygonLasso
++            | Tool::MagneticLasso
++            | Tool::MagicWand
++            | Tool::QuickSelection
++            | Tool::ObjectSelection
++    )
+ }
+ 
+ /// The effective selection mode of `tool` for the options-bar mode `bar` (0 New, 1 Add,
+--- a/crates/ui-egui/src/vector_ui.rs
++++ b/crates/ui-egui/src/vector_ui.rs
+@@ -3,8 +3,8 @@
+ 
+ use egui::{Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
+ use photocraft_doc::vector::Path;
+-use photocraft_doc::{Document, LayerContent};
+-use photocraft_geom::Affine;
++use photocraft_doc::{Document, Knot, LayerContent};
++use photocraft_geom::{Affine, Point};
+ use serde::{Deserialize, Serialize};
+ use serde_json::{Value, json};
+ 
+@@ -35,9 +35,22 @@
+     format!("#{:02x}{:02x}{:02x}", c.r(), c.g(), c.b())
+ }
+ 
++fn option_rgb(value: &str, fallback: [u8; 3]) -> [u8; 3] {
++    crate::color_picker_ui::parse_hex(value).map(|c| c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)).unwrap_or(fallback)
++}
++
++fn option_hex(c: [u8; 3]) -> String {
++    format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2])
++}
++
++fn option_color(value: &str, fallback: [u8; 3]) -> Color32 {
++    let c = option_rgb(value, fallback);
++    Color32::from_rgb(c[0], c[1], c[2])
++}
++
+ fn stroke_param(app: &PhotocraftApp) -> Value {
+     let o = &app.ui.tool_options;
+-    if o.stroke_width > 0.0 { json!({"width": o.stroke_width, "color": hex(app.session.tools.background)}) } else { Value::Null }
++    if o.stroke_width > 0.0 { json!({"width": o.stroke_width, "color": o.shape_stroke_color}) } else { Value::Null }
+ }
+ 
+ /// Geometry of a Shape-tool drag as `shape.create` params, without fill and stroke (None when too
+@@ -80,7 +93,7 @@
+ /// Finish a Shape-tool drag: ⇧ constrains proportions, ⌥ draws from the centre.
+ pub fn finish_shape(app: &mut PhotocraftApp, tool: Tool, start: [f64; 2], end: [f64; 2], mods: egui::Modifiers) {
+     let Some(mut p) = shape_geometry(&app.ui.tool_options, tool, start, end, mods) else { return };
+-    let fill = if app.ui.tool_options.shape_fill { json!(hex(app.session.tools.foreground)) } else { Value::Null };
++    let fill = if app.ui.tool_options.shape_fill { json!(app.ui.tool_options.shape_fill_color) } else { Value::Null };
+     let stroke = stroke_param(app);
+     if tool == Tool::CustomShape {
+         // ⇧ keeps the shape's proportions (the rect is already squared).
+@@ -104,8 +117,12 @@
+     let Some(path) = shape_geometry(o, tool, start, end, mods).and_then(|p| photocraft_engine::vector_cmds::shape_path(&p).ok()) else { return };
+     let custom = tool == Tool::CustomShape;
+     // ponytail: preview colours skip the canvas's colour management; the commit renders them exactly.
+-    let fill = if o.shape_fill && !custom { rgb32(app.session.tools.foreground) } else { Color32::TRANSPARENT };
+-    let stroke = if o.stroke_width > 0.0 && !custom { Stroke::new(o.stroke_width * xf.zoom, rgb32(app.session.tools.background)) } else { Stroke::NONE };
++    let fill = if o.shape_fill && !custom { option_color(&o.shape_fill_color, [0, 0, 0]) } else { Color32::TRANSPARENT };
++    let stroke = if o.stroke_width > 0.0 && !custom {
++        Stroke::new(o.stroke_width * xf.zoom, option_color(&o.shape_stroke_color, [255, 255, 255]))
++    } else {
++        Stroke::NONE
++    };
+     let accent = Tokens::get(painter.ctx()).accent;
+     for (pts, _) in path_lines(&path, &|q| xf.to_screen(q[0] as f32, q[1] as f32)) {
+         // Every tool's own shape is convex (custom shapes aren't, and draw no fill).
+@@ -122,9 +139,41 @@
+     json!({"subpaths": [{"closed": closed, "knots": pen.knots.iter().map(|k| json!({"anchor": k[0], "in": k[1], "out": k[2], "smooth": k[1] != k[0] || k[2] != k[0]})).collect::<Vec<_>>()}]})
+ }
+ 
++/// Convert clicked anchors to a smooth Catmull-Rom-style Bezier path for the Curvature Pen.
++fn curvature_handles(pen: &mut PenPath, closed: bool) {
++    let n = pen.knots.len();
++    if n < 2 {
++        return;
++    }
++    let anchors: Vec<[f64; 2]> = pen.knots.iter().map(|k| k[0]).collect();
++    for (i, knot) in pen.knots.iter_mut().enumerate() {
++        let a = anchors[i];
++        if !closed && i == 0 {
++            let next = anchors[1];
++            knot[1] = a;
++            knot[2] = [a[0] + (next[0] - a[0]) / 3.0, a[1] + (next[1] - a[1]) / 3.0];
++        } else if !closed && i + 1 == n {
++            let prev = anchors[n - 2];
++            knot[1] = [a[0] + (prev[0] - a[0]) / 3.0, a[1] + (prev[1] - a[1]) / 3.0];
++            knot[2] = a;
++        } else {
++            let prev = anchors[(i + n - 1) % n];
++            let next = anchors[(i + 1) % n];
++            let tangent = [(next[0] - prev[0]) / 6.0, (next[1] - prev[1]) / 6.0];
++            knot[1] = [a[0] - tangent[0], a[1] - tangent[1]];
++            knot[2] = [a[0] + tangent[0], a[1] + tangent[1]];
++        }
++    }
++}
++
+ /// Pen press: close on the first anchor, else add an anchor (dragging pulls smooth handles).
+ pub fn pen_down(app: &mut PhotocraftApp, x: f64, y: f64) {
++    if matches!(app.ui.tool_options.pen_kind.as_str(), "add-anchor" | "delete-anchor" | "convert-anchor") {
++        edit_active_path(app, x, y);
++        return;
++    }
+     let tol = 6.0 / app.current_zoom().max(0.01) as f64;
++    let curvature = app.ui.tool_options.pen_kind == "curvature";
+     let pen = app.ui.pen.get_or_insert_with(PenPath::default);
+     if let Some(first) = pen.knots.first().map(|k| k[0])
+         && pen.knots.len() >= 2
+@@ -134,10 +183,16 @@
+         return;
+     }
+     pen.knots.push([[x, y]; 3]);
+-    pen.dragging = true;
++    pen.dragging = !curvature;
++    if curvature {
++        curvature_handles(pen, false);
++    }
+ }
+ 
+ pub fn pen_move(app: &mut PhotocraftApp, x: f64, y: f64) {
++    if app.ui.tool_options.pen_kind == "curvature" {
++        return;
++    }
+     if let Some(pen) = app.ui.pen.as_mut()
+         && pen.dragging
+         && let Some(k) = pen.knots.last_mut()
+@@ -156,15 +211,21 @@
+ 
+ /// Finish the pen path: a work path (Path mode) or a new shape layer (Shape mode).
+ pub fn pen_commit(app: &mut PhotocraftApp, closed: bool) {
+-    let Some(pen) = app.ui.pen.take() else { return };
++    let Some(mut pen) = app.ui.pen.take() else { return };
+     if pen.knots.len() < 2 {
+         return;
+     }
++    if app.ui.tool_options.pen_kind == "curvature" {
++        curvature_handles(&mut pen, closed);
++    }
+     let path = pen_to_json(&pen, closed);
+     let r = if app.ui.tool_options.vector_mode == "shape" {
+-        let fill = if closed && app.ui.tool_options.shape_fill { json!(hex(app.session.tools.foreground)) } else { Value::Null };
+-        let stroke =
+-            if closed { stroke_param(app) } else { json!({"width": app.ui.tool_options.stroke_width.max(1.0), "color": hex(app.session.tools.foreground)}) };
++        let fill = if closed && app.ui.tool_options.shape_fill { json!(app.ui.tool_options.shape_fill_color) } else { Value::Null };
++        let stroke = if closed {
++            stroke_param(app)
++        } else {
++            json!({"width": app.ui.tool_options.stroke_width.max(1.0), "color": app.ui.tool_options.shape_stroke_color})
++        };
+         app.run("shape.create", json!({"kind": "path", "path": path, "fill": fill, "stroke": stroke}))
+     } else if let Some((id, existing)) = targeted_vector_mask(app) {
+         // A targeted vector mask takes the new subpath (#196), as in Photoshop.
+@@ -245,8 +306,158 @@
+         return Some((PathTarget::Shape(l.id.0), sh.path.clone()));
+     }
+     st.doc.work_path.clone().map(|p| (PathTarget::Work, p))
++}
++
++fn distance(a: [f64; 2], b: [f64; 2]) -> f64 {
++    (a[0] - b[0]).hypot(a[1] - b[1])
++}
++
++fn lerp(a: [f64; 2], b: [f64; 2], t: f64) -> [f64; 2] {
++    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
++}
++
++fn point(p: [f64; 2]) -> Point {
++    Point::new(p[0], p[1])
++}
++
++fn knot_points(k: &Knot) -> ([f64; 2], [f64; 2], [f64; 2]) {
++    ([k.anchor.x, k.anchor.y], [k.in_ctrl.x, k.in_ctrl.y], [k.out_ctrl.x, k.out_ctrl.y])
++}
++
++fn nearest_anchor(path: &Path, at: [f64; 2]) -> Option<(usize, usize, f64)> {
++    path.subpaths
++        .iter()
++        .enumerate()
++        .flat_map(|(si, sub)| sub.knots.iter().enumerate().map(move |(ki, knot)| (si, ki, distance([knot.anchor.x, knot.anchor.y], at))))
++        .min_by(|a, b| a.2.total_cmp(&b.2))
++}
++
++/// Nearest sampled position on a cubic segment. Dense sampling is sufficient for pointer hit
++/// testing and the chosen `t` is then used for an exact De Casteljau split.
++fn nearest_segment(path: &Path, at: [f64; 2]) -> Option<(usize, usize, f64, f64)> {
++    let mut best: Option<(usize, usize, f64, f64)> = None;
++    for (si, sub) in path.subpaths.iter().enumerate() {
++        let n = sub.knots.len();
++        let count = if sub.closed { n } else { n.saturating_sub(1) };
++        for i in 0..count {
++            let a = &sub.knots[i];
++            let b = &sub.knots[(i + 1) % n];
++            let (a0, _, a2) = knot_points(a);
++            let (b0, b1, _) = knot_points(b);
++            for sample in 1..32 {
++                let t = sample as f64 / 32.0;
++                let d = distance(bezier(a0, a2, b1, b0, t), at);
++                if best.is_none_or(|old| d < old.3) {
++                    best = Some((si, i, t, d));
++                }
++            }
++        }
++    }
++    best
++}
++
++fn add_anchor(path: &mut Path, si: usize, segment: usize, t: f64) -> bool {
++    let Some(sub) = path.subpaths.get_mut(si) else { return false };
++    let n = sub.knots.len();
++    if n < 2 || segment >= n || (!sub.closed && segment + 1 >= n) {
++        return false;
++    }
++    let next = (segment + 1) % n;
++    let (p0, _, p1) = knot_points(&sub.knots[segment]);
++    let (p3, p2, _) = knot_points(&sub.knots[next]);
++    let (q0, q1, q2) = (lerp(p0, p1, t), lerp(p1, p2, t), lerp(p2, p3, t));
++    let (r0, r1) = (lerp(q0, q1, t), lerp(q1, q2, t));
++    let anchor = lerp(r0, r1, t);
++    sub.knots[segment].out_ctrl = point(q0);
++    sub.knots[next].in_ctrl = point(q2);
++    sub.knots.insert(segment + 1, Knot::smooth(point(anchor), point(r0), point(r1)));
++    true
++}
++
++fn delete_anchor(path: &mut Path, si: usize, ki: usize) -> bool {
++    let Some(sub) = path.subpaths.get_mut(si) else { return false };
++    let minimum = if sub.closed { 3 } else { 2 };
++    if sub.knots.len() <= minimum || ki >= sub.knots.len() {
++        return false;
++    }
++    sub.knots.remove(ki);
++    true
++}
++
++fn convert_anchor(path: &mut Path, si: usize, ki: usize) -> bool {
++    let Some(sub) = path.subpaths.get_mut(si) else { return false };
++    let n = sub.knots.len();
++    if n < 2 || ki >= n {
++        return false;
++    }
++    let (anchor, incoming, outgoing) = knot_points(&sub.knots[ki]);
++    if sub.knots[ki].smooth || incoming != anchor || outgoing != anchor {
++        sub.knots[ki] = Knot::corner(anchor[0], anchor[1]);
++        return true;
++    }
++    let prev = if ki > 0 {
++        Some(knot_points(&sub.knots[ki - 1]).0)
++    } else if sub.closed {
++        Some(knot_points(&sub.knots[n - 1]).0)
++    } else {
++        None
++    };
++    let next = if ki + 1 < n {
++        Some(knot_points(&sub.knots[ki + 1]).0)
++    } else if sub.closed {
++        Some(knot_points(&sub.knots[0]).0)
++    } else {
++        None
++    };
++    let (incoming, outgoing) = match (prev, next) {
++        (Some(prev), Some(next)) => {
++            let tangent = [(next[0] - prev[0]) / 6.0, (next[1] - prev[1]) / 6.0];
++            ([anchor[0] - tangent[0], anchor[1] - tangent[1]], [anchor[0] + tangent[0], anchor[1] + tangent[1]])
++        }
++        (None, Some(next)) => (anchor, lerp(anchor, next, 1.0 / 3.0)),
++        (Some(prev), None) => (lerp(anchor, prev, 1.0 / 3.0), anchor),
++        (None, None) => return false,
++    };
++    sub.knots[ki] = Knot::smooth(point(anchor), point(incoming), point(outgoing));
++    true
+ }
+ 
++fn save_target_path(app: &mut PhotocraftApp, target: PathTarget, path: &Path) {
++    let value = photocraft_engine::vector_cmds::path_json(path);
++    let result = match target {
++        PathTarget::Shape(id) => app.run("shape.edit", json!({"layer": id, "path": value})),
++        PathTarget::VectorMask(id) => app.run("layer.vectorMask.edit", json!({"layer": id, "path": value})),
++        PathTarget::Work => app.run("path.set", json!({"name": "work", "path": value})),
++    };
++    if let Err(error) = result {
++        app.ui.status = error;
++        app.ui.status_error = true;
++    }
++}
++
++fn edit_active_path(app: &mut PhotocraftApp, x: f64, y: f64) {
++    let Some((target, mut path)) = target_path(app) else {
++        app.ui.status = tl!("Select a shape, vector mask, or Work Path first").to_string();
++        return;
++    };
++    app.ui.pen = None;
++    let at = [x, y];
++    let tolerance = 9.0 / app.current_zoom().max(0.01) as f64;
++    let changed = match app.ui.tool_options.pen_kind.as_str() {
++        "add-anchor" => {
++            nearest_segment(&path, at).filter(|(_, _, _, d)| *d <= tolerance).is_some_and(|(si, segment, t, _)| add_anchor(&mut path, si, segment, t))
++        }
++        "delete-anchor" => nearest_anchor(&path, at).filter(|(_, _, d)| *d <= tolerance).is_some_and(|(si, ki, _)| delete_anchor(&mut path, si, ki)),
++        "convert-anchor" => nearest_anchor(&path, at).filter(|(_, _, d)| *d <= tolerance).is_some_and(|(si, ki, _)| convert_anchor(&mut path, si, ki)),
++        _ => false,
++    };
++    if changed {
++        save_target_path(app, target, &path);
++    } else {
++        app.ui.status = tl!("Click directly on a path segment or anchor point").to_string();
++    }
++}
++
+ pub fn path_selection_finish(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2]) {
+     let (dx, dy) = (end[0] - start[0], end[1] - start[1]);
+     if dx.abs() + dy.abs() < 0.5 {
+@@ -325,20 +536,22 @@
+             }
+         }
+     };
++    let edit_anchors = tool == Tool::PathSelection
++        || (tool == Tool::Pen && matches!(app.ui.tool_options.pen_kind.as_str(), "add-anchor" | "delete-anchor" | "convert-anchor"));
+     if vector_tool {
+         if let Some(wp) = &doc.work_path {
+-            draw_path(wp, tool == Tool::PathSelection);
++            draw_path(wp, edit_anchors);
+         }
+         let st = app.session.active();
+         if let Some(l) = st.and_then(|s| s.active_layer.and_then(|id| s.doc.layer(id)))
+             && let LayerContent::Shape(sh) = &l.content
+         {
+-            draw_path(&sh.path, tool == Tool::PathSelection);
++            draw_path(&sh.path, edit_anchors);
+         }
+     }
+     // A targeted vector mask shows its path with any tool (#196).
+     if let Some((_, p)) = targeted_vector_mask(app) {
+-        draw_path(&p, tool == Tool::PathSelection);
++        draw_path(&p, edit_anchors);
+     }
+     // Pen path in progress, with handles of the last knot and a rubber band to the pointer.
+     if let Some(pen) = &app.ui.pen {
+@@ -388,28 +601,38 @@
+         return true;
+     }
+     if tool == Tool::Pen {
++        let kinds = [
++            ("standard".to_string(), tl!("Pen")),
++            ("curvature".to_string(), tl!("Curvature Pen")),
++            ("add-anchor".to_string(), tl!("Add Anchor Point")),
++            ("delete-anchor".to_string(), tl!("Delete Anchor Point")),
++            ("convert-anchor".to_string(), tl!("Convert Point")),
++        ];
++        crate::widgets::dropdown(ui, "pen-kind", &mut o.pen_kind, &kinds, 150.0);
++        crate::widgets::vline(ui, 22.0);
+         let opts = [("path".to_string(), tl!("Path")), ("shape".to_string(), tl!("Shape"))];
+         crate::widgets::dropdown(ui, "pen-mode", &mut o.vector_mode, &opts, 80.0);
+         crate::widgets::vline(ui, 22.0);
+-        lbl(
+-            ui,
+-            &crate::i18n::fmt(
+-                tl!("Click: corner · Drag: smooth · Click first point: close · {key} finish · Esc cancel"),
+-                &[("key", &crate::shortcuts::pretty("Enter"))],
+-            ),
+-        );
++        if o.vector_mode == "shape" {
++            shape_style_options(ui, o, &lbl);
++        } else {
++            lbl(
++                ui,
++                match o.pen_kind.as_str() {
++                    "curvature" => tl!("Click points to build a smooth curve · Click first point to close · Enter to finish"),
++                    "add-anchor" => tl!("Click a path segment to add an anchor without changing the curve"),
++                    "delete-anchor" => tl!("Click an anchor to remove it"),
++                    "convert-anchor" => tl!("Click an anchor to switch between a corner and a smooth point"),
++                    _ => tl!("Click: corner · Drag: smooth · Click first point: close · Enter finish · Esc cancel"),
++                },
++            );
++        }
+         return true;
+     }
+     let mut mode = "shape".to_string();
+     crate::widgets::dropdown(ui, "shape-mode", &mut mode, &[("shape".to_string(), tl!("Shape"))], 80.0);
+     crate::widgets::vline(ui, 22.0);
+-    lbl(ui, tl!("Fill:"));
+-    crate::widgets::checkbox(ui, &mut o.shape_fill, "");
+-    let (r, _) = ui.allocate_exact_size(vec2(22.0, 16.0), Sense::hover());
+-    ui.painter().rect_filled(r, 2.0, rgb32(app.session.tools.foreground));
+-    ui.painter().rect_stroke(r, 2.0, Stroke::new(1.0, t.field_border), egui::StrokeKind::Outside);
+-    lbl(ui, tl!("Stroke:"));
+-    crate::widgets::value_field(ui, &mut o.stroke_width, 0.0..=288.0, "px", 58.0);
++    shape_style_options(ui, o, &lbl);
+     match tool {
+         Tool::Rectangle => {
+             crate::widgets::vline(ui, 22.0);
+@@ -438,6 +661,21 @@
+     true
+ }
+ 
++fn shape_style_options(ui: &mut egui::Ui, o: &mut ToolOptions, lbl: &impl Fn(&mut egui::Ui, &str)) {
++    lbl(ui, tl!("Fill:"));
++    crate::widgets::checkbox(ui, &mut o.shape_fill, "");
++    let mut fill = option_rgb(&o.shape_fill_color, [0, 0, 0]);
++    if ui.color_edit_button_srgb(&mut fill).on_hover_text(tl!("Fill Color")).changed() {
++        o.shape_fill_color = option_hex(fill);
++    }
++    lbl(ui, tl!("Stroke:"));
++    let mut stroke = option_rgb(&o.shape_stroke_color, [255, 255, 255]);
++    if ui.color_edit_button_srgb(&mut stroke).on_hover_text(tl!("Stroke Color")).changed() {
++        o.shape_stroke_color = option_hex(stroke);
++    }
++    crate::widgets::value_field(ui, &mut o.stroke_width, 0.0..=288.0, "px", 58.0);
++}
++
+ // ---------------------------------------------------------------------------------------------
+ // Properties (shape layers)
+ 
+@@ -854,8 +1092,64 @@
+         path_selection_finish(&mut app, [50.0, 50.0], [60.0, 55.0]);
+         let wp = app.session.active().unwrap().doc.work_path.clone().unwrap();
+         assert_eq!((wp.subpaths[0].knots[0].anchor.x, wp.subpaths[0].knots[0].anchor.y), (30.0, 25.0));
++    }
++
++    #[test]
++    fn curvature_pen_builds_smooth_handles_without_dragging() {
++        let mut app = app();
++        app.ui.tool = Tool::Pen;
++        app.ui.tool_options.pen_kind = "curvature".into();
++        for (x, y) in [(20.0, 100.0), (80.0, 20.0), (140.0, 100.0)] {
++            pen_down(&mut app, x, y);
++            pen_up(&mut app);
++        }
++        let pen = app.ui.pen.as_ref().unwrap();
++        assert!(pen.knots.iter().any(|k| k[1] != k[0] || k[2] != k[0]));
++        pen_commit(&mut app, false);
++        let path = app.session.active().unwrap().doc.work_path.clone().unwrap();
++        assert_eq!(path.subpaths[0].knots.len(), 3);
++        assert!(path.subpaths[0].knots.iter().all(|k| k.smooth));
+     }
+ 
++    #[test]
++    fn pen_anchor_tools_add_convert_and_delete_points() {
++        let mut app = app();
++        app.ui.tool = Tool::Pen;
++        app.run("path.set", json!({"name": "work", "path": {"subpaths": [{"closed": false, "knots": [[20, 20], [180, 20], [180, 180]]}]}})).unwrap();
++
++        app.ui.tool_options.pen_kind = "add-anchor".into();
++        pen_down(&mut app, 100.0, 20.0);
++        let path = app.session.active().unwrap().doc.work_path.as_ref().unwrap();
++        assert_eq!(path.subpaths[0].knots.len(), 4);
++        assert!((path.subpaths[0].knots[1].anchor.x - 100.0).abs() < 0.01);
++
++        app.ui.tool_options.pen_kind = "convert-anchor".into();
++        pen_down(&mut app, 20.0, 20.0);
++        let path = app.session.active().unwrap().doc.work_path.as_ref().unwrap();
++        assert!(path.subpaths[0].knots[0].smooth);
++        assert_ne!(path.subpaths[0].knots[0].out_ctrl, path.subpaths[0].knots[0].anchor);
++
++        app.ui.tool_options.pen_kind = "delete-anchor".into();
++        pen_down(&mut app, 100.0, 20.0);
++        let path = app.session.active().unwrap().doc.work_path.as_ref().unwrap();
++        assert_eq!(path.subpaths[0].knots.len(), 3);
++    }
++
++    #[test]
++    fn shape_tools_keep_independent_fill_and_stroke_colors() {
++        let mut app = app();
++        app.ui.tool_options.shape_fill_color = "#123456".into();
++        app.ui.tool_options.shape_stroke_color = "#fedcba".into();
++        app.ui.tool_options.stroke_width = 4.0;
++        finish_shape(&mut app, Tool::Rectangle, [10.0, 10.0], [80.0, 60.0], egui::Modifiers::NONE);
++        let st = app.session.active().unwrap();
++        let LayerContent::Shape(shape) = &st.doc.layer(st.active_layer.unwrap()).unwrap().content else { panic!("shape layer") };
++        let photocraft_doc::Fill::Solid(fill) = shape.fill.as_ref().unwrap() else { panic!("solid fill") };
++        let photocraft_doc::Fill::Solid(stroke) = &shape.stroke.as_ref().unwrap().paint else { panic!("solid stroke") };
++        assert_eq!(&fill.to_rgba8()[..3], &[0x12, 0x34, 0x56]);
++        assert_eq!(&stroke.to_rgba8()[..3], &[0xfe, 0xdc, 0xba]);
++    }
++
+     /// #534: dragging in a shape's fill picker, opened from the Properties panel at the right edge
+     /// of the window, keeps the picker in place (it flipped from side to side as its width
+     /// followed the colour readouts, which moved it under the pointer).

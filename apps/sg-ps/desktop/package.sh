@@ -46,29 +46,48 @@ licences() {
   } >"$1/THIRD-PARTY-NOTICES.txt"
 }
 
+windows_readme() {
+  cp "$HERE/README.txt" "$1/README.txt"
+  "$PY" -I - "$1/README.txt" "$VERSION" <<'PYEOF'
+from pathlib import Path
+import sys
+
+path, version = Path(sys.argv[1]), sys.argv[2]
+path.write_text(path.read_text(encoding="utf-8").replace("@VERSION@", version), encoding="utf-8")
+PYEOF
+}
+
 case "$OS" in
   windows)
     T=x86_64-pc-windows-msvc
     # Static C runtime: runs without the Visual C++ redistributable. Icon and version info must embed.
     export CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS="-C target-feature=+crt-static"
+    # Keep release internals out of the portable binary. This raises the cost of reverse
+    # engineering without pretending that a desktop executable can be made opaque.
+    export CARGO_PROFILE_RELEASE_STRIP=symbols
+    export CARGO_PROFILE_RELEASE_DEBUG=0
     export PHOTOCRAFT_REQUIRE_WINRES=1
+    # This build is portable by design. The app creates HORIX-Data beside the executable without
+    # needing a visible marker file in the download package.
+    export HORIX_PORTABLE=1
     (cd "$WORK/src" && cargo build --release --locked -p photocraft --target "$T")
     PKG="$WORK/pkg/HORIX"
     mkdir -p "$PKG"
     cp "$TARGET_DIR/$T/release/photocraft.exe" "$PKG/HORIX.exe"
-    cat >"$PKG/portable.txt" <<'TXT'
-HORIX portable mode
-
-While this file sits next to HORIX.exe, HORIX keeps its preferences, brushes and recovery
-autosaves in the HORIX-Data folder beside it and writes nothing to %APPDATA%. Copy the whole
-folder to move HORIX with its settings. Delete this file to use %APPDATA%\HORIX instead.
-
-Saber Group Academy - https://www.facebook.com/SABERGROUP.Courses/
-TXT
-    licences "$PKG"
+    windows_readme "$PKG"
     ZIP="$OUT/HORIX-$VERSION-windows-x64-portable.zip"
     rm -f "$ZIP"
     (cd "$WORK/pkg" && 7z a -tzip -mx=9 "$ZIP" HORIX >/dev/null)
+    "$PY" -I - "$ZIP" <<'PYEOF'
+import sys
+import zipfile
+
+expected = {"HORIX/HORIX.exe", "HORIX/README.txt"}
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    files = {name for name in archive.namelist() if not name.endswith("/")}
+if files != expected:
+    raise SystemExit(f"unexpected Windows package contents: {sorted(files)}")
+PYEOF
     ;;
   macos)
     export MACOSX_DEPLOYMENT_TARGET=11.0
