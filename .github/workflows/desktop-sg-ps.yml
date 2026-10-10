@@ -100,4 +100,4 @@ jobs:
 
           Windows: download SG-PS-...-windows-x64-portable.zip, unzip it, and run SG-PS.exe. On the first run Windows may show \"Windows protected your PC\": click More info > Run anyway.
 
-          macOS (Apple Silicon and Intel): download SG-PS-...-macos-universal.zip, unzip it, and drag \"SG - PS\" into Applications. On the first run, right-click the app > Open > Open (the app is not notarized yet)."
+          macOS (Apple Silicon and Intel): download SG-PS-...-macos-universal.zip, unzip it, and drag \"SG - PS\" into Applications. On the first run macOS says it could not verify the app (it is not notarized yet): click Done, then System Settings > Privacy & Security > Open Anyway next to SG - PS, and enter your password."
