@@ -14,15 +14,43 @@ DirectoryIndex index.html
 AddType application/wasm .wasm
 AddType text/javascript .js
 
-# 3) الضغط: الـwasm ينزل ~8MB بدل ~24MB
+# 3) الضغط: السيرفر مش بيضغط ملف الـwasm لوحده، فالبناء بيجهّز نسخ مضغوطة جنبه
+#    (sg-ps_bg.wasm.br و .gz). المتصفح بياخد أصغر نسخة يقدر يفكها: ~8MB بدل ~25MB.
+# >>> compressed-wasm (deploy.sh removes this block if the host does not serve it correctly)
+<IfModule mod_rewrite.c>
+  RewriteCond %{HTTP:Accept-Encoding} \bbr\b
+  RewriteCond %{REQUEST_FILENAME}.br -f
+  RewriteRule ^(.+\.wasm)$ $1.br [L,E=no-gzip:1,E=HORIX_ENC:br]
+  RewriteCond %{HTTP:Accept-Encoding} \bgzip\b
+  RewriteCond %{REQUEST_FILENAME}.gz -f
+  RewriteRule ^(.+\.wasm)$ $1.gz [L,E=no-gzip:1,E=HORIX_ENC:gzip]
+</IfModule>
+<FilesMatch "\.wasm\.br$">
+  ForceType application/wasm
+  <IfModule mod_headers.c>
+    Header set Content-Encoding br
+  </IfModule>
+</FilesMatch>
+<FilesMatch "\.wasm\.gz$">
+  ForceType application/wasm
+  <IfModule mod_headers.c>
+    Header set Content-Encoding gzip
+  </IfModule>
+</FilesMatch>
+<IfModule mod_headers.c>
+  <FilesMatch "\.wasm(\.br|\.gz)?$">
+    Header append Vary Accept-Encoding
+  </FilesMatch>
+</IfModule>
+# <<< compressed-wasm
 <IfModule mod_deflate.c>
-  AddOutputFilterByType DEFLATE application/wasm text/javascript text/html
+  AddOutputFilterByType DEFLATE text/javascript text/html
 </IfModule>
 
 # 4) الكاش: أسماء الملفات ثابتة في كل نسخة، فالمتصفح بيسأل السيرفر كل مرة (ولو الملف ما اتغيرش
 #    بيرجع 304 من غير ما ينزّله تاني)
 <IfModule mod_headers.c>
-  <FilesMatch "(\.(wasm|js|svg|html)|^)$">
+  <FilesMatch "(\.(wasm|br|gz|js|svg|html)|^)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
   Header always set X-Content-Type-Options "nosniff"
