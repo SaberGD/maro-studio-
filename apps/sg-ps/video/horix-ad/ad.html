@@ -347,6 +347,7 @@ function endCard(t) {
 }
 
 function render(t) {
+  t = t + 0.02; // visuals land a hair before the sound, which reads as on the beat
   bg(t, t < 3.77 ? 0.0 : t < DROP ? 0.15 : 1);
   show('L_macro', t < STOMP) && t < STOMP && macro(t);
   show('L_q', t >= STOMP && t < DROP) && t >= STOMP && t < DROP && question(t);
