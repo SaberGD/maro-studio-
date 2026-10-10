@@ -60,8 +60,7 @@
 
 <section class="scene" id="intro">
   <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center">
-    <img src="a/logo.svg" id="ilogo" style="width:170px; margin-bottom:20px; filter:drop-shadow(0 20px 50px rgba(224,64,42,.5))">
-    <div class="h1" id="it1"><span class="ltr">SG - PS</span> اتحدّث</div>
+    <div class="h1" id="it1" style="font-size:160px"><span class="ltr">SG - PS</span> <span style="color:var(--red)">اتحدّث</span></div>
     <div class="sub" id="it2" style="margin-top:14px">سمعنا ملاحظاتكم · وده اللي اتصلّح</div>
   </div>
 </section>
@@ -187,10 +186,9 @@ window.render = (t) => {
   window.T = t;
   set('#grid', { transform: `translate(${-t * 12}px, ${-t * 6}px) rotate(-6deg)` });
   if (show('#intro', 0, INTRO, 0.01)) {
-    set('#ilogo', { transform: `scale(${k(t, 0.1, 0.8, E.outBack)}) rotate(${(1 - k(t, 0.1, 0.8)) * -30}deg)` });
-    const h = k(t, 0.5, 1.2, E.outExpo);
-    set('#it1', { transform: `translateY(${(1 - h) * 80}px)`, opacity: h, letterSpacing: `${(1 - h) * 20}px` });
-    revealWords(W.it2, t, 1.1, 0.1, 0.5);
+    const h = k(t, 0.15, 0.9, E.outExpo);
+    set('#it1', { transform: `translateY(${(1 - h) * 80}px) scale(${1 + 0.04 * k(t, 0.9, 3.4, E.lin)})`, opacity: h, letterSpacing: `${(1 - h) * 20}px` });
+    revealWords(W.it2, t, 0.9, 0.1, 0.5);
   }
   SL.forEach((s, i) => {
     const t0 = INTRO + i * SLIDE, t1 = t0 + SLIDE;
