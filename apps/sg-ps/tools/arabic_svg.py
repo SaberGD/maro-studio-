@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Arabic UI text for the HORIX start screen, as SVG outlines.
+"""Arabic UI text for HORIX (start screen, title bar), as SVG outlines.
 
 egui does not shape Arabic (no letter joining, no right-to-left order), so the few Arabic lines
 on the start screen are shaped here with HarfBuzz and saved as white SVG paths; the app tints
@@ -28,6 +28,8 @@ LINES = {
     "soon-title": ("قريبًا", 800),
     "soon-apps": ("بدائل After Effects و Premiere و Illustrator و Lightroom", 500),
     "soon-cta": ("احجز تجربتك المُبكرة", 700),
+    "dl-short": ("نسخة ويندوز وماك", 600),
+    "dl-cta": ("حمّل HORIX على ويندوز أو ماك", 700),
 }
 UPM_SIZE = 100.0  # SVG units per em
 
