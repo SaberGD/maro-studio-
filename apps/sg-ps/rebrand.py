@@ -1111,6 +1111,70 @@ fn query() -> String {"""),
     edit(root, "apps/photocraft-web/index.html", [("</body>", WAITLIST_SCRIPT.replace("__WHATSAPP__", whatsapp) + "</body>")])
 
 
+def font_warmup(root: Path) -> None:
+    """Desktop: scan the computer's fonts in the background from launch, never on the UI thread.
+
+    Upstream scans every installed font the first time the Type tool needs a font list. On Windows
+    (hundreds of font files, several large CJK ones, the antivirus opening each) that took long
+    enough for Windows to mark the app "Not Responding" when the Type tool was picked. The scan now
+    starts in a thread when the app opens; until it is done the Type tool lists the bundled fonts
+    instead of waiting, and the full list appears by itself when the scan finishes."""
+    edit(root, "crates/ui-egui/src/type_tool.rs", [(
+        """/// Font families (bundled + system + device fonts added at run time). Rebuilt when fonts are added.
+pub fn families() -> &'static [String] {
+    static FAMILIES""",
+        """/// HORIX: the installed fonts are scanned in a background thread from launch (desktop).
+static FONT_SCAN_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static FONT_SCAN_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// HORIX: starts scanning the computer's fonts without blocking the UI. Call once at launch.
+pub fn warm_up_fonts() {
+    use std::sync::atomic::Ordering::Relaxed;
+    if FONT_SCAN_STARTED.swap(true, Relaxed) {
+        return;
+    }
+    let spawned = std::thread::Builder::new().name("horix-fonts".into()).spawn(|| {
+        let _ = photocraft_text::shared(); // the slow part: every installed font, once
+        FONT_SCAN_DONE.store(true, Relaxed);
+        FONTS_GENERATION.fetch_add(1, Relaxed);
+    });
+    if spawned.is_err() {
+        FONT_SCAN_DONE.store(true, Relaxed); // no thread: the first use scans, as upstream
+    }
+}
+
+/// HORIX: true while the background scan runs; the Type tool then uses the bundled fonts.
+pub fn fonts_loading() -> bool {
+    use std::sync::atomic::Ordering::Relaxed;
+    FONT_SCAN_STARTED.load(Relaxed) && !FONT_SCAN_DONE.load(Relaxed)
+}
+
+/// HORIX: the bundled fonts only (instant), for the moments the full list is not ready yet.
+fn bundled_engine() -> &'static std::sync::Mutex<photocraft_text::TextEngine> {
+    static ENGINE: std::sync::OnceLock<std::sync::Mutex<photocraft_text::TextEngine>> = std::sync::OnceLock::new();
+    ENGINE.get_or_init(|| std::sync::Mutex::new(photocraft_text::TextEngine::new()))
+}
+
+/// Font families (bundled + system + device fonts added at run time). Rebuilt when fonts are added.
+pub fn families() -> &'static [String] {
+    if fonts_loading() {
+        static BUNDLED: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+        return BUNDLED.get_or_init(|| bundled_engine().lock().map(|mut e| e.fonts.families()).unwrap_or_default());
+    }
+    static FAMILIES""")])
+    edit(root, "crates/ui-egui/src/type_tool.rs", [(
+        """    let faces = photocraft_text::shared().lock().map(|mut e| e.fonts.faces(family)).unwrap_or_default();""",
+        """    let engine = if fonts_loading() { bundled_engine() } else { photocraft_text::shared() };
+    let faces = engine.lock().map(|mut e| e.fonts.faces(family)).unwrap_or_default();""")])
+    edit(root, "apps/photocraft/src/main.rs", [(
+        """    let result = eframe::run_native(
+""",
+        """    // HORIX: scan the installed fonts in the background now, not when the Type tool is picked.
+    photocraft_ui_egui::type_tool::warm_up_fonts();
+    let result = eframe::run_native(
+""")])
+
+
 def web_page_behaviour(root: Path) -> None:
     edit(root, "apps/photocraft-web/index.html", [("</body>", KEYBOARD_SCRIPT + "</body>")])
     # A new storage key: browsers that ran the original build start from the SG - PS defaults
@@ -1651,6 +1715,7 @@ def main() -> None:
     web(root)
     web_page_behaviour(root)
     device_fonts(root)
+    font_warmup(root)
     n = rename_everywhere(root)
     drop_old_translations(root)
     desktop(root)
