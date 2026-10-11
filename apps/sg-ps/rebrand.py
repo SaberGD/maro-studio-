@@ -61,6 +61,63 @@ def remove_block(root: Path, rel: str, start: str, end: str) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+DESKTOP_BUTTONS = """/// HORIX: Lucide "monitor-down" (ISC), white, tinted where it is drawn.
+const DOWNLOAD_ICON: &[u8] = br##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13V7"/><path d="m15 10-3 3-3-3"/><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M12 17v4"/><path d="M8 21h8"/></svg>"##;
+
+fn download_icon(size: f32, color: egui::Color32) -> egui::Image<'static> {
+    egui::Image::from_bytes("bytes://horix-download.svg", DOWNLOAD_ICON).fit_to_exact_size(egui::vec2(size, size)).tint(color)
+}
+
+/// HORIX (web only): "Windows and Mac versions" in the title bar, to the download page.
+pub fn desktop_title_button(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    if !cfg!(target_arch = "wasm32") {
+        return;
+    }
+    let t = crate::theme::Tokens::get(ui.ctx());
+    let (icon, text_h, pad, gap) = (14.0, 13.0, 9.0, 6.0);
+    let text_w = text_h * DL_SHORT_ASPECT;
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(pad + icon + gap + text_w + pad, 24.0), egui::Sense::click());
+    let r = r.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(DOWNLOAD);
+    let color = if r.hovered() { t.accent } else { t.text_dim };
+    if r.hovered() {
+        ui.painter().rect_filled(rect, t.radius_sm, t.hover);
+    }
+    ui.painter().rect_stroke(rect, t.radius_sm, egui::Stroke::new(1.0, t.field_border), egui::StrokeKind::Inside);
+    let y = rect.center().y;
+    download_icon(icon, color).paint_at(ui, egui::Rect::from_min_size(egui::pos2(rect.left() + pad, y - icon / 2.0), egui::vec2(icon, icon)));
+    arabic("bytes://dl-short.svg", include_bytes!("dl_short.svg"), DL_SHORT_ASPECT, text_h, color)
+        .paint_at(ui, egui::Rect::from_min_size(egui::pos2(rect.left() + pad + icon + gap, y - text_h / 2.0), egui::vec2(text_w, text_h)));
+    if r.clicked() {
+        open(app, ui.ctx(), DOWNLOAD);
+    }
+}
+
+/// HORIX (web only): the start screen's way to the Windows / macOS apps.
+pub fn desktop_cta(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    if !cfg!(target_arch = "wasm32") {
+        return;
+    }
+    let t = crate::theme::Tokens::get(ui.ctx());
+    ui.add_space(14.0);
+    let (icon, text_h, gap) = (16.0, 16.0, 8.0);
+    let text_w = text_h * DL_CTA_ASPECT;
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(text_w + icon + gap + 40.0, 36.0), egui::Sense::click());
+    let r = r.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(DOWNLOAD);
+    let (fill, stroke) = if r.hovered() { (t.accent_soft, t.accent) } else { (egui::Color32::TRANSPARENT, t.accent_border) };
+    ui.painter().rect_filled(rect, t.radius, fill);
+    ui.painter().rect_stroke(rect, t.radius, egui::Stroke::new(1.0, stroke), egui::StrokeKind::Inside);
+    let x = rect.center().x - (icon + gap + text_w) / 2.0;
+    let y = rect.center().y;
+    download_icon(icon, t.accent).paint_at(ui, egui::Rect::from_min_size(egui::pos2(x, y - icon / 2.0), egui::vec2(icon, icon)));
+    arabic("bytes://dl-cta.svg", include_bytes!("dl_cta.svg"), DL_CTA_ASPECT, text_h, t.text)
+        .paint_at(ui, egui::Rect::from_min_size(egui::pos2(x + icon + gap, y - text_h / 2.0), egui::vec2(text_w, text_h)));
+    if r.clicked() {
+        open(app, ui.ctx(), DOWNLOAD);
+    }
+}
+
+"""
+
 def links(root: Path) -> None:
     edit(root, "crates/ui-egui/src/links.rs", [
         ('pub const DISCORD: &str = "https://discord.gg/artcraft";', f'pub const DISCORD: &str = "{FACEBOOK}";\npub const CONTACT: &str = "{WHATSAPP}";\npub const DOWNLOAD: &str = "{DOWNLOADS_PAGE}";'),
@@ -94,9 +151,21 @@ def menus(root: Path) -> None:
 
 
 def title_bar(root: Path) -> None:
-    # The title-bar Discord button goes; nothing replaces it.
-    remove_block(root, "crates/ui-egui/src/panels.rs", "// Always one click away: the community Discord.",
-                 "                        }")
+    # The title-bar Discord button goes; in the browser a "desktop apps" button takes its place.
+    edit(root, "crates/ui-egui/src/panels.rs", [(
+        """                        // Always one click away: the community Discord.
+                        let discord = egui::Button::image_and_text(
+                            icons::image("message-square", 14.0, t.text_dim),
+                            egui::RichText::new(tl!("Discord")).color(t.text_dim).size(12.0),
+                        )
+                        .frame(false);
+                        if ui.add(discord).on_hover_text(format!("Join the ArtCraft Discord ({})", crate::links::DISCORD)).clicked() {
+                            crate::links::open(app, ui.ctx(), crate::links::DISCORD);
+                        }
+""",
+        """                        // HORIX (web): the Windows / macOS apps, one click away.
+                        crate::links::desktop_title_button(app, ui);
+""")])
 
 
 def logo(root: Path) -> None:
@@ -105,7 +174,7 @@ def logo(root: Path) -> None:
     shutil.copyfile(assets / "horix-lockup.svg", root / "crates/ui-egui/src/horix_lockup.svg")
     # Arabic lines of the start screen, pre-shaped (tools/arabic_svg.py): width / height of each.
     aspect = {}
-    for name in ("soon-title", "soon-apps", "soon-cta"):
+    for name in ("soon-title", "soon-apps", "soon-cta", "dl-short", "dl-cta"):
         svg = (assets / "text" / f"{name}.svg").read_text(encoding="utf-8")
         _, _, w, h = (float(v) for v in re.search(r'viewBox="([^"]+)"', svg).group(1).split())
         aspect[name] = w / h
@@ -142,17 +211,17 @@ fn arabic(uri: &'static str, bytes: &'static [u8], aspect: f32, height: f32, col
 /// HORIX: the coming alternatives, announced on the start screen, with an early-access waitlist.
 pub fn coming_soon(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = crate::theme::Tokens::get(ui.ctx());
-    ui.add(arabic("bytes://soon-title.svg", include_bytes!("soon_title.svg"), SOON_TITLE_ASPECT, 19.0, t.accent));
+    ui.add(arabic("bytes://soon-title.svg", include_bytes!("soon_title.svg"), SOON_TITLE_ASPECT, 23.0, t.accent));
     ui.add_space(3.0);
-    ui.add(arabic("bytes://soon-apps.svg", include_bytes!("soon_apps.svg"), SOON_APPS_ASPECT, 13.5, t.text_dim));
+    ui.add(arabic("bytes://soon-apps.svg", include_bytes!("soon_apps.svg"), SOON_APPS_ASPECT, 16.3, t.text_dim));
     ui.add_space(10.0);
     let (rect, r) = ui.allocate_exact_size(egui::vec2(190.0, 32.0), egui::Sense::click());
     let r = r.on_hover_cursor(egui::CursorIcon::PointingHand);
     let [cr, cg, cb, _] = t.primary_bg.to_array();
     let fill = if r.hovered() { egui::Color32::from_rgb(cr.saturating_add(14), cg.saturating_add(14), cb.saturating_add(14)) } else { t.primary_bg };
     ui.painter().rect_filled(rect, t.radius, fill);
-    arabic("bytes://soon-cta.svg", include_bytes!("soon_cta.svg"), SOON_CTA_ASPECT, 13.0, t.primary_text)
-        .paint_at(ui, egui::Rect::from_center_size(rect.center(), egui::vec2(13.0 * SOON_CTA_ASPECT, 13.0)));
+    arabic("bytes://soon-cta.svg", include_bytes!("soon_cta.svg"), SOON_CTA_ASPECT, 15.7, t.primary_text)
+        .paint_at(ui, egui::Rect::from_center_size(rect.center(), egui::vec2(15.7 * SOON_CTA_ASPECT, 15.7)));
     if r.clicked() {
         waitlist(app, ui.ctx(), "early");
     }
@@ -173,10 +242,10 @@ pub fn lockup(width: f32) -> egui::Image<'static> {
 pub fn url_for("""),
     ])
     consts = "".join(f"const {n.upper().replace('-', '_')}_ASPECT: f32 = {v:.4f};\n" for n, v in aspect.items())
-    edit(root, "crates/ui-egui/src/links.rs", [("/// HORIX: one line of Arabic", consts + "\n/// HORIX: one line of Arabic")])
+    edit(root, "crates/ui-egui/src/links.rs", [("/// HORIX: one line of Arabic", consts + "\n" + DESKTOP_BUTTONS + "/// HORIX: one line of Arabic")])
     edit(root, "crates/ui-egui/src/canvas.rs", [
         ("let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 330.0 + recent_h));",
-         "let card = Rect::from_center_size(area.center(), egui::vec2(470.0, 570.0 + recent_h));"),
+         "let card = Rect::from_center_size(area.center(), egui::vec2(470.0, 620.0 + recent_h));"),
         ("""            crate::links::discord_button(app, ui, 190.0);
             ui.add_space(10.0);
             crate::links::link_row(app, ui);""",
@@ -210,6 +279,13 @@ pub fn url_for("""),
             ui.add_space(4.0);
             ui.label(egui::RichText::new("BY SABER GROUP").font(crate::theme::medium(10.5)).color(t.text_faint));
             ui.add_space(10.0);
+"""),
+        # HORIX (web): a clear way to the Windows / macOS apps, under "Drop an image".
+        ("""                ui.label(egui::RichText::new(msg).color(t.text_faint));
+            });
+""", """                ui.label(egui::RichText::new(msg).color(t.text_faint));
+            });
+            crate::links::desktop_cta(app, ui);
 """),
     ])
     edit(root, "crates/ui-egui/src/dialogs.rs", [
