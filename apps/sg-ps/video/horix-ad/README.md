@@ -8,3 +8,4 @@
 - Break and drop (6.9–8 s) use the app's own loading screen: the logo lights up with the progress, the red rule fills, and the amber eye opens on the drop.
 - `reel.html`: the 9:16 reel (1080x1920), laid out for portrait from scratch on the same beat map: one word per line for the question, a portrait window on the canvas, menus side by side, safe area kept clear of the bottom UI. Render with `VW=1080 VH=1920 node render.mjs reel.html out.mp4 30`.
 - Full quality: `PNG=1 CRF=12 PRESET=slow` (lossless frames, x264 CRF 12), audio AAC 320k.
+- `reel2.html` («إيدك عارفة الطريق»): second 9:16 reel on the same track. Keyboard keys slam on the stomps, then each feature in the real app on the bars: Free Transform with the pivot, Ctrl+Z steps, eyedropper + Alt+Backspace recolour, Alt+click clipping into "HORIX", Ctrl+C/V, Select Subject, Delete, Tab, desktop autosave. Captures in `cap2/` come from `driver.mjs`, which drives the live app over HTTP one step at a time.
