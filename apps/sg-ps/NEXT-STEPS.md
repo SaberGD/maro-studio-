@@ -24,7 +24,7 @@ Follow-ups worth doing: Path Selection click selects the shape layer; options-ba
 
 | # | Report | Status |
 |---|--------|--------|
-| 1 | Quick Selection results | Not changed. Tried a selection-aware Alt-stroke (stroke = hard background, cut against the selection): worse on a 60-case composite test (IoU after the correcting stroke 0.465 vs 0.541 today), so not shipped. Real step up: an on-device model (MobileSAM / BiRefNet-lite via ONNX) for Select Subject / Object Selection |
+| 1 | Quick Selection results | HORIX AI: MobileSAM (ai_segment.rs; desktop onnxruntime via ai_model.rs, web onnxruntime-web in index.html). Plain strokes add points, Alt-strokes background points, each decode starts from the previous mask; edges snapped at full resolution. Object Selection uses it with a box. 60 composites, IoU after the stroke / +1 / +2 / +3 corrections: classic 0.697 / 0.737 / 0.704 / 0.736, HORIX AI 0.724 / 0.925 / 0.972 / 0.980 (ai_model.rs ignored test, segeval/quickloop.rs). Web: the model (44 MB) is fetched once from /horix/models/, the runtime from jsDelivr; checked end to end in headless Chromium. Falls back to the classic tools if the model can't load |
 | 2 | Select and Mask has no preview | Live preview with view modes (Overlay, On Black, On White, Black & White); also Select › Modify. Refine Edge brush not done |
 | 3 | Preview in dialogs | P toggles before / after in every previewing dialog (Photoshop) |
 | 4 | Brush lags on Windows | Not reproduced here. The surface already runs low-latency (1 frame queued) and the live stroke recomposites only its damage. Needs Help › System Info from the user's PC (GPU backend, adapter) |
@@ -37,6 +37,8 @@ Follow-ups worth doing: Path Selection click selects the shape layer; options-ba
 | 11 | Properties doesn't open with tools | Opens on picking a shape, type or pen tool, and on selecting shape / type / gradient layers, in every theme (was Pro themes only) |
 | 12 | No overset-text mark | Red "+" on the paragraph box corner while editing and with Type / Move on the layer |
 | 13 | Can't Create Layers from effects | In the layer context menu and the effects rows' context menu |
+
+Files: apps/sg-ps/ai/fetch.py downloads and SHA-256-checks the model and onnxruntime 1.22.0 for build.sh (web: horix/models/) and desktop/package.sh (Windows: onnxruntime.dll + models/ beside HORIX.exe; macOS: Contents/Frameworks + Contents/Resources/models). Licences: ai/LICENSE-MobileSAM.txt, ai/LICENSE-SegmentAnything.txt, onnxruntime's own files.
 
 ## Videos requested (after the fixes ship)
 
