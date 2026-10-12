@@ -1,5 +1,5 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index 0353811..dd15ab2 100644
+index 0353811..0cab42b 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
 @@ -1234,7 +1234,7 @@ dependencies = [
@@ -178,15 +178,16 @@ index 0353811..dd15ab2 100644
  ]
  
  [[package]]
-@@ -3394,6 +3441,7 @@ dependencies = [
+@@ -3394,6 +3441,8 @@ dependencies = [
   "fmv-macos-events",
   "log",
   "open",
 + "ort",
++ "photocraft-algo",
   "photocraft-automation",
   "photocraft-codecs",
   "photocraft-color",
-@@ -4189,6 +4237,12 @@ dependencies = [
+@@ -4189,6 +4238,12 @@ dependencies = [
   "objc2-quartz-core 0.3.2",
  ]
  
@@ -199,7 +200,7 @@ index 0353811..dd15ab2 100644
  [[package]]
  name = "rayon"
  version = "1.12.0"
-@@ -4710,6 +4764,12 @@ version = "1.16.2"
+@@ -4710,6 +4765,12 @@ version = "1.16.2"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "f9395f0f0eee849a9b707b2f06bb92a6a422090e2123bb2ef8e87a0e61892a8e"
  
@@ -212,7 +213,7 @@ index 0353811..dd15ab2 100644
  [[package]]
  name = "smithay-client-toolkit"
  version = "0.19.2"
-@@ -5273,7 +5333,7 @@ dependencies = [
+@@ -5273,7 +5334,7 @@ dependencies = [
   "guillotiere",
   "log",
   "peniko",
@@ -221,7 +222,7 @@ index 0353811..dd15ab2 100644
   "thiserror 2.0.21",
  ]
  
-@@ -5488,7 +5548,7 @@ dependencies = [
+@@ -5488,7 +5549,7 @@ dependencies = [
   "downcast-rs",
   "rustix 1.1.5",
   "scoped-tls",
@@ -230,7 +231,7 @@ index 0353811..dd15ab2 100644
   "wayland-sys",
  ]
  
-@@ -5659,7 +5719,7 @@ dependencies = [
+@@ -5659,7 +5720,7 @@ dependencies = [
   "portable-atomic",
   "profiling",
   "raw-window-handle",
@@ -239,7 +240,7 @@ index 0353811..dd15ab2 100644
   "static_assertions",
   "wasm-bindgen",
   "wasm-bindgen-futures",
-@@ -5693,7 +5753,7 @@ dependencies = [
+@@ -5693,7 +5754,7 @@ dependencies = [
   "profiling",
   "raw-window-handle",
   "rustc-hash 1.1.0",
@@ -248,7 +249,7 @@ index 0353811..dd15ab2 100644
   "thiserror 2.0.21",
   "wgpu-core-deps-apple",
   "wgpu-core-deps-emscripten",
-@@ -5783,7 +5843,7 @@ dependencies = [
+@@ -5783,7 +5844,7 @@ dependencies = [
   "raw-window-handle",
   "raw-window-metal",
   "renderdoc-sys",
@@ -442,7 +443,7 @@ index 65937d3..0c12543 100644
      web_sys::window()?.local_storage().ok().flatten()
  }
 diff --git a/apps/photocraft/Cargo.toml b/apps/photocraft/Cargo.toml
-index f268d08..31c05cf 100644
+index f268d08..daf14cc 100644
 --- a/apps/photocraft/Cargo.toml
 +++ b/apps/photocraft/Cargo.toml
 @@ -33,6 +33,9 @@ log = { workspace = true }
@@ -455,12 +456,19 @@ index f268d08..31c05cf 100644
  
  [target.'cfg(target_os = "macos")'.dependencies]
  # Finder double-click / Open With / Dock drops arrive as Apple events; this small audited crate
+@@ -43,3 +46,6 @@ fmv-macos-events = "=0.1.0"
+ [build-dependencies]
+ # Icon + VERSIONINFO for photocraft.exe; build.rs only uses it when targeting Windows.
+ winresource = "0.1"
++
++[dev-dependencies]
++photocraft-algo = { workspace = true }
 diff --git a/apps/photocraft/src/ai_model.rs b/apps/photocraft/src/ai_model.rs
 new file mode 100644
-index 0000000..593c409
+index 0000000..0067eb6
 --- /dev/null
 +++ b/apps/photocraft/src/ai_model.rs
-@@ -0,0 +1,489 @@
+@@ -0,0 +1,562 @@
 +//! HORIX AI selection on the desktop: MobileSAM (Quick / Object Selection) and IS-Net (Select
 +//! Subject) through Microsoft's onnxruntime, loaded at run
 +//! time from the app folder (`onnxruntime.dll` / `libonnxruntime.dylib` / `.so` next to the
@@ -894,6 +902,79 @@ index 0000000..593c409
 +        println!("Select Subject mean IoU {:.4}, edge band {:.4} ({:.0} ms avg)", tot / k as f32, etot / k as f32, ms / k as f64);
 +    }
 +
++    /// Object Selection, AI against the classic tool, with the object's box (`box` in NAME.json,
++    /// `[x, y, w, h]`): `HORIX_AI_DIR=… HORIX_AI_EVAL=<dir> cargo test -p photocraft --release
++    /// object_selection_eval -- --ignored --nocapture`.
++    #[test]
++    #[ignore = "needs the onnxruntime library, the models and an evaluation set"]
++    fn object_selection_eval() {
++        let Some(dir) = std::env::var_os("HORIX_AI_EVAL").map(PathBuf::from) else { return };
++        let mut names: Vec<String> = std::fs::read_dir(&dir)
++            .into_iter()
++            .flatten()
++            .filter_map(|e| e.ok()?.file_name().into_string().ok()?.strip_suffix(".json").map(String::from))
++            .collect();
++        names.sort();
++        let ctx = egui::Context::default();
++        let mut seg: Option<Box<dyn Segmenter>> = Some(Box::new(NativeSegmenter::start()));
++        let (mut ai, mut classic, mut n) = (0.0f32, 0.0f32, 0);
++        for name in &names {
++            let (w, h, rgb) = pnm(&dir.join(format!("{name}.ppm")).to_string_lossy());
++            let (_, _, g) = pnm(&dir.join(format!("{name}.pgm")).to_string_lossy());
++            let meta: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join(format!("{name}.json"))).unwrap_or_default()).unwrap_or_default();
++            let Some(b) = meta["box"].as_array().map(|a| a.iter().filter_map(serde_json::Value::as_f64).collect::<Vec<f64>>()) else { continue };
++            if b.len() != 4 {
++                continue;
++            }
++            // A box a little larger than the object, as drawn by hand.
++            let (mx, my) = (b[2] * 0.05 + 2.0, b[3] * 0.05 + 2.0);
++            let rect = [(b[0] - mx).max(0.0), (b[1] - my).max(0.0), b[2] + 2.0 * mx, b[3] + 2.0 * my];
++            let make = |seg: Option<Box<dyn Segmenter>>| {
++                let mut doc = photocraft_doc::Document::new("t", photocraft_geom::Size::new(w as u32, h as u32), photocraft_color::ColorMode::Rgb, photocraft_color::SampleType::U8);
++                let mut l = photocraft_doc::Layer::raster("bg", photocraft_color::PixelFormat::RGBA8);
++                let px: Vec<f32> = rgb.chunks_exact(3).flat_map(|p| [f32::from(p[0]) / 255.0, f32::from(p[1]) / 255.0, f32::from(p[2]) / 255.0, 1.0]).collect();
++                if let Some(s) = l.surface_mut() {
++                    s.write_region(photocraft_geom::Rect::new(0, 0, w as i32, h as i32), &px);
++                }
++                doc.layers.push(l);
++                let mut session = photocraft_engine::Session::new();
++                session.add_document(doc, None);
++                PhotocraftApp::new(session, Services { segmenter: seg, ..Default::default() })
++            };
++            let iou = |app: &PhotocraftApp| {
++                let s = app.session.active().and_then(|s| s.doc.selection.clone());
++                let (mut i, mut u) = (0usize, 0usize);
++                for k in 0..w * h {
++                    let a = s.as_ref().is_some_and(|s| s.sample_channel((k % w) as i32, (k / w) as i32, 0) >= 0.5);
++                    let bb = g[k] > 127;
++                    i += usize::from(a && bb);
++                    u += usize::from(a || bb);
++                }
++                i as f32 / u.max(1) as f32
++            };
++            let mut app = make(seg.take());
++            assert!(photocraft_ui_egui::ai_segment::object_box(&mut app, rect, photocraft_algo::selection::SelectionMode::Replace, false, serde_json::json!({})));
++            for _ in 0..3000 {
++                photocraft_ui_egui::ai_segment::poll(&mut app, &ctx);
++                if !photocraft_ui_egui::ai_segment::busy(&app) {
++                    break;
++                }
++                std::thread::sleep(std::time::Duration::from_millis(5));
++            }
++            let a = iou(&app);
++            seg = app.services.segmenter.take();
++            let mut capp = make(None);
++            let _ = capp.run("select.object", serde_json::json!({"rect": rect}));
++            let c = iou(&capp);
++            println!("{name} ai {a:.3} classic {c:.3}");
++            ai += a;
++            classic += c;
++            n += 1;
++        }
++        let k = n.max(1) as f32;
++        println!("Object Selection mean IoU ({n}): AI {:.4}, classic {:.4}", ai / k, classic / k);
++    }
++
 +    fn biggest(m: &[bool], w: usize, h: usize) -> Option<Vec<usize>> {
 +        let mut seen = vec![false; w * h];
 +        let mut best: Option<Vec<usize>> = None;
@@ -970,6 +1051,18 @@ index b3da839..891805b 100644
              let mut app = PhotocraftApp::new(Session::new(), services);
              app.integrated_titlebar = cfg!(target_os = "macos");
              // Long commands and file opens run as background jobs with progress and Cancel (#210).
+diff --git a/crates/algo/src/lib.rs b/crates/algo/src/lib.rs
+index c41a41d..7d11268 100644
+--- a/crates/algo/src/lib.rs
++++ b/crates/algo/src/lib.rs
+@@ -22,6 +22,7 @@ mod artistic;
+ mod artistic_fx;
+ mod blur;
+ mod blur2;
++pub mod scissors;
+ pub mod camera_raw;
+ pub mod content_aware;
+ mod denoise;
 diff --git a/crates/algo/src/matting.rs b/crates/algo/src/matting.rs
 index f55fe2f..8fab06a 100644
 --- a/crates/algo/src/matting.rs
@@ -1102,6 +1195,335 @@ index f55fe2f..8fab06a 100644
  /// A mask reader over a [`Region`] (zero outside its box).
  pub fn region_reader(reg: &Region) -> impl Fn(Rect) -> Vec<f32> + Sync + '_ {
      move |r: Rect| {
+diff --git a/crates/algo/src/scissors.rs b/crates/algo/src/scissors.rs
+new file mode 100644
+index 0000000..afe9d61
+--- /dev/null
++++ b/crates/algo/src/scissors.rs
+@@ -0,0 +1,323 @@
++//! Intelligent Scissors (E. N. Mortensen and W. A. Barrett, "Intelligent Scissors for Image
++//! Composition", SIGGRAPH 1995): the live wire behind Photoshop's Magnetic Lasso.
++//!
++//! Every pixel link gets a cost that is low on strong, consistently oriented edges: a Laplacian
++//! zero-crossing term, a gradient-magnitude term and a gradient-direction term, weighted
++//! 0.43 / 0.43 / 0.14 as in the paper. From an anchor, Dijkstra's algorithm gives the cheapest
++//! path to every pixel of a window around it ([`Tree`]), so the wire to the pointer is a lookup.
++//! Edges weaker than `contrast` count as no edge (Photoshop's Contrast option). [`Scissors::wire`]
++//! keeps the wire within Photoshop's detection width of the pointer's track and pulls it toward
++//! the track. On 69 DUTS-TE objects traced by a simulated hand (segeval/magneval.rs), IoU with a
++//! 12-pixel wobble: plain lasso 0.841, the earlier point-snapping magnetic lasso 0.856, this 0.862;
++//! with a 4-pixel wobble 0.898 / 0.874 / 0.889.
++
++use std::cmp::Ordering;
++use std::collections::BinaryHeap;
++
++/// Luminance of an image, the input of the edge costs.
++pub struct Scissors {
++    w: usize,
++    h: usize,
++    lum: Vec<f32>,
++}
++
++/// Cheapest paths from one anchor over a window of the image.
++pub struct Tree {
++    x0: i32,
++    y0: i32,
++    w: usize,
++    h: usize,
++    prev: Vec<u32>,
++    seed: (i32, i32),
++}
++
++#[derive(PartialEq)]
++struct Node(f32, u32);
++impl Eq for Node {}
++impl Ord for Node {
++    fn cmp(&self, o: &Self) -> Ordering {
++        o.0.total_cmp(&self.0).then(o.1.cmp(&self.1))
++    }
++}
++impl PartialOrd for Node {
++    fn partial_cmp(&self, o: &Self) -> Option<Ordering> {
++        Some(self.cmp(o))
++    }
++}
++
++const NONE: u32 = u32::MAX;
++/// Weight of the pull toward the pointer's track (0.4 measured best of 0, 0.2, 0.4, 0.8).
++const NEAR_W: f32 = 0.4;
++
++impl Scissors {
++    /// From 8-bit RGB(A) pixels, `w × h`, `channels` per pixel.
++    pub fn new(px: &[u8], w: usize, h: usize, channels: usize) -> Self {
++        let lum = (0..w * h)
++            .map(|i| {
++                let p = &px[i * channels..i * channels + 3.min(channels)];
++                if p.len() >= 3 { 0.299 * f32::from(p[0]) + 0.587 * f32::from(p[1]) + 0.114 * f32::from(p[2]) } else { f32::from(p[0]) }
++            })
++            .collect();
++        Self { w, h, lum }
++    }
++
++    pub fn size(&self) -> (usize, usize) {
++        (self.w, self.h)
++    }
++
++    fn l(&self, x: i32, y: i32) -> f32 {
++        self.lum[(y.clamp(0, self.h as i32 - 1) as usize) * self.w + x.clamp(0, self.w as i32 - 1) as usize]
++    }
++
++    fn sobel(&self, x: i32, y: i32) -> (f32, f32) {
++        let l = |dx: i32, dy: i32| self.l(x + dx, y + dy);
++        let gx = l(1, -1) + 2.0 * l(1, 0) + l(1, 1) - l(-1, -1) - 2.0 * l(-1, 0) - l(-1, 1);
++        let gy = l(-1, 1) + 2.0 * l(0, 1) + l(1, 1) - l(-1, -1) - 2.0 * l(0, -1) - l(1, -1);
++        (gx, gy)
++    }
++
++    /// Edge strength (Sobel magnitude, 0 … about 1440).
++    pub fn strength(&self, x: i32, y: i32) -> f32 {
++        let (gx, gy) = self.sobel(x, y);
++        gx.hypot(gy)
++    }
++
++    /// The strongest edge within `width` pixels of `p` (ties go to the nearest), or `p` itself
++    /// when nothing there beats `contrast` (0–1 of a full black/white step).
++    pub fn snap(&self, p: (f32, f32), width: f32, contrast: f32) -> (i32, i32) {
++        let (cx, cy) = (p.0.round() as i32, p.1.round() as i32);
++        let r = width.max(1.0).ceil() as i32;
++        let floor = contrast.clamp(0.0, 1.0) * 1020.0;
++        let mut best = ((cx.clamp(0, self.w as i32 - 1), cy.clamp(0, self.h as i32 - 1)), f32::NEG_INFINITY);
++        for dy in -r..=r {
++            for dx in -r..=r {
++                let d = ((dx * dx + dy * dy) as f32).sqrt();
++                let (x, y) = (cx + dx, cy + dy);
++                if d > width || x < 0 || y < 0 || x >= self.w as i32 || y >= self.h as i32 {
++                    continue;
++                }
++                let s = self.strength(x, y);
++                if s < floor {
++                    continue;
++                }
++                let score = s - d * 2.0;
++                if score > best.1 {
++                    best = ((x, y), score);
++                }
++            }
++        }
++        best.0
++    }
++
++    /// Cheapest paths from `seed` to every pixel of the window `[x0, x1) × [y0, y1)` (clipped to
++    /// the image; it must contain the seed).
++    pub fn tree(&self, seed: (i32, i32), win: [i32; 4], contrast: f32) -> Tree {
++        self.tree_in(seed, win, contrast, None, None)
++    }
++
++    /// The live wire from `anchor` to the edge near `cursor`, kept inside Photoshop's detection
++    /// corridor: within `width` pixels of the pointer's track since the anchor (`track`, the
++    /// anchor and the cursor included). Returns the wire, anchor first.
++    pub fn wire(&self, anchor: (i32, i32), track: &[(f32, f32)], cursor: (f32, f32), width: f32, contrast: f32) -> Vec<(i32, i32)> {
++        // The wire ends on the edge right under the pointer (a few pixels; snapping across the
++        // whole width pulled it onto neighbouring edges).
++        let target = self.snap(cursor, 3.0f32.min(width * 2.0), contrast);
++        let pts: Vec<(f32, f32)> =
++            std::iter::once((anchor.0 as f32, anchor.1 as f32)).chain(track.iter().copied()).chain([cursor, (target.0 as f32, target.1 as f32)]).collect();
++        let r = width.max(1.0);
++        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
++        for p in &pts {
++            x0 = x0.min(p.0 - r);
++            y0 = y0.min(p.1 - r);
++            x1 = x1.max(p.0 + r);
++            y1 = y1.max(p.1 + r);
++        }
++        let win = [x0.floor() as i32 - 1, y0.floor() as i32 - 1, x1.ceil() as i32 + 2, y1.ceil() as i32 + 2];
++        let wx0 = win[0].clamp(0, self.w as i32 - 1);
++        let wy0 = win[1].clamp(0, self.h as i32 - 1);
++        let ww = (win[2].clamp(wx0 + 1, self.w as i32) - wx0) as usize;
++        let wh = (win[3].clamp(wy0 + 1, self.h as i32) - wy0) as usize;
++        // Disks of radius `width` along the track (segments sampled every half radius).
++        let mut near = vec![f32::INFINITY; ww * wh];
++        let mut stamp = |cx: f32, cy: f32| {
++            let (a0, a1) = (((cx - r).floor() as i32 - wx0).max(0), ((cx + r).ceil() as i32 - wx0).min(ww as i32 - 1));
++            let (b0, b1) = (((cy - r).floor() as i32 - wy0).max(0), ((cy + r).ceil() as i32 - wy0).min(wh as i32 - 1));
++            for j in b0..=b1 {
++                for i in a0..=a1 {
++                    let (x, y) = ((wx0 + i) as f32, (wy0 + j) as f32);
++                    let d = (x - cx).hypot(y - cy);
++                    if d <= r {
++                        let o = &mut near[j as usize * ww + i as usize];
++                        *o = o.min(d / r);
++                    }
++                }
++            }
++        };
++        for w in pts.windows(2) {
++            let d = (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
++            let n = (d / (r * 0.5)).ceil().max(1.0) as usize;
++            for k in 0..=n {
++                let t = k as f32 / n as f32;
++                stamp(w[0].0 + (w[1].0 - w[0].0) * t, w[0].1 + (w[1].1 - w[0].1) * t);
++            }
++        }
++        self.tree_in(anchor, win, contrast, Some(&near), Some(target)).path(target)
++    }
++
++    fn tree_in(&self, seed: (i32, i32), win: [i32; 4], contrast: f32, near: Option<&[f32]>, stop: Option<(i32, i32)>) -> Tree {
++        let x0 = win[0].clamp(0, self.w as i32 - 1);
++        let y0 = win[1].clamp(0, self.h as i32 - 1);
++        let x1 = win[2].clamp(x0 + 1, self.w as i32);
++        let y1 = win[3].clamp(y0 + 1, self.h as i32);
++        let (w, h) = ((x1 - x0) as usize, (y1 - y0) as usize);
++        let n = w * h;
++        // Per-pixel terms over the window.
++        let mut g = vec![0.0f32; n];
++        let mut dir = vec![(0.0f32, 0.0f32); n];
++        let mut lap = vec![0.0f32; n];
++        let mut gmax = 1.0f32;
++        for j in 0..h {
++            for i in 0..w {
++                let (x, y) = (x0 + i as i32, y0 + j as i32);
++                let (gx, gy) = self.sobel(x, y);
++                let m = gx.hypot(gy);
++                g[j * w + i] = m;
++                gmax = gmax.max(m);
++                // Unit edge direction (perpendicular to the gradient).
++                dir[j * w + i] = if m > 1e-3 { (gy / m, -gx / m) } else { (0.0, 0.0) };
++                // Laplacian of a 3 × 3-smoothed image (the 5-point stencil of box means).
++                let s = |dx: i32, dy: i32| {
++                    let mut t = 0.0;
++                    for v in -1..=1 {
++                        for u in -1..=1 {
++                            t += self.l(x + dx + u, y + dy + v);
++                        }
++                    }
++                    t / 9.0
++                };
++                lap[j * w + i] = s(1, 0) + s(-1, 0) + s(0, 1) + s(0, -1) - 4.0 * s(0, 0);
++            }
++        }
++        let floor = contrast.clamp(0.0, 1.0) * 1020.0;
++        let fg: Vec<f32> = g.iter().map(|m| if *m < floor { 1.0 } else { 1.0 - m / gmax }).collect();
++        let fz: Vec<f32> = (0..n)
++            .map(|k| {
++                let (i, j) = (k % w, k / w);
++                let v = lap[k];
++                let crosses = [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dy)| {
++                    let (a, b) = (i as i32 + dx, j as i32 + dy);
++                    if a < 0 || b < 0 || a >= w as i32 || b >= h as i32 {
++                        return false;
++                    }
++                    let q = lap[b as usize * w + a as usize];
++                    (v > 0.0) != (q > 0.0) && v.abs() <= q.abs()
++                });
++                if crosses && g[k] >= floor { 0.0 } else { 1.0 }
++            })
++            .collect();
++        let link = |p: usize, q: usize, dx: i32, dy: i32| -> f32 {
++            let len = ((dx * dx + dy * dy) as f32).sqrt();
++            let (lx, ly) = (dx as f32 / len, dy as f32 / len);
++            let (dp, dq) = (dir[p], dir[q]);
++            // Orient the link along the edge direction at p.
++            let (lx, ly) = if dp.0 * lx + dp.1 * ly >= 0.0 { (lx, ly) } else { (-lx, -ly) };
++            let a = (dp.0 * lx + dp.1 * ly).clamp(-1.0, 1.0);
++            let b = (lx * dq.0 + ly * dq.1).clamp(-1.0, 1.0);
++            let fd = if dp == (0.0, 0.0) || dq == (0.0, 0.0) { 1.0 } else { (a.acos() + b.acos()) / (1.5 * std::f32::consts::PI) };
++            // Photoshop's pointer pull: among edges in the corridor, those nearer the pointer's
++            // track win.
++            let fc = near.map_or(0.0, |m| m[q]);
++            (0.43 * fz[q] + 0.43 * fg[q] + 0.14 * fd + NEAR_W * fc + 0.02) * len
++        };
++        let mut dist = vec![f32::INFINITY; n];
++        let mut prev = vec![NONE; n];
++        let s = (seed.0.clamp(x0, x1 - 1) - x0) as usize + (seed.1.clamp(y0, y1 - 1) - y0) as usize * w;
++        dist[s] = 0.0;
++        let mut heap = BinaryHeap::new();
++        heap.push(Node(0.0, s as u32));
++        let mut done = vec![false; n];
++        while let Some(Node(d, k)) = heap.pop() {
++            let k = k as usize;
++            if done[k] {
++                continue;
++            }
++            done[k] = true;
++            let (i, j) = ((k % w) as i32, (k / w) as i32);
++            if stop == Some((x0 + i, y0 + j)) {
++                break;
++            }
++            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
++                let (a, b) = (i + dx, j + dy);
++                if a < 0 || b < 0 || a >= w as i32 || b >= h as i32 {
++                    continue;
++                }
++                let q = b as usize * w + a as usize;
++                if done[q] || near.is_some_and(|m| !m[q].is_finite()) {
++                    continue;
++                }
++                let nd = d + link(k, q, dx, dy);
++                if nd < dist[q] {
++                    dist[q] = nd;
++                    prev[q] = k as u32;
++                    heap.push(Node(nd, q as u32));
++                }
++            }
++        }
++        Tree { x0, y0, w, h, prev, seed: (x0 + (s % w) as i32, y0 + (s / w) as i32) }
++    }
++}
++
++impl Tree {
++    pub fn seed(&self) -> (i32, i32) {
++        self.seed
++    }
++
++    pub fn contains(&self, p: (i32, i32)) -> bool {
++        p.0 >= self.x0 && p.1 >= self.y0 && p.0 < self.x0 + self.w as i32 && p.1 < self.y0 + self.h as i32
++    }
++
++    /// The cheapest path from the seed to `target` (seed first), or a straight line when the
++    /// target is outside the window.
++    pub fn path(&self, target: (i32, i32)) -> Vec<(i32, i32)> {
++        if !self.contains(target) {
++            return vec![self.seed, target];
++        }
++        let mut k = (target.0 - self.x0) as usize + (target.1 - self.y0) as usize * self.w;
++        let mut out = vec![target];
++        while self.prev[k] != NONE {
++            k = self.prev[k] as usize;
++            out.push((self.x0 + (k % self.w) as i32, self.y0 + (k / self.w) as i32));
++        }
++        out.reverse();
++        out
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    /// A dark disc on a light ground: the wire between two points of its rim follows the rim.
++    #[test]
++    fn wire_follows_a_circle() {
++        let (w, h) = (120usize, 120usize);
++        let px: Vec<u8> = (0..w * h).flat_map(|i| {
++            let (x, y) = ((i % w) as f32 - 60.0, (i / w) as f32 - 60.0);
++            let v = if x.hypot(y) < 40.0 { 40u8 } else { 210 };
++            [v, v, v]
++        }).collect();
++        let s = Scissors::new(&px, w, h, 3);
++        // The snap finds the rim from a point a few pixels off it.
++        let a = s.snap((60.0 + 44.0, 60.0), 8.0, 0.1);
++        assert!(((a.0 - 60) as f32).hypot((a.1 - 60) as f32) - 40.0 < 2.5, "{a:?}");
++        let b = s.snap((60.0, 60.0 - 44.0), 8.0, 0.1);
++        let t = s.tree(a, [0, 0, w as i32, h as i32], 0.1);
++        let path = t.path(b);
++        // Every point of the wire is on the rim (a straight cut would pass 28 px inside it).
++        for p in &path {
++            let r = ((p.0 - 60) as f32).hypot((p.1 - 60) as f32);
++            assert!((r - 40.0).abs() < 2.5, "{p:?} r={r}");
++        }
++        assert!(path.len() > 40);
++    }
++}
 diff --git a/crates/engine/src/color_cmds.rs b/crates/engine/src/color_cmds.rs
 index 555ca29..3d84c7f 100644
 --- a/crates/engine/src/color_cmds.rs
@@ -2510,16 +2932,21 @@ index 0000000..353dc27
 +}
 diff --git a/crates/ui-egui/src/blur_handles.rs b/crates/ui-egui/src/blur_handles.rs
 new file mode 100644
-index 0000000..ab9e3e6
+index 0000000..356b924
 --- /dev/null
 +++ b/crates/ui-egui/src/blur_handles.rs
-@@ -0,0 +1,291 @@
+@@ -0,0 +1,614 @@
 +//! Blur Gallery on-canvas controls (Photoshop): while a Blur Gallery dialog is open the blur's
 +//! geometry is drawn on the image and dragged there: Path Blur's arrow and its end points,
 +//! Tilt-Shift's focus and transition lines (and the dot that rotates them), the Iris and Spin
 +//! ellipses with their size and feather handles, and every blur's centre pin. The handles edit
 +//! the dialog's own fields (`startX`, `centerX`, `radiusX`, `focus`…, fractions of the selection
 +//! bounds or else the canvas, as the filter reads them), so the preview follows.
++//!
++//! As in Photoshop, Field, Iris and Spin Blur take several pins and Path Blur several paths:
++//! clicking an empty spot adds one (drag right away to place it), clicking one selects it (the
++//! dialog's sliders then edit it), Delete removes it, and the ring around a pin sets its blur.
++//! Clicking a path's segment adds a bend point. They travel as the command's `pins` / `paths`.
 +
 +use egui::{Color32, Pos2, Shape, Stroke, pos2, vec2};
 +use serde_json::{Map, Value, json};
@@ -2566,31 +2993,128 @@ index 0000000..ab9e3e6
 +}
 +
 +/// A draggable point: its key and position (document pixels).
-+type Handle = (&'static str, [f32; 2]);
++type Handle = (String, [f32; 2]);
++
++/// The command's list parameter for kinds that take several pins or paths.
++fn list_key(kind: &str) -> Option<&'static str> {
++    match kind {
++        "fieldBlur" | "irisBlur" | "spinBlur" => Some("pins"),
++        "pathBlur" => Some("paths"),
++        _ => None,
++    }
++}
++
++fn sel(f: &Map<String, Value>) -> usize {
++    f.get("__pin").and_then(Value::as_u64).unwrap_or(0) as usize
++}
++
++fn items(f: &Map<String, Value>, key: &str) -> Vec<Value> {
++    f.get(key).and_then(Value::as_array).cloned().unwrap_or_default()
++}
++
++/// The selected pin / path as the filter reads it, from the dialog's fields (a path keeps the
++/// bend points of `prev`).
++fn to_item(kind: &str, f: &Map<String, Value>, prev: Option<&Value>) -> Value {
++    let n = |k: &str, d: f32| json!(num(f, k, d));
++    match kind {
++        "fieldBlur" => json!({"x": n("centerX", 0.5), "y": n("centerY", 0.5), "blur": n("blur", 15.0)}),
++        "irisBlur" => json!({"x": n("centerX", 0.5), "y": n("centerY", 0.5), "radiusX": n("radiusX", 0.35), "radiusY": n("radiusY", 0.25), "angle": n("angle", 0.0),
++            "roundness": n("roundness", 0.0), "feather": n("feather", 0.5), "blur": n("blur", 15.0)}),
++        "spinBlur" => json!({"x": n("centerX", 0.5), "y": n("centerY", 0.5), "radiusX": n("radiusX", 0.3), "radiusY": n("radiusY", 0.3), "angle": n("angle", 0.0), "blurAngle": n("blurAngle", 15.0)}),
++        _ => {
++            let mid: Vec<Value> = prev
++                .and_then(|p| p.get("points")?.as_array().cloned())
++                .map(|pts| if pts.len() > 2 { pts[1..pts.len() - 1].to_vec() } else { Vec::new() })
++                .unwrap_or_default();
++            let mut pts = vec![json!([num(f, "startX", 0.2), num(f, "startY", 0.5)])];
++            pts.extend(mid);
++            pts.push(json!([num(f, "endX", 0.8), num(f, "endY", 0.5)]));
++            json!({"points": pts, "speed": n("speed", 50.0), "taper": n("taper", 0.0)})
++        }
++    }
++}
++
++/// Load a pin / path into the dialog's fields (the sliders edit the selected one).
++fn load_item(kind: &str, item: &Value, f: &mut Map<String, Value>) {
++    let mut put = |k: &str, v: Option<&Value>| {
++        if let Some(v) = v {
++            f.insert(k.into(), v.clone());
++        }
++    };
++    if kind == "pathBlur" {
++        let pts = item.get("points").and_then(Value::as_array).cloned().unwrap_or_default();
++        if let (Some(a), Some(b)) = (pts.first(), pts.last()) {
++            put("startX", a.get(0));
++            put("startY", a.get(1));
++            put("endX", b.get(0));
++            put("endY", b.get(1));
++        }
++        put("speed", item.get("speed"));
++        put("taper", item.get("taper"));
++        return;
++    }
++    put("centerX", item.get("x"));
++    put("centerY", item.get("y"));
++    for k in ["radiusX", "radiusY", "angle", "roundness", "feather", "blur", "blurAngle"] {
++        put(k, item.get(k));
++    }
++}
++
++/// Keep the list parameter in step with the fields: created from them the first time, then the
++/// selected entry follows the sliders and handles.
++fn sync(kind: &str, f: &mut Map<String, Value>) {
++    let Some(key) = list_key(kind) else { return };
++    let mut list = items(f, key);
++    let s = sel(f).min(list.len().saturating_sub(1));
++    let item = to_item(kind, f, list.get(s));
++    if list.is_empty() {
++        list.push(item);
++    } else {
++        list[s] = item;
++    }
++    f.insert(key.into(), Value::Array(list));
++    f.insert("__pin".into(), json!(s));
++}
++
++fn path_points(f: &Map<String, Value>, i: usize) -> Vec<[f32; 2]> {
++    items(f, "paths")
++        .get(i)
++        .and_then(|p| p.get("points")?.as_array().cloned())
++        .map(|a| a.iter().filter_map(|q| Some([q.get(0)?.as_f64()? as f32, q.get(1)?.as_f64()? as f32])).collect())
++        .unwrap_or_default()
++}
 +
 +fn handles(kind: &str, f: &Map<String, Value>, g: &Geo) -> Vec<Handle> {
 +    let c = g.doc(num(f, "centerX", 0.5), num(f, "centerY", 0.5));
 +    let ss = g.ss();
++    let h = |k: &str, p: [f32; 2]| (k.to_string(), p);
 +    match kind {
-+        "pathBlur" => vec![("start", g.doc(num(f, "startX", 0.2), num(f, "startY", 0.5))), ("end", g.doc(num(f, "endX", 0.8), num(f, "endY", 0.5)))],
++        "pathBlur" => {
++            let pts = path_points(f, sel(f));
++            if pts.len() >= 2 {
++                pts.iter().enumerate().map(|(i, q)| (format!("p{i}"), g.doc(q[0], q[1]))).collect()
++            } else {
++                vec![h("p0", g.doc(num(f, "startX", 0.2), num(f, "startY", 0.5))), h("p1", g.doc(num(f, "endX", 0.8), num(f, "endY", 0.5)))]
++            }
++        }
 +        "tiltShift" => {
 +            let (s, co) = num(f, "angle", 0.0).to_radians().sin_cos();
 +            let (n, d) = ([s, co], [co, -s]);
 +            let (f0, f1) = (num(f, "focus", 0.1) * ss, (num(f, "focus", 0.1) + num(f, "transition", 0.15)) * ss);
 +            let at = |k: f32, along: f32| [c[0] + n[0] * k + d[0] * along, c[1] + n[1] * k + d[1] * along];
-+            vec![("center", c), ("focus", at(f0, 0.0)), ("transition", at(f1, 0.0)), ("rotate", at(f0, 0.35 * ss))]
++            vec![h("center", c), h("focus", at(f0, 0.0)), h("transition", at(f1, 0.0)), h("rotate", at(f0, 0.35 * ss))]
 +        }
 +        "irisBlur" | "spinBlur" => {
 +            let (s, co) = num(f, "angle", 0.0).to_radians().sin_cos();
 +            let (rx, ry) = (num(f, "radiusX", if kind == "irisBlur" { 0.35 } else { 0.3 }) * ss, num(f, "radiusY", if kind == "irisBlur" { 0.25 } else { 0.3 }) * ss);
-+            let mut v = vec![("center", c), ("radiusX", [c[0] + co * rx, c[1] + s * rx]), ("radiusY", [c[0] - s * ry, c[1] + co * ry])];
++            let mut v = vec![h("center", c), h("radiusX", [c[0] + co * rx, c[1] + s * rx]), h("radiusY", [c[0] - s * ry, c[1] + co * ry])];
 +            if kind == "irisBlur" {
 +                let fe = num(f, "feather", 0.5);
-+                v.push(("feather", [c[0] + co * rx * fe, c[1] + s * rx * fe]));
++                v.push(h("feather", [c[0] + co * rx * fe, c[1] + s * rx * fe]));
 +            }
 +            v
 +        }
-+        _ => vec![("center", c)],
++        _ => vec![h("center", c)],
 +    }
 +}
 +
@@ -2603,18 +3127,32 @@ index 0000000..ab9e3e6
 +    let (dx, dy) = (p[0] - c[0], p[1] - c[1]);
 +    let ss = g.ss();
 +    let (s, co) = num(f, "angle", 0.0).to_radians().sin_cos();
++    if kind == "pathBlur"
++        && let Some(i) = h.strip_prefix('p').and_then(|v| v.parse::<usize>().ok())
++    {
++        let n = path_points(f, sel(f)).len().max(2);
++        if i == 0 {
++            f.insert("startX".into(), r3(fx));
++            f.insert("startY".into(), r3(fy));
++        } else if i + 1 == n {
++            f.insert("endX".into(), r3(fx));
++            f.insert("endY".into(), r3(fy));
++        } else {
++            // A bend point lives only in the path list.
++            let s = sel(f);
++            if let Some(Value::Array(list)) = f.get_mut("paths")
++                && let Some(pts) = list.get_mut(s).and_then(|p| p.get_mut("points")).and_then(Value::as_array_mut)
++                && let Some(q) = pts.get_mut(i)
++            {
++                *q = json!([(fx * 1000.0).round() / 1000.0, (fy * 1000.0).round() / 1000.0]);
++            }
++        }
++        return;
++    }
 +    match (kind, h) {
 +        (_, "center") => {
 +            f.insert("centerX".into(), r3(fx));
 +            f.insert("centerY".into(), r3(fy));
-+        }
-+        ("pathBlur", "start") => {
-+            f.insert("startX".into(), r3(fx));
-+            f.insert("startY".into(), r3(fy));
-+        }
-+        ("pathBlur", "end") => {
-+            f.insert("endX".into(), r3(fx));
-+            f.insert("endY".into(), r3(fy));
 +        }
 +        ("tiltShift", "focus") => {
 +            f.insert("focus".into(), r3(((dx * s + dy * co).abs() / ss).clamp(0.0, 1.0)));
@@ -2646,6 +3184,68 @@ index 0000000..ab9e3e6
 +        }
 +        _ => {}
 +    }
++}
++
++/// The blur ring: (field, full-turn value). A pin's ring sets its blur, Spin's its arc.
++fn ring(kind: &str) -> Option<(&'static str, f32)> {
++    match kind {
++        "fieldBlur" | "irisBlur" => Some(("blur", 200.0)),
++        "spinBlur" => Some(("blurAngle", 360.0)),
++        _ => None,
++    }
++}
++const RING_R: f32 = 30.0;
++
++/// Add a pin / path at document point `p` (a copy of the selected one), select it and return the
++/// handle a drag that started with the click should move.
++fn add_item(kind: &str, f: &mut Map<String, Value>, g: &Geo, p: [f32; 2], zoom: f32) -> Option<&'static str> {
++    let key = list_key(kind)?;
++    let mut list = items(f, key);
++    let fr = g.frac(p);
++    let (fx, fy) = (fr[0].clamp(0.0, 1.0), fr[1].clamp(0.0, 1.0));
++    let mut item = to_item(kind, f, None);
++    let grab = if kind == "pathBlur" {
++        let len = (120.0 / zoom / g.b[2].max(1.0)).min(0.3);
++        item["points"] = json!([[fx, fy], [(fx + len).min(1.0), fy]]);
++        "p1"
++    } else {
++        item["x"] = json!(fx);
++        item["y"] = json!(fy);
++        "center"
++    };
++    list.push(item.clone());
++    f.insert("__pin".into(), json!(list.len() - 1));
++    f.insert(key.into(), Value::Array(list));
++    load_item(kind, &item, f);
++    Some(grab)
++}
++
++fn select_item(kind: &str, f: &mut Map<String, Value>, i: usize) {
++    let Some(key) = list_key(kind) else { return };
++    if let Some(item) = items(f, key).get(i).cloned() {
++        f.insert("__pin".into(), json!(i));
++        load_item(kind, &item, f);
++    }
++}
++
++/// Delete the selected pin / path (the last one stays).
++fn delete_item(kind: &str, f: &mut Map<String, Value>) -> bool {
++    let Some(key) = list_key(kind) else { return false };
++    let mut list = items(f, key);
++    if list.len() <= 1 {
++        return false;
++    }
++    let s = sel(f).min(list.len() - 1);
++    list.remove(s);
++    f.insert(key.into(), Value::Array(list));
++    select_item(kind, f, s.saturating_sub(1));
++    true
++}
++
++fn seg_dist(p: Pos2, a: Pos2, b: Pos2) -> (f32, f32) {
++    let ab = b - a;
++    let t = ((p - a).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
++    ((a + ab * t).distance(p), t)
 +}
 +
 +fn line(painter: &egui::Painter, a: Pos2, b: Pos2, dashed: bool) {
@@ -2687,45 +3287,137 @@ index 0000000..ab9e3e6
 +        return false;
 +    };
 +    let kind = d.fields.get("__command").and_then(Value::as_str).unwrap_or_default()[PREFIX.len()..].to_string();
-+    // Several pins or paths (set through `pins` / `paths`) aren't edited here.
-+    if d.fields.get("pins").or_else(|| d.fields.get("paths")).is_some_and(|v| !v.is_null()) {
-+        return false;
-+    }
++    sync(&kind, &mut d.fields);
 +    let id = egui::Id::new(DRAG);
 +    let mut held: Option<String> = ctx.data(|m| m.get_temp(id));
 +    let (pressed, down, hover) = ctx.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.pointer.latest_pos()));
 +    let free = crate::dialogs::free_pointer_over(ctx, rect);
-+    let hs = handles(&kind, &d.fields, &g);
 +    let to_screen = |p: [f32; 2]| xf.to_screen(p[0], p[1]);
-+    let near = free.and_then(|p| hs.iter().map(|(k, q)| (*k, to_screen(*q).distance(p))).filter(|(_, dist)| *dist <= 12.0).min_by(|a, b| a.1.total_cmp(&b.1)).map(|(k, _)| k));
++    let centre = |f: &Map<String, Value>| to_screen(g.doc(num(f, "centerX", 0.5), num(f, "centerY", 0.5)));
++    // The ring handle sits at an angle that shows the value (a quarter turn = a quarter of it).
++    let ring_pos = |f: &Map<String, Value>| {
++        ring(&kind).map(|(k, full)| {
++            let a = (num(f, k, 15.0) / full * 360.0 - 90.0).to_radians();
++            centre(f) + vec2(a.cos(), a.sin()) * RING_R
++        })
++    };
++    let hs = handles(&kind, &d.fields, &g);
++    let mut near = free.and_then(|p| hs.iter().map(|(k, q)| (k.clone(), to_screen(*q).distance(p))).filter(|(_, dist)| *dist <= 12.0).min_by(|a, b| a.1.total_cmp(&b.1)).map(|(k, _)| k));
++    if near.is_none()
++        && let (Some(p), Some(r)) = (free, ring_pos(&d.fields))
++        && r.distance(p) <= 10.0
++    {
++        near = Some("ring".into());
++    }
 +    if pressed && held.is_none() {
-+        held = near.map(str::to_string);
++        held = near.clone();
++        if held.is_none()
++            && let Some(p) = free
++            && let Some(key) = list_key(&kind)
++        {
++            // Another pin / path under the pointer: select it; a segment of the selected path: a
++            // bend point there; elsewhere: a new pin / path.
++            let list = items(&d.fields, key);
++            let s = sel(&d.fields);
++            let mut hit = None;
++            let mut bend = None;
++            for (i, it) in list.iter().enumerate() {
++                if kind == "pathBlur" {
++                    let pts: Vec<Pos2> = path_points(&d.fields, i).iter().map(|q| to_screen(g.doc(q[0], q[1]))).collect();
++                    for (j, w) in pts.windows(2).enumerate() {
++                        if seg_dist(p, w[0], w[1]).0 <= 8.0 {
++                            if i == s { bend = Some(j + 1) } else { hit = Some(i) }
++                        }
++                    }
++                } else if i != s {
++                    let c = to_screen(g.doc(it.get("x").and_then(Value::as_f64).unwrap_or(0.5) as f32, it.get("y").and_then(Value::as_f64).unwrap_or(0.5) as f32));
++                    if c.distance(p) <= 14.0 {
++                        hit = Some(i);
++                    }
++                }
++            }
++            if let Some(i) = hit {
++                select_item(&kind, &mut d.fields, i);
++            } else if let Some(j) = bend {
++                let q = xf.to_doc(p);
++                let fr = g.frac([q[0] as f32, q[1] as f32]);
++                if let Some(Value::Array(list)) = d.fields.get_mut("paths")
++                    && let Some(pts) = list.get_mut(s).and_then(|p| p.get_mut("points")).and_then(Value::as_array_mut)
++                {
++                    pts.insert(j, json!([fr[0].clamp(0.0, 1.0), fr[1].clamp(0.0, 1.0)]));
++                }
++                held = Some(format!("p{j}"));
++            } else {
++                let q = xf.to_doc(p);
++                held = add_item(&kind, &mut d.fields, &g, [q[0] as f32, q[1] as f32], xf.zoom).map(str::to_string);
++            }
++        }
 +    }
 +    if !down {
 +        held = None;
 +    }
-+    if let (Some(h), Some(p)) = (held.as_deref(), hover) {
-+        let q = xf.to_doc(p);
-+        drag(&kind, h, [q[0] as f32, q[1] as f32], &mut d.fields, &g);
++    // Delete / ⌫ removes the selected pin (not while a text field has the keys).
++    if free.is_some() && ctx.memory(|m| m.focused().is_none()) {
++        let del = ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete) || i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace));
++        if del {
++            delete_item(&kind, &mut d.fields);
++        }
 +    }
++    if let (Some(h), Some(p)) = (held.as_deref(), hover) {
++        if h == "ring" {
++            if let Some((k, full)) = ring(&kind) {
++                let v = p - centre(&d.fields);
++                let deg = (v.y.atan2(v.x).to_degrees() + 90.0).rem_euclid(360.0);
++                d.fields.insert(k.into(), json!((deg / 360.0 * full).round()));
++            }
++        } else {
++            let q = xf.to_doc(p);
++            drag(&kind, h, [q[0] as f32, q[1] as f32], &mut d.fields, &g);
++        }
++    }
++    sync(&kind, &mut d.fields);
 +    // Draw from the (possibly just changed) fields.
 +    let f = &d.fields;
 +    let hs = handles(&kind, f, &g);
 +    let ss = g.ss() * xf.zoom;
-+    let c = to_screen(g.doc(num(f, "centerX", 0.5), num(f, "centerY", 0.5)));
++    let c = centre(f);
++    let s = sel(f);
++    // The other pins / paths, quieter.
++    if let Some(key) = list_key(&kind) {
++        for (i, it) in items(f, key).iter().enumerate() {
++            if i == s {
++                continue;
++            }
++            if kind == "pathBlur" {
++                let pts: Vec<Pos2> = path_points(f, i).iter().map(|q| to_screen(g.doc(q[0], q[1]))).collect();
++                for w in pts.windows(2) {
++                    line(painter, w[0], w[1], true);
++                }
++            } else {
++                let q = to_screen(g.doc(it.get("x").and_then(Value::as_f64).unwrap_or(0.5) as f32, it.get("y").and_then(Value::as_f64).unwrap_or(0.5) as f32));
++                painter.circle_stroke(q, 9.0, Stroke::new(3.0, Color32::from_black_alpha(150)));
++                painter.circle_stroke(q, 9.0, Stroke::new(1.5, Color32::from_gray(200)));
++            }
++        }
++    }
 +    match kind.as_str() {
 +        "pathBlur" => {
-+            let (a, b) = (to_screen(hs[0].1), to_screen(hs[1].1));
-+            line(painter, a, b, false);
-+            let v = (b - a).normalized();
-+            let n = vec2(-v.y, v.x);
-+            for side in [n, -n] {
-+                line(painter, b, b - v * 16.0 + side * 8.0, false);
++            let pts: Vec<Pos2> = hs.iter().map(|(_, q)| to_screen(*q)).collect();
++            for w in pts.windows(2) {
++                line(painter, w[0], w[1], false);
++            }
++            if pts.len() >= 2 {
++                let (a, b) = (pts[pts.len() - 2], pts[pts.len() - 1]);
++                let v = (b - a).normalized();
++                let n = vec2(-v.y, v.x);
++                for side in [n, -n] {
++                    line(painter, b, b - v * 16.0 + side * 8.0, false);
++                }
 +            }
 +        }
 +        "tiltShift" => {
-+            let (s, co) = num(f, "angle", 0.0).to_radians().sin_cos();
-+            let (n, dd) = (vec2(s, co), vec2(co, -s));
++            let (sn, co) = num(f, "angle", 0.0).to_radians().sin_cos();
++            let (n, dd) = (vec2(sn, co), vec2(co, -sn));
 +            let len = rect.width().max(rect.height()) * 2.0;
 +            let f0 = num(f, "focus", 0.1) * ss;
 +            let f1 = f0 + num(f, "transition", 0.15) * ss;
@@ -2746,9 +3438,24 @@ index 0000000..ab9e3e6
 +        }
 +        _ => {}
 +    }
++    if let Some(r) = ring_pos(f) {
++        // The blur ring, filled up to the value.
++        painter.circle_stroke(c, RING_R, Stroke::new(4.0, Color32::from_black_alpha(110)));
++        painter.circle_stroke(c, RING_R, Stroke::new(1.5, Color32::from_white_alpha(120)));
++        let end = (r - c).y.atan2((r - c).x);
++        let start = -std::f32::consts::FRAC_PI_2;
++        let span = (end - start).rem_euclid(std::f32::consts::TAU);
++        let arc: Vec<Pos2> = (0..=40).map(|k| {
++            let t = start + span * k as f32 / 40.0;
++            c + vec2(t.cos(), t.sin()) * RING_R
++        }).collect();
++        painter.add(egui::Shape::line(arc, Stroke::new(2.5, Color32::WHITE)));
++        let hot = held.as_deref() == Some("ring") || near.as_deref() == Some("ring");
++        dot(painter, r, 4.5, hot);
++    }
 +    for (k, p) in &hs {
-+        let hot = held.as_deref() == Some(*k) || near == Some(*k);
-+        if *k == "center" {
++        let hot = held.as_deref() == Some(k.as_str()) || near.as_deref() == Some(k.as_str());
++        if k == "center" {
 +            // Photoshop's pin: a ring with a dot.
 +            painter.circle_stroke(to_screen(*p), 9.0, Stroke::new(3.0, Color32::from_black_alpha(150)));
 +            painter.circle_stroke(to_screen(*p), 9.0, Stroke::new(1.5, if hot { Color32::from_rgb(234, 153, 63) } else { Color32::WHITE }));
@@ -2760,6 +3467,9 @@ index 0000000..ab9e3e6
 +    let active = held.is_some() || near.is_some();
 +    if active {
 +        ctx.set_cursor_icon(if held.is_some() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab });
++    } else if free.is_some() && list_key(&kind).is_some() {
++        // Photoshop's "add pin" pointer.
++        ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
 +    }
 +    ctx.data_mut(|m| match &held {
 +        Some(h) => {
@@ -2767,7 +3477,7 @@ index 0000000..ab9e3e6
 +        }
 +        None => m.remove::<String>(id),
 +    });
-+    active
++    active || free.is_some()
 +}
 +
 +#[cfg(test)]
@@ -2785,7 +3495,7 @@ index 0000000..ab9e3e6
 +        let g = Geo { b: [0.0, 0.0, 400.0, 200.0] };
 +        // Path Blur: dragging the end point moves endX / endY.
 +        let mut f = fields("filter.blurGallery.pathBlur");
-+        drag("pathBlur", "end", [300.0, 50.0], &mut f, &g);
++        drag("pathBlur", "p1", [300.0, 50.0], &mut f, &g);
 +        assert_eq!((num(&f, "endX", 0.0), num(&f, "endY", 0.0)), (0.75, 0.25));
 +        assert_eq!(handles("pathBlur", &f, &g)[1].1, [300.0, 50.0]);
 +        // Tilt-Shift: the focus handle sits at the focus distance, and dragging it sets it.
@@ -2804,9 +3514,44 @@ index 0000000..ab9e3e6
 +        drag("irisBlur", "center", [100.0, 50.0], &mut f, &g);
 +        assert_eq!((num(&f, "centerX", 0.0), num(&f, "centerY", 0.0)), (0.25, 0.25));
 +    }
++
++    #[test]
++    fn several_pins_and_paths() {
++        let g = Geo { b: [0.0, 0.0, 400.0, 200.0] };
++        // Field Blur: the fields become the first pin; a click elsewhere adds a second one,
++        // selected, whose blur the sliders then change without touching the first.
++        let mut f = fields("filter.blurGallery.fieldBlur");
++        sync("fieldBlur", &mut f);
++        assert_eq!(items(&f, "pins").len(), 1);
++        assert_eq!(add_item("fieldBlur", &mut f, &g, [100.0, 50.0], 1.0), Some("center"));
++        f.insert("blur".into(), json!(40));
++        sync("fieldBlur", &mut f);
++        let pins = items(&f, "pins");
++        assert_eq!((pins.len(), sel(&f)), (2, 1));
++        assert_eq!((pins[1]["x"].as_f64(), pins[1]["blur"].as_f64(), pins[0]["blur"].as_f64()), (Some(0.25), Some(40.0), Some(15.0)));
++        // Selecting the first loads it into the fields; Delete removes the selected pin, never
++        // the last one.
++        select_item("fieldBlur", &mut f, 0);
++        assert_eq!(num(&f, "blur", 0.0), 15.0);
++        assert!(delete_item("fieldBlur", &mut f));
++        assert!(!delete_item("fieldBlur", &mut f));
++        assert_eq!(items(&f, "pins")[0]["blur"].as_f64(), Some(40.0));
++        // Path Blur: a bend point survives syncing and drags on its own.
++        let mut f = fields("filter.blurGallery.pathBlur");
++        sync("pathBlur", &mut f);
++        if let Some(Value::Array(l)) = f.get_mut("paths") {
++            l[0]["points"].as_array_mut().unwrap().insert(1, json!([0.5, 0.2]));
++        }
++        drag("pathBlur", "p1", [200.0, 160.0], &mut f, &g);
++        sync("pathBlur", &mut f);
++        let pts = path_points(&f, 0);
++        assert_eq!(pts.len(), 3);
++        assert_eq!(pts[1], [0.5, 0.8]);
++        assert_eq!(handles("pathBlur", &f, &g).len(), 3);
++    }
 +}
 diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
-index 31eac83..1564ff0 100644
+index 31eac83..2715cee 100644
 --- a/crates/ui-egui/src/canvas.rs
 +++ b/crates/ui-egui/src/canvas.rs
 @@ -747,17 +747,18 @@ fn ensure_filter_preview(app: &mut PhotocraftApp, idx: usize) -> Option<(u32, u6
@@ -2843,7 +3588,20 @@ index 31eac83..1564ff0 100644
          }
      }
      if tool == Tool::Hand && response.dragged() {
-@@ -1679,6 +1686,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+@@ -1574,6 +1581,12 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+         if tool == Tool::Zoom && crate::zoom_tool::drag(app, &ctx, &mut view, &xf, &buttons, response.interact_pointer_pos()) {
+             (buttons.started, buttons.dragged, buttons.stopped) = (false, false, false);
+         }
++        // The Magnetic Lasso works with clicks and plain pointer moves (magnetic_ui.rs).
++        if tool == Tool::MagneticLasso {
++            let mode = selection_mode(app, mods);
++            crate::magnetic_ui::frame(app, &ctx, &response, &xf, &painter, mode);
++            (buttons.started, buttons.dragged, buttons.stopped) = (false, false, false);
++        }
+         // A drag is only recognised once the pointer has moved past egui's click distance: the
+         // gesture starts where the button went down, not where it is now (#123).
+         let gesture_active_before = app.drag.is_some();
+@@ -1679,6 +1692,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
              painter.rect_stroke(img_rect, 0.0, Stroke::new(1.0, Color32::from_gray(20)), egui::StrokeKind::Outside);
          }
          crate::type_tool::draw_overlay(app, &painter, &xf);
@@ -2851,7 +3609,7 @@ index 31eac83..1564ff0 100644
          crate::transform_tool::draw_overlay(app, &painter, &xf);
          crate::distort_ui::draw_overlay(app, &painter, &xf);
          crate::retouch_ui::draw_source_marker(app, &painter, &xf);
-@@ -2359,11 +2367,10 @@ fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
+@@ -2359,11 +2373,10 @@ fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
          Tool::Gradient => {
              if (end[0] - d.start[0]).abs() + (end[1] - d.start[1]).abs() >= 2.0 {
                  let o = app.ui.tool_options.clone();
@@ -2865,7 +3623,7 @@ index 31eac83..1564ff0 100644
                  );
              }
          }
-@@ -2448,12 +2455,6 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
+@@ -2448,12 +2461,6 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
      json!(if (app.ui.mask_target || viewing) && has_mask { "mask" } else { "pixels" })
  }
  
@@ -3611,7 +4369,7 @@ index 1974c9d..86929d4 100644
      fn percent_fields_round_trip_through_the_engine() {
          let mut s = photocraft_engine::Session::new();
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index e141502..04f8854 100644
+index e141502..b4dee16 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -16,6 +16,7 @@ macro_rules! tl {
@@ -3622,17 +4380,18 @@ index e141502..04f8854 100644
  pub mod adjust_editors;
  pub mod adjust_preview;
  pub mod adjust_ui;
-@@ -50,6 +51,9 @@ pub mod file_open;
+@@ -50,6 +51,10 @@ pub mod file_open;
  pub mod file_ui;
  pub mod fill_ui;
  pub mod filter_dialog;
 +pub mod refine_brush;
++pub mod magnetic_ui;
 +pub mod blur_handles;
 +pub mod tool_reset;
  pub mod gallery_ui;
  pub mod gpu_canvas;
  pub mod gpu_status;
-@@ -236,6 +240,8 @@ pub struct Services {
+@@ -236,6 +241,8 @@ pub struct Services {
      /// `photocraft_engine::preset_store`). Attached to the session once it arrives; without
      /// one, brush presets are session-only (web, tests).
      pub preset_store: Option<std::sync::mpsc::Receiver<photocraft_engine::preset_store::Opened>>,
@@ -3641,24 +4400,27 @@ index e141502..04f8854 100644
  }
  
  pub struct PhotocraftApp {
-@@ -249,6 +255,8 @@ pub struct PhotocraftApp {
+@@ -249,6 +256,10 @@ pub struct PhotocraftApp {
      live_stroke: Option<canvas::LiveStroke>,
      /// Footprint trail of a retouching drag (see `stroke_trail`).
      trail: Option<stroke_trail::Trail>,
 +    /// HORIX AI selection runs (`ai_segment`).
 +    pub(crate) ai: ai_segment::State,
++    /// A Magnetic Lasso in progress.
++    pub(crate) magnetic: Option<magnetic_ui::State>,
      /// Move tool drag shown live (`move_ui`).
      pub(crate) move_preview: Option<move_ui::MovePreview>,
      /// The next tool `Down` is a right-button drag that erases (see `paint_mouse`).
-@@ -387,6 +395,7 @@ impl PhotocraftApp {
+@@ -387,6 +398,8 @@ impl PhotocraftApp {
              drag: None,
              live_stroke: None,
              trail: None,
 +            ai: Default::default(),
++            magnetic: None,
              move_preview: None,
              secondary_erase: false,
              defer_live_stroke: false,
-@@ -542,6 +551,10 @@ impl PhotocraftApp {
+@@ -542,6 +555,10 @@ impl PhotocraftApp {
                  return Ok(serde_json::json!({"pasted": false}));
              }
          }
@@ -3669,7 +4431,7 @@ index e141502..04f8854 100644
          // Long commands become background jobs when enabled (`jobs_ui`); the rest run inline.
          let r = jobs_ui::run(self, id, params);
          if r.is_ok() && matches!(id, "edit.copy" | "edit.cut" | "edit.copyMerged") {
-@@ -841,6 +854,7 @@ impl eframe::App for PhotocraftApp {
+@@ -841,6 +858,7 @@ impl eframe::App for PhotocraftApp {
              self.checker = None;
          }
          self.drain_control(ctx);
@@ -3677,7 +4439,7 @@ index e141502..04f8854 100644
          if self.ui.text_edit.is_some() && self.ui.tool != state::Tool::Type {
              type_tool::commit(self);
          }
-@@ -939,7 +953,6 @@ impl eframe::App for PhotocraftApp {
+@@ -939,7 +957,6 @@ impl eframe::App for PhotocraftApp {
          });
          if hidden == 0 {
              panels::floating_dock_windows(self, &ctx);
@@ -3685,6 +4447,271 @@ index e141502..04f8854 100644
              brush_panel::window(self, &ctx);
              preset_panels::windows(self, &ctx);
              type_panels_ui::windows(self, &ctx);
+diff --git a/crates/ui-egui/src/magnetic_ui.rs b/crates/ui-egui/src/magnetic_ui.rs
+new file mode 100644
+index 0000000..89b34fd
+--- /dev/null
++++ b/crates/ui-egui/src/magnetic_ui.rs
+@@ -0,0 +1,259 @@
++//! Magnetic Lasso, as Photoshop's: click to start, then move the pointer along the object's
++//! edge (no button needed) and the wire clings to it (`photocraft_algo::scissors`). Fastening
++//! points are laid automatically (Frequency) and by clicking; ⌫ / Delete removes the last one,
++//! ⌥ draws straight segments, Enter or a double-click closes the selection (as does clicking the
++//! start point), Esc cancels. Width (screen pixels: the detection corridor around the pointer's
++//! track), Contrast and Frequency are in the options bar.
++
++use std::sync::Arc;
++
++use egui::{Color32, Pos2, Stroke, pos2};
++use photocraft_algo::scissors::Scissors;
++use serde_json::json;
++
++use crate::PhotocraftApp;
++use crate::canvas::ViewXform;
++
++/// Images are analysed at most this many pixels on the long side.
++const MAX_SIDE: u32 = 4096;
++
++/// A Magnetic Lasso in progress. Points are in analysed-image pixels (document ÷ `step`).
++pub struct State {
++    doc: photocraft_doc::DocId,
++    step: f32,
++    sc: Arc<Scissors>,
++    /// The fastened wire, anchor to anchor.
++    points: Vec<(i32, i32)>,
++    /// Indices in `points` of the fastening points (the first is the start).
++    anchors: Vec<usize>,
++    /// The pointer's track since the last fastening point.
++    track: Vec<(f32, f32)>,
++    /// The wire from the last fastening point to the pointer.
++    live: Vec<(i32, i32)>,
++    mode: &'static str,
++    last: Option<(f32, f32)>,
++}
++
++pub fn active(app: &PhotocraftApp) -> bool {
++    app.magnetic.is_some()
++}
++
++fn len(p: &[(i32, i32)]) -> f32 {
++    p.windows(2).map(|w| (((w[1].0 - w[0].0).pow(2) + (w[1].1 - w[0].1).pow(2)) as f32).sqrt()).sum()
++}
++
++fn start(app: &mut PhotocraftApp, doc_pt: [f64; 2], zoom: f32, mode: &'static str) {
++    let Some(st) = app.session.active() else { return };
++    let doc = st.doc.id;
++    let Some((rgb, w, h, step)) = photocraft_engine::smartselect_cmds::sample_rgb8(&app.session, true, MAX_SIDE) else { return };
++    let sc = Arc::new(Scissors::new(&rgb, w as usize, h as usize, 3));
++    let step = step as f32;
++    let o = &app.ui.tool_options;
++    let p = (doc_pt[0] as f32 / step, doc_pt[1] as f32 / step);
++    let width = (o.magnetic_width / zoom / step).max(1.0);
++    let a = sc.snap(p, 3.0f32.min(width * 2.0), o.magnetic_contrast / 100.0);
++    app.magnetic = Some(State { doc, step, sc, points: vec![a], anchors: vec![0], track: Vec::new(), live: vec![a], mode, last: Some(p) });
++}
++
++/// Fasten the wire up to its end (or `upto` points of it).
++fn fasten(m: &mut State, upto: Option<usize>) {
++    let n = upto.unwrap_or(m.live.len().saturating_sub(1));
++    if n == 0 || m.live.len() < 2 {
++        return;
++    }
++    m.points.extend(&m.live[1..=n.min(m.live.len() - 1)]);
++    m.anchors.push(m.points.len() - 1);
++    let a = *m.points.last().unwrap_or(&m.live[0]);
++    let keep = m.track.len().saturating_sub(3);
++    m.track.drain(..keep);
++    m.live = vec![a];
++}
++
++/// Close the lasso (the wire back to the start) and make the selection.
++pub fn close(app: &mut PhotocraftApp) {
++    let Some(mut m) = app.magnetic.take() else { return };
++    fasten(&mut m, None);
++    let (width, contrast) = (app.ui.tool_options.magnetic_width.max(1.0), app.ui.tool_options.magnetic_contrast / 100.0);
++    let first = m.points[0];
++    if let Some(&end) = m.points.last() {
++        let back = m.sc.wire(end, &[], (first.0 as f32, first.1 as f32), (width / m.step).max(1.0), contrast);
++        m.points.extend(back.iter().skip(1));
++    }
++    if m.points.len() < 3 {
++        return;
++    }
++    let s = m.step as f64;
++    let pts: Vec<[f64; 2]> = m.points.iter().map(|p| [(p.0 as f64 + 0.5) * s, (p.1 as f64 + 0.5) * s]).collect();
++    let o = &app.ui.tool_options;
++    let _ = app.run("select.lasso", json!({"points": pts, "mode": m.mode, "antiAlias": o.anti_alias, "feather": o.feather}));
++}
++
++/// ⌫ / Delete: back to the previous fastening point (the start: cancel).
++pub fn back(app: &mut PhotocraftApp) {
++    let Some(m) = app.magnetic.as_mut() else { return };
++    if m.anchors.len() <= 1 {
++        app.magnetic = None;
++        return;
++    }
++    m.anchors.pop();
++    let k = *m.anchors.last().unwrap_or(&0);
++    m.points.truncate(k + 1);
++    m.live = vec![m.points[k]];
++    m.track.clear();
++    m.last = None;
++}
++
++pub fn cancel(app: &mut PhotocraftApp) {
++    app.magnetic = None;
++}
++
++/// Keys while a lasso is in progress (before the app's shortcuts). Returns true if one was used.
++pub fn keys(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
++    if app.magnetic.is_none() {
++        return false;
++    }
++    if app.ui.tool != crate::state::Tool::MagneticLasso {
++        app.magnetic = None;
++        return false;
++    }
++    let pressed = |k: egui::Key| ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, k));
++    if pressed(egui::Key::Enter) {
++        close(app);
++        true
++    } else if pressed(egui::Key::Escape) {
++        cancel(app);
++        true
++    } else if pressed(egui::Key::Backspace) || pressed(egui::Key::Delete) {
++        back(app);
++        true
++    } else {
++        false
++    }
++}
++
++/// The tool on the canvas: pointer moves, clicks and the drawing.
++#[allow(clippy::too_many_arguments)]
++pub fn frame(app: &mut PhotocraftApp, ctx: &egui::Context, response: &egui::Response, xf: &ViewXform, painter: &egui::Painter, mode: &'static str) {
++    if app.magnetic.as_ref().is_some_and(|m| app.session.active().is_none_or(|s| s.doc.id != m.doc)) {
++        app.magnetic = None;
++    }
++    let zoom = xf.zoom.max(0.01);
++    let hover = response.hover_pos().or_else(|| ctx.pointer_latest_pos().filter(|_| app.magnetic.is_some()));
++    let (clicked, double, alt) = (response.clicked(), response.double_clicked(), ctx.input(|i| i.modifiers.alt));
++    if app.magnetic.is_none() {
++        if (clicked || response.drag_started())
++            && let Some(p) = response.interact_pointer_pos()
++        {
++            start(app, xf.to_doc(p), zoom, mode);
++        }
++    } else if double {
++        close(app);
++    } else if let Some(h) = hover {
++        let o = app.ui.tool_options.clone();
++        let Some(m) = app.magnetic.as_mut() else { return };
++        let d = xf.to_doc(h);
++        let c = (d[0] as f32 / m.step, d[1] as f32 / m.step);
++        let width = (o.magnetic_width / zoom / m.step).max(1.0);
++        let contrast = o.magnetic_contrast / 100.0;
++        // Fastening points every `seg` screen pixels of wire: 80 at Frequency 0, 40 at the default
++        // 57, 10 at 100 (40 measured best on DUTS-TE with simulated tracing).
++        let seg = (10.0 + (100.0 - o.magnetic_frequency.clamp(0.0, 100.0)) * 0.7) / zoom / m.step;
++        let moved = m.last.is_none_or(|l| (l.0 - c.0).hypot(l.1 - c.1) >= 0.5);
++        if moved {
++            let a = *m.points.last().unwrap_or(&(c.0 as i32, c.1 as i32));
++            if alt {
++                // ⌥: a straight segment, as the Polygonal Lasso.
++                m.live = vec![a, (c.0.round() as i32, c.1.round() as i32)];
++            } else {
++                m.live = m.sc.wire(a, &m.track, c, width, contrast);
++                if m.track.last().is_none_or(|t| (t.0 - c.0).hypot(t.1 - c.1) >= width * 0.5) {
++                    m.track.push(c);
++                }
++                let l = len(&m.live);
++                if o.magnetic_frequency > 0.0 && l > seg {
++                    let mut run = 0.0;
++                    let mut cut = m.live.len() - 1;
++                    for (i, w) in m.live.windows(2).enumerate() {
++                        run += (((w[1].0 - w[0].0).pow(2) + (w[1].1 - w[0].1).pow(2)) as f32).sqrt();
++                        if run >= l * 0.7 {
++                            cut = i + 1;
++                            break;
++                        }
++                    }
++                    fasten(m, Some(cut));
++                    m.live = m.sc.wire(*m.points.last().unwrap_or(&a), &m.track, c, width, contrast);
++                }
++            }
++            m.last = Some(c);
++        }
++        if clicked {
++            // On the start point: close; elsewhere: a fastening point.
++            let s = m.points[0];
++            let at_start = m.points.len() > 2 && xf.to_screen((s.0 as f32 + 0.5) * m.step, (s.1 as f32 + 0.5) * m.step).distance(h) < 8.0;
++            if at_start {
++                close(app);
++            } else {
++                fasten(m, None);
++            }
++        }
++    }
++    // Drawing: the fastened wire, the live wire, the fastening points and the width circle.
++    if let Some(m) = app.magnetic.as_ref() {
++        let to = |p: &(i32, i32)| xf.to_screen((p.0 as f32 + 0.5) * m.step, (p.1 as f32 + 0.5) * m.step);
++        let line: Vec<Pos2> = m.points.iter().chain(m.live.iter().skip(1)).map(to).collect();
++        if line.len() > 1 {
++            painter.add(egui::Shape::line(line.clone(), Stroke::new(3.0, Color32::from_black_alpha(150))));
++            painter.add(egui::Shape::line(line, Stroke::new(1.2, Color32::WHITE)));
++        }
++        for &k in &m.anchors {
++            let p = to(&m.points[k]);
++            let r = egui::Rect::from_center_size(p, egui::vec2(6.0, 6.0));
++            painter.rect_filled(r, 0.0, Color32::WHITE);
++            painter.rect_stroke(r, 0.0, Stroke::new(1.0, Color32::BLACK), egui::StrokeKind::Outside);
++        }
++        ctx.request_repaint();
++    }
++    if let Some(h) = hover.filter(|_| response.hovered() || app.magnetic.is_some()) {
++        let r = app.ui.tool_options.magnetic_width.max(1.0);
++        painter.circle_stroke(h, r, Stroke::new(2.5, Color32::from_black_alpha(120)));
++        painter.circle_stroke(h, r, Stroke::new(1.0, Color32::WHITE));
++        painter.circle_filled(pos2(h.x, h.y), 1.5, Color32::WHITE);
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    /// A black square on white: fastening points near three corners and closing selects the
++    /// square, the wire having followed its sides; ⌫ takes the last point back.
++    #[test]
++    fn traces_a_square_and_closes() {
++        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
++        app.run("file.new", json!({"width": 120, "height": 120})).unwrap();
++        app.run("select.rect", json!({"x": 30, "y": 30, "width": 60, "height": 60})).unwrap();
++        app.run("edit.fill", json!({"contents": "black"})).unwrap();
++        app.run("select.deselect", json!({})).unwrap();
++        start(&mut app, [31.0, 30.0], 1.0, "replace");
++        let corners = [(90.0, 31.0), (89.0, 90.0), (30.0, 89.0)];
++        for (i, c) in corners.iter().enumerate() {
++            let m = app.magnetic.as_mut().unwrap();
++            let a = *m.points.last().unwrap();
++            m.live = m.sc.wire(a, &[(a.0 as f32, a.1 as f32), *c], *c, 6.0, 0.1);
++            fasten(m, None);
++            assert_eq!(m.anchors.len(), i + 2);
++        }
++        back(&mut app);
++        assert_eq!(app.magnetic.as_ref().unwrap().anchors.len(), 3);
++        let m = app.magnetic.as_mut().unwrap();
++        let a = *m.points.last().unwrap();
++        m.live = m.sc.wire(a, &[(a.0 as f32, a.1 as f32), (30.0, 89.0)], (30.0, 89.0), 6.0, 0.1);
++        fasten(m, None);
++        close(&mut app);
++        assert!(app.magnetic.is_none());
++        let sel = app.session.active().unwrap().doc.selection.clone().expect("a selection");
++        let at = |x: i32, y: i32| sel.sample_channel(x, y, 0);
++        assert!(at(60, 60) > 0.9 && at(35, 35) > 0.9 && at(85, 85) > 0.9, "inside");
++        assert!(at(20, 60) < 0.1 && at(60, 100) < 0.1 && at(100, 20) < 0.1, "outside");
++    }
++}
 diff --git a/crates/ui-egui/src/new_doc_ui.rs b/crates/ui-egui/src/new_doc_ui.rs
 index a2cf049..08cbda4 100644
 --- a/crates/ui-egui/src/new_doc_ui.rs
@@ -3727,7 +4754,7 @@ index a2cf049..08cbda4 100644
      });
  }
 diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
-index c2389b8..0249bc7 100644
+index c2389b8..13a8429 100644
 --- a/crates/ui-egui/src/panels.rs
 +++ b/crates/ui-egui/src/panels.rs
 @@ -189,12 +189,12 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
@@ -3773,7 +4800,20 @@ index c2389b8..0249bc7 100644
                  widgets::vline(ui, 22.0);
                  if app.ui.transform.is_some() {
                      crate::transform_tool::options_bar(app, ui);
-@@ -640,12 +644,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -588,7 +592,11 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+                         widgets::checkbox(ui, &mut app.ui.tool_options.anti_alias, tl!("Anti-alias"));
+                         if app.ui.tool == Tool::MagneticLasso {
+                             opt_label(ui, tl!("Width"));
+-                            widgets::value_field(ui, &mut app.ui.tool_options.magnetic_width, 2.0..=64.0, "px", 58.0);
++                            widgets::value_field(ui, &mut app.ui.tool_options.magnetic_width, 1.0..=256.0, "px", 58.0);
++                            opt_label(ui, tl!("Contrast"));
++                            widgets::value_field(ui, &mut app.ui.tool_options.magnetic_contrast, 1.0..=100.0, "%", 58.0);
++                            opt_label(ui, tl!("Frequency"));
++                            widgets::value_field(ui, &mut app.ui.tool_options.magnetic_frequency, 0.0..=100.0, "", 52.0);
+                         }
+                         widgets::vline(ui, 22.0);
+                         if widgets::secondary_button(ui, tl!("Select and Mask…"), 0.0).clicked() {
+@@ -640,12 +648,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                          if widgets::dropdown(ui, "gradient-mode", &mut classic, &[(false, "Gradient"), (true, "Classic gradient")], 118.0) {
                              app.ui.tool_options.gradient_classic = classic;
                          }
@@ -3788,7 +4828,7 @@ index c2389b8..0249bc7 100644
                          widgets::vline(ui, 22.0);
                          ui.spacing_mut().item_spacing.x = 2.0;
                          let before = app.ui.tool_options.clone();
-@@ -922,8 +922,7 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -922,8 +926,7 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                  ("clock", tl!("History"), Group::History),
              ];
              for (icon, name, g) in entries {
@@ -3798,7 +4838,7 @@ index c2389b8..0249bc7 100644
                  let on = g.shown(&p) && !(docked && app.ui.dock.is_collapsed(g));
                  if icons::rail_button(ui, icon, rb, on, name).clicked() {
                      crate::dock::rail_click(app, g, docked);
-@@ -952,10 +951,9 @@ pub fn request_dock_width(ctx: &egui::Context, w: f32) {
+@@ -952,10 +955,9 @@ pub fn request_dock_width(ctx: &egui::Context, w: f32) {
  
  fn dock_panels(app: &mut PhotocraftApp, ui: &mut egui::Ui, p: &crate::state::Panels, t: &Tokens) {
      use crate::dock::Group;
@@ -3810,7 +4850,7 @@ index c2389b8..0249bc7 100644
          (Group::Character, p.character),
          (Group::Navigator, p.navigator),
          (Group::History, p.history),
-@@ -1310,36 +1308,44 @@ fn color_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -1310,36 +1312,44 @@ fn color_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
  
  // ----------------------------------------------------------------------------- layers
  
@@ -3878,7 +4918,7 @@ index c2389b8..0249bc7 100644
      }
      let Some(st) = app.session.active() else {
          empty(ui, tl!("No document"));
-@@ -1353,7 +1359,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -1353,7 +1363,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
      let mut actions: Vec<(String, Value)> = Vec::new();
  
      let t = Tokens::get(ui.ctx());
@@ -3887,7 +4927,7 @@ index c2389b8..0249bc7 100644
          ui.horizontal(|ui| {
              ui.spacing_mut().item_spacing.x = 2.0;
              let (r, _) = ui.allocate_exact_size(vec2(64.0, 22.0), Sense::hover());
-@@ -1412,12 +1418,12 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -1412,12 +1422,12 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
              // In a narrow panel with long translated labels, drop the "Lock:" text (the icons keep
              // their tooltips) rather than let the Fill label run over the lock icons.
              let gap = ui.spacing().item_spacing.x;
@@ -3902,7 +4942,7 @@ index c2389b8..0249bc7 100644
                  ui.spacing_mut().item_spacing.x = 0.0;
                  let lk = l.locks;
                  for (key, icon, tip, on) in [
-@@ -1432,12 +1438,6 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -1432,12 +1442,6 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                      }
                  }
              }
@@ -3915,7 +4955,7 @@ index c2389b8..0249bc7 100644
              ui.add_enabled_ui(!bg, |ui| {
                  ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                      let mut f = l.fill_opacity * 100.0;
-@@ -1978,92 +1978,6 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -1978,92 +1982,6 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
  
  // ----------------------------------------------------------------------------- properties
  
@@ -4008,7 +5048,7 @@ index c2389b8..0249bc7 100644
  fn adjustment_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId, adj: &photocraft_doc::Adjustment) {
      crate::adjust_editors::layer_editor(app, ui, id, adj);
      ui.add_space(6.0);
-@@ -2087,34 +2001,8 @@ fn adjustment_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId,
+@@ -2087,34 +2005,8 @@ fn adjustment_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId,
      }
  }
  
@@ -4044,7 +5084,7 @@ index c2389b8..0249bc7 100644
      let Some(st) = app.session.active() else {
          empty(ui, tl!("No properties"));
          return;
-@@ -2131,7 +2019,7 @@ fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -2131,7 +2023,7 @@ fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
      // Header: kind icon, layer name and kind (#155); sections below draw their own separators.
      crate::props_layout::header(ui, layer);
      let is_adjustment = matches!(layer.content, LayerContent::Adjustment(_));
@@ -4053,7 +5093,7 @@ index c2389b8..0249bc7 100644
          ui.add_space(4.0);
          widgets::hairline(ui);
          ui.add_space(6.0);
-@@ -2140,21 +2028,9 @@ fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -2140,21 +2032,9 @@ fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
          adjustment_controls(app, ui, id, adj);
      } else if layer.artboard().is_some() {
          crate::artboard_ui::properties(app, ui, layer);
@@ -4076,7 +5116,7 @@ index c2389b8..0249bc7 100644
      }
  }
  
-@@ -2444,6 +2320,25 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
+@@ -2444,6 +2324,25 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
          if resp.double_clicked() {
              crate::layer_style::open(app, kind);
          }
@@ -4102,7 +5142,7 @@ index c2389b8..0249bc7 100644
      }
  }
  
-@@ -2466,22 +2361,6 @@ fn selection_mode_buttons(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -2466,22 +2365,6 @@ fn selection_mode_buttons(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
      ui.spacing_mut().item_spacing.x = 8.0;
  }
  
@@ -4125,7 +5165,7 @@ index c2389b8..0249bc7 100644
  #[cfg(test)]
  mod color_tests {
      use super::*;
-@@ -2526,53 +2405,3 @@ mod color_tests {
+@@ -2526,53 +2409,3 @@ mod color_tests {
          assert_eq!(srgb_bytes(h.state().session.tools.foreground), [0, 255, 0]);
      }
  }
@@ -4366,9 +5406,48 @@ index 8afb4bc..be60bbf 100644
  }
  
  /// ⌥-click with Clone Stamp / Healing Brush sets the source.
+diff --git a/crates/ui-egui/src/shortcuts.rs b/crates/ui-egui/src/shortcuts.rs
+index 0e6863d..f4b0c39 100644
+--- a/crates/ui-egui/src/shortcuts.rs
++++ b/crates/ui-egui/src/shortcuts.rs
+@@ -314,6 +314,10 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
+             return;
+         }
+     }
++    // A Magnetic Lasso in progress takes Enter, Esc and ⌫ / Delete before any shortcut.
++    if crate::magnetic_ui::keys(app, ctx) {
++        return;
++    }
+     // Inline type editing eats text and navigation keys; ⌘-shortcuts still reach the menus.
+     let editing = crate::type_tool::handle_keys(app, ctx);
+     // Registry, UI and menu-catalogue shortcuts (see [`crate::shortcut_dispatch::bindings`]).
+diff --git a/crates/ui-egui/src/state.rs b/crates/ui-egui/src/state.rs
+index b33e2db..2ebbc9d 100644
+--- a/crates/ui-egui/src/state.rs
++++ b/crates/ui-egui/src/state.rs
+@@ -316,6 +316,10 @@ pub struct ToolOptions {
+     pub feather: f32,
+     /// Magnetic Lasso edge-search radius in document pixels.
+     pub magnetic_width: f32,
++    /// Magnetic Lasso: edges weaker than this (% of a full step) are ignored.
++    pub magnetic_contrast: f32,
++    /// Magnetic Lasso: how often fastening points are laid (0–100).
++    pub magnetic_frequency: f32,
+     /// linear | radial | angle | reflected | diamond
+     pub gradient_style: String,
+     pub gradient_reverse: bool,
+@@ -428,6 +432,8 @@ impl Default for ToolOptions {
+             sample_all_layers: false,
+             feather: 0.0,
+             magnetic_width: 10.0,
++            magnetic_contrast: 10.0,
++            magnetic_frequency: 57.0,
+             gradient_style: "linear".into(),
+             gradient_reverse: false,
+             gradient_dither: true,
 diff --git a/crates/ui-egui/src/tool_reset.rs b/crates/ui-egui/src/tool_reset.rs
 new file mode 100644
-index 0000000..4866e2a
+index 0000000..3393b91
 --- /dev/null
 +++ b/crates/ui-egui/src/tool_reset.rs
 @@ -0,0 +1,115 @@
@@ -4412,7 +5491,7 @@ index 0000000..4866e2a
 +    match tool {
 +        Tool::RectMarquee | Tool::EllipseMarquee => reset!(o, d, feather, anti_alias, marquee_style, marquee_width, marquee_height),
 +        Tool::Lasso | Tool::PolygonLasso => reset!(o, d, feather, anti_alias),
-+        Tool::MagneticLasso => reset!(o, d, feather, anti_alias, magnetic_width),
++        Tool::MagneticLasso => reset!(o, d, feather, anti_alias, magnetic_width, magnetic_contrast, magnetic_frequency),
 +        Tool::MagicWand => reset!(o, d, tolerance, anti_alias, contiguous, sample_all_layers),
 +        Tool::QuickSelection => reset!(o, d, sample_all_layers, enhance_edge),
 +        Tool::ObjectSelection => reset!(o, d, sample_all_layers),

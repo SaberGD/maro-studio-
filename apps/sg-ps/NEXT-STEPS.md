@@ -51,6 +51,14 @@ Files: apps/sg-ps/ai/fetch.py downloads and SHA-256-checks the model and onnxrun
 | 3 | Blur Gallery has no on-canvas controls | Path Blur arrow and end points, Tilt-Shift focus / transition lines and rotate dot, Iris and Spin ellipses with size (and Iris feather) handles, centre pins; they edit the dialog's fields so the preview follows (blur_handles.rs). Blur Gallery and Select and Mask open at the right edge, off the image |
 | 4 | Tool preset arrow has no Reset Tool | The arrow (and the tool icon) open Reset Tool / Reset All Tools (tool_reset.rs) |
 
+## Round 5 (selection tools)
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | Magnetic Lasso as Photoshop's | Intelligent Scissors live wire (algo/scissors.rs; Mortensen & Barrett costs) kept in Photoshop's detection corridor (Width, screen px, around the pointer's track) and pulled toward it; click to start, move without a button, fastening points by Frequency and by clicking, Backspace / Delete back, Alt straight segments, Enter / double-click / click on the start closes, Esc cancels; Width / Contrast / Frequency in the options bar (magnetic_ui.rs). 69 DUTS-TE objects traced by a simulated hand (segeval/magneval.rs), IoU with a 12 px wobble: plain lasso 0.841, old magnetic 0.856, new 0.862; 4 px wobble 0.898 / 0.874 / 0.889. Checked in headless Chromium |
+| 2 | Several Blur Gallery pins | Field / Iris / Spin: click adds a pin, click selects, Delete removes, the ring sets blur (Spin: arc); Path Blur: several paths, click a segment for a bend point. They travel as `pins` / `paths` (blur_handles.rs). Checked in headless Chromium |
+| 3 | Quick / Object Selection on real photos | 79 DUTS-TE photos (ai_model.rs ignored tests, segeval/quickloop.rs): Quick Selection after the stroke / +3 corrections classic 0.447 / 0.505, HORIX AI 0.727 / 0.863; Object Selection (box 5% larger than the object) classic 0.630, HORIX AI 0.800 |
+
 ## Videos requested (after the fixes ship)
 
 Status: both rendered (promo.mp4 31 s, fixes.mp4 42 s, 1920x1080 with music). Sources: HTML scenes + render.mjs + music.py in the session scratchpad; a vertical 9:16 cut is a possible follow-up.
