@@ -4,6 +4,7 @@
 # Usage: apps/sg-ps/desktop/package.sh windows|macos
 #   windows -> deploy/sg-ps-desktop/HORIX-<version>-windows-x64-portable.zip  (unzip and run HORIX.exe)
 #   macos   -> deploy/sg-ps-desktop/HORIX-<version>-macos-universal.zip       ("HORIX.app", Apple Silicon + Intel)
+#              and HORIX-<version>-macos-universal-full.zip (+ BiRefNet); Windows likewise -portable / -full.
 # Runs on the matching OS (Git Bash on Windows). Needs Rust; on macOS the aarch64-apple-darwin and
 # x86_64-apple-darwin targets. Not code-signed: Windows SmartScreen and macOS Gatekeeper warn on
 # first launch (see apps/sg-ps/README.md).
@@ -48,7 +49,8 @@ licences() {
 }
 
 # HORIX AI selection: MobileSAM (Apache-2.0), its ONNX export (MIT, huggingface.co/Acly/MobileSAM),
-# Segment Anything (Apache-2.0), IS-Net (Apache-2.0) and Microsoft onnxruntime (MIT, its own notices file beside it).
+# Segment Anything (Apache-2.0), IS-Net (Apache-2.0), BiRefNet (MIT), Microsoft onnxruntime (MIT, its own notices
+# file beside it) and, on Windows, Microsoft DirectML (redistributable, its licence beside it).
 ai_notices() {
   printf '\n==== MobileSAM (models/mobile_sam_image_encoder.onnx, models/sam_mask_decoder_multi.onnx) ====\n\n'
   printf 'MobileSAM, Copyright the MobileSAM authors (github.com/ChaoningZhang/MobileSAM). ONNX export by\nhuggingface.co/Acly/MobileSAM (MIT). Mask decoder from Segment Anything, Copyright Meta Platforms, Inc.\n\n'
@@ -58,6 +60,9 @@ ai_notices() {
   printf '\n==== IS-Net (models/isnet-general-use.onnx) ====\n\n'
   printf 'IS-Net / DIS, Copyright Xuebin Qin et al. (github.com/xuebinqin/DIS). ONNX export by rembg\n(github.com/danielgatis/rembg, MIT).\n\n'
   cat "$HERE/../ai/LICENSE-ISNet.txt"
+  printf '\n==== BiRefNet (models/birefnet-general.onnx, full download) ====\n\n'
+  printf 'BiRefNet, Copyright ZhengPeng (github.com/ZhengPeng7/BiRefNet). ONNX export by rembg\n(github.com/danielgatis/rembg, MIT).\n\n'
+  cat "$HERE/../ai/LICENSE-BiRefNet.txt"
 }
 
 windows_readme() {
@@ -93,24 +98,34 @@ case "$OS" in
     "$PY" -I "$HERE/../ai/fetch.py" "$PKG" windows
     "$PY" -I "$HERE/../ai/fetch.py" "$PKG/models" models
     licences "$PKG"
-    ZIP="$OUT/HORIX-$VERSION-windows-x64-portable.zip"
-    rm -f "$ZIP"
-    (cd "$WORK/pkg" && 7z a -tzip -mx=9 "$ZIP" HORIX >/dev/null)
-    "$PY" -I - "$ZIP" <<'PYEOF'
+    # Two downloads: portable (IS-Net) and full (+ BiRefNet, the most accurate Select Subject).
+    winzip() {
+      rm -f "$1"
+      (cd "$WORK/pkg" && 7z a -tzip -mx=9 "$1" HORIX >/dev/null)
+      "$PY" -I - "$1" "$2" <<'PYEOF'
 import sys
 import zipfile
 
 expected = {
     "HORIX/HORIX.exe", "HORIX/README.txt", "HORIX/onnxruntime.dll", "HORIX/LICENSE-onnxruntime.txt",
-    "HORIX/ThirdPartyNotices-onnxruntime.txt", "HORIX/LICENSE.txt", "HORIX/THIRD-PARTY-NOTICES.txt",
+    "HORIX/ThirdPartyNotices-onnxruntime.txt", "HORIX/DirectML.dll", "HORIX/LICENSE-DirectML.txt",
+    "HORIX/LICENSE.txt", "HORIX/THIRD-PARTY-NOTICES.txt",
     "HORIX/models/mobile_sam_image_encoder.onnx", "HORIX/models/sam_mask_decoder_multi.onnx",
     "HORIX/models/isnet-general-use.onnx",
 }
+if sys.argv[2] == "full":
+    expected.add("HORIX/models/birefnet-general.onnx")
 with zipfile.ZipFile(sys.argv[1]) as archive:
     files = {name for name in archive.namelist() if not name.endswith("/")}
 if files != expected:
     raise SystemExit(f"unexpected Windows package contents: {sorted(files)}")
 PYEOF
+    }
+    ZIP="$OUT/HORIX-$VERSION-windows-x64-portable.zip"
+    winzip "$ZIP" portable
+    "$PY" -I "$HERE/../ai/fetch.py" "$PKG/models" full
+    FULL="$OUT/HORIX-$VERSION-windows-x64-full.zip"
+    winzip "$FULL" full
     ;;
   macos)
     export MACOSX_DEPLOYMENT_TARGET=11.0
@@ -159,6 +174,13 @@ PYEOF
     ZIP="$OUT/HORIX-$VERSION-macos-universal.zip"
     rm -f "$ZIP"
     (cd "$WORK/pkg" && ditto -c -k --keepParent "HORIX.app" "$ZIP")
+    # The full download: the same app with BiRefNet (the most accurate Select Subject).
+    "$PY" -I "$HERE/../ai/fetch.py" "$APP/Contents/Resources/models" full
+    codesign --force --deep --sign - "$APP"
+    codesign --verify --deep --strict --verbose=2 "$APP"
+    FULL="$OUT/HORIX-$VERSION-macos-universal-full.zip"
+    rm -f "$FULL"
+    (cd "$WORK/pkg" && ditto -c -k --keepParent "HORIX.app" "$FULL")
     ;;
   *)
     echo "usage: package.sh windows|macos" >&2
@@ -166,5 +188,5 @@ PYEOF
     ;;
 esac
 
-echo "wrote $ZIP"
-ls -l "$ZIP"
+echo "wrote $ZIP $FULL"
+ls -l "$ZIP" "$FULL"

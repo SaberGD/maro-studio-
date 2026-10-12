@@ -259,10 +259,10 @@ index 0353811..0cab42b 100644
   "thiserror 2.0.21",
   "wasm-bindgen",
 diff --git a/apps/photocraft-web/index.html b/apps/photocraft-web/index.html
-index 91efe82..a064242 100644
+index 731d222..f2bf455 100644
 --- a/apps/photocraft-web/index.html
 +++ b/apps/photocraft-web/index.html
-@@ -404,6 +404,100 @@
+@@ -413,6 +413,100 @@
      #sgps_wl .go:disabled { opacity: .6; cursor: wait; }
      #sgps_wl .x { position: absolute; top: 8px; left: 10px; background: none; border: 0; color: #EA993F; font-size: 22px; cursor: pointer; }
    </style>
@@ -464,10 +464,10 @@ index f268d08..daf14cc 100644
 +photocraft-algo = { workspace = true }
 diff --git a/apps/photocraft/src/ai_model.rs b/apps/photocraft/src/ai_model.rs
 new file mode 100644
-index 0000000..0067eb6
+index 0000000..f72572b
 --- /dev/null
 +++ b/apps/photocraft/src/ai_model.rs
-@@ -0,0 +1,562 @@
+@@ -0,0 +1,715 @@
 +//! HORIX AI selection on the desktop: MobileSAM (Quick / Object Selection) and IS-Net (Select
 +//! Subject) through Microsoft's onnxruntime, loaded at run
 +//! time from the app folder (`onnxruntime.dll` / `libonnxruntime.dylib` / `.so` next to the
@@ -483,7 +483,9 @@ index 0000000..0067eb6
 +
 +const ENCODER: &str = "mobile_sam_image_encoder.onnx";
 +const DECODER: &str = "sam_mask_decoder_multi.onnx";
-+/// IS-Net (DIS, general use; Apache-2.0): salient object, 1024 × 1024 input.
++/// BiRefNet (general; MIT): the most accurate Select Subject, used when its model is present.
++const SUBJECT_BEST: &str = "birefnet-general.onnx";
++/// IS-Net (DIS, general use; Apache-2.0): the lighter fallback. Both take 1024 × 1024.
 +const SUBJECT: &str = "isnet-general-use.onnx";
 +const SUBJECT_SIDE: u32 = 1024;
 +
@@ -563,6 +565,9 @@ index 0000000..0067eb6
 +struct Model {
 +    enc: Session,
 +    dec: Session,
++    /// Either session is on the graphics card (a failed run retries on the processor).
++    gpu: bool,
++    paths: (PathBuf, PathBuf),
 +}
 +
 +/// Loads onnxruntime once (the first model to need it).
@@ -575,28 +580,148 @@ index 0000000..0067eb6
 +    .clone()
 +}
 +
-+fn session(p: &Path) -> Result<Session, String> {
++/// Where a session runs: on the graphics card (DirectML on Windows, Core ML on macOS) when there is
++/// one, else on the processor. `HORIX_AI_CPU=1` forces the processor.
++#[derive(Clone, Copy, PartialEq, Debug)]
++enum Device {
++    Gpu,
++    Cpu,
++}
++
++#[allow(unreachable_code)]
++fn gpu_providers() -> Vec<ort::execution_providers::ExecutionProviderDispatch> {
++    if std::env::var_os("HORIX_AI_CPU").is_some() {
++        return Vec::new();
++    }
++    #[cfg(target_os = "windows")]
++    return vec![ort::execution_providers::DirectMLExecutionProvider::default().build().error_on_failure()];
++    #[cfg(target_os = "macos")]
++    {
++        use ort::execution_providers::coreml::{CoreMLComputeUnits, CoreMLModelFormat};
++        // Compiled Core ML models are cached, so only the first load of a model is slow.
++        let cache = std::env::temp_dir().join("horix-coreml-cache");
++        let _ = std::fs::create_dir_all(&cache);
++        return vec![
++            ort::execution_providers::CoreMLExecutionProvider::default()
++                .with_model_format(CoreMLModelFormat::MLProgram)
++                .with_compute_units(CoreMLComputeUnits::All)
++                .with_model_cache_dir(cache.to_string_lossy())
++                .build()
++                .error_on_failure(),
++        ];
++    }
++    Vec::new()
++}
++
++fn session_on(p: &Path, device: Device) -> Result<Session, String> {
 +    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 8);
-+    Session::builder().and_then(|b| b.with_intra_threads(threads)).and_then(|b| b.commit_from_file(p)).map_err(|e| e.to_string())
++    let b = Session::builder().and_then(|b| b.with_intra_threads(threads));
++    let b = match device {
++        // DirectML wants sequential execution without memory patterns.
++        Device::Gpu => b.and_then(|b| b.with_execution_providers(gpu_providers())).and_then(|b| b.with_memory_pattern(false)).and_then(|b| b.with_parallel_execution(false)),
++        Device::Cpu => b,
++    };
++    b.and_then(|b| b.commit_from_file(p)).map_err(|e| e.to_string())
++}
++
++/// The graphics card when it takes the model, else the processor.
++fn session(p: &Path) -> Result<(Session, Device), String> {
++    if !gpu_providers().is_empty() {
++        match session_on(p, Device::Gpu) {
++            Ok(s) => {
++                log::info!("HORIX AI: {} on the GPU", p.display());
++                return Ok((s, Device::Gpu));
++            }
++            Err(e) => log::warn!("HORIX AI: GPU unavailable for {} ({e}); using the CPU", p.display()),
++        }
++    }
++    Ok((session_on(p, Device::Cpu)?, Device::Cpu))
 +}
 +
 +fn load() -> Result<Model, String> {
 +    runtime()?;
 +    let enc = find(ENCODER).ok_or("the AI model files are missing (models folder)")?;
 +    let dec = find(DECODER).ok_or("the AI model files are missing (models folder)")?;
-+    Ok(Model { enc: session(&enc)?, dec: session(&dec)? })
++    let (enc_s, d1) = session(&enc)?;
++    let (dec_s, d2) = session(&dec)?;
++    Ok(Model { enc: enc_s, dec: dec_s, gpu: d1 == Device::Gpu || d2 == Device::Gpu, paths: (enc, dec) })
 +}
 +
-+fn load_subject() -> Result<Session, String> {
++impl Model {
++    /// After a failed run on the graphics card: the same models on the processor.
++    fn move_to_cpu(&mut self) -> Result<(), String> {
++        self.enc = session_on(&self.paths.0, Device::Cpu)?;
++        self.dec = session_on(&self.paths.1, Device::Cpu)?;
++        self.gpu = false;
++        Ok(())
++    }
++}
++
++/// Which salient-object model is loaded: they differ in input normalisation and output.
++#[derive(Clone, Copy, PartialEq, Debug)]
++enum SubjectKind {
++    BiRefNet,
++    IsNet,
++}
++
++struct Subject {
++    s: Session,
++    kind: SubjectKind,
++    device: Device,
++}
++
++/// BiRefNet (the full download) when it runs on the graphics card: on the processor it needs
++/// about 8 GB of memory and half a minute, so IS-Net is used there unless `HORIX_AI_BIREFNET_CPU`
++/// is set. IS-Net otherwise, on the graphics card when there is one.
++fn load_subject() -> Result<Subject, String> {
 +    runtime()?;
-+    session(&find(SUBJECT).ok_or("the Select Subject model is missing (models folder)")?)
++    if let Some(p) = find(SUBJECT_BEST) {
++        // Only on the graphics card (never load it on the processor just to drop it).
++        let device = if std::env::var_os("HORIX_AI_BIREFNET_CPU").is_some() {
++            Device::Cpu
++        } else if gpu_providers().is_empty() {
++            log::info!("HORIX AI: no GPU for BiRefNet; Select Subject uses IS-Net");
++            return load_isnet();
++        } else {
++            Device::Gpu
++        };
++        match session_on(&p, device) {
++            Ok(s) => return Ok(Subject { s, kind: SubjectKind::BiRefNet, device }),
++            Err(e) => log::warn!("HORIX AI: BiRefNet failed to load ({e}); using IS-Net"),
++        }
++    }
++    load_isnet()
++}
++
++fn load_isnet() -> Result<Subject, String> {
++    let (s, device) = session(&find(SUBJECT).ok_or("the Select Subject model is missing (models folder)")?)?;
++    Ok(Subject { s, kind: SubjectKind::IsNet, device })
++}
++
++/// Select Subject, falling back once from a failed run on the graphics card: BiRefNet to IS-Net,
++/// IS-Net on the GPU to IS-Net on the processor.
++fn subject_mask(sub: &mut Subject, rgb: &[u8], side: u32) -> Result<Vec<f32>, String> {
++    match run_subject(&mut sub.s, sub.kind, rgb, side) {
++        Ok(m) => Ok(m),
++        Err(e) if sub.device == Device::Gpu || sub.kind == SubjectKind::BiRefNet => {
++            log::warn!("HORIX AI: Select Subject failed on {:?}/{:?} ({e}); retrying", sub.kind, sub.device);
++            *sub = if sub.kind == SubjectKind::BiRefNet {
++                load_isnet()?
++            } else {
++                let p = find(SUBJECT).ok_or("the Select Subject model is missing (models folder)")?;
++                Subject { s: session_on(&p, Device::Cpu)?, kind: SubjectKind::IsNet, device: Device::Cpu }
++            };
++            subject_mask(sub, rgb, side)
++        }
++        Err(e) => Err(e),
++    }
 +}
 +
 +fn worker(rx: Receiver<Cmd>, tx: Sender<SegEvent>) {
 +    let mut model: Option<Model> = None;
 +    let mut failed: Option<String> = None;
 +    let mut embedding: Option<(u64, Vec<f32>, u32, u32)> = None;
-+    let mut subject: Option<Result<Session, String>> = None;
++    let mut subject: Option<Result<Subject, String>> = None;
 +    while let Ok(mut cmd) = rx.recv() {
 +        // Only the newest image matters: skip encodes superseded by a later one.
 +        while let Cmd::Encode { .. } = cmd {
@@ -618,14 +743,14 @@ index 0000000..0067eb6
 +    model: &mut Option<Model>,
 +    failed: &mut Option<String>,
 +    embedding: &mut Option<(u64, Vec<f32>, u32, u32)>,
-+    subject: &mut Option<Result<Session, String>>,
++    subject: &mut Option<Result<Subject, String>>,
 +    cmd: Cmd,
 +    tx: &Sender<SegEvent>,
 +) {
 +    // Select Subject has its own model, loaded on first use.
 +    if let Cmd::Subject { req, rgb, side } = cmd {
 +        let ev = match subject.get_or_insert_with(load_subject) {
-+            Ok(s) => run_subject(s, &rgb, side).map_or_else(|msg| SegEvent::SubjectFailed { msg }, |mask| SegEvent::Subject { req, mask }),
++            Ok(sub) => subject_mask(sub, &rgb, side).map_or_else(|msg| SegEvent::SubjectFailed { msg }, |mask| SegEvent::Subject { req, mask }),
 +            Err(msg) => {
 +                log::warn!("HORIX AI: {msg}");
 +                SegEvent::SubjectFailed { msg: msg.clone() }
@@ -650,38 +775,66 @@ index 0000000..0067eb6
 +        }
 +    }
 +    let Some(m) = model.as_mut() else { return };
-+    let result = match cmd {
-+        Cmd::Encode { key, rgb, w, h } => encode(m, &rgb, w, h).map(|e| {
-+            *embedding = Some((key, e, w, h));
-+            SegEvent::Encoded { key }
-+        }),
-+        Cmd::Decode { key, req, points, labels, prev } => match embedding.as_ref().filter(|e| e.0 == key) {
-+            Some((_, emb, w, h)) => decode(m, emb, *w, *h, &points, &labels, prev).map(|(logits, ious)| SegEvent::Decoded { req, logits, ious }),
-+            None => Err("the image is not encoded".into()),
-+        },
-+        Cmd::Subject { .. } => return,
-+    };
-+    let _ = tx.send(result.unwrap_or_else(|msg| SegEvent::Failed { msg }));
++    let mut result = step(m, embedding, &cmd);
++    // A run that fails on the graphics card is retried once on the processor.
++    if result.is_err() && m.gpu {
++        log::warn!("HORIX AI: selection failed on the GPU; retrying on the CPU");
++        result = m.move_to_cpu().and_then(|()| step(m, embedding, &cmd));
++    }
++    if let Some(result) = result.transpose() {
++        let _ = tx.send(result.unwrap_or_else(|msg| SegEvent::Failed { msg }));
++    }
 +}
 +
-+/// IS-Net on a `side × side` RGB image: the subject's probability, normalised to 0..1.
-+fn run_subject(s: &mut Session, rgb: &[u8], side: u32) -> Result<Vec<f32>, String> {
++/// One encode or decode; `Ok(None)` for commands handled elsewhere.
++fn step(m: &mut Model, embedding: &mut Option<(u64, Vec<f32>, u32, u32)>, cmd: &Cmd) -> Result<Option<SegEvent>, String> {
++    Ok(Some(match cmd {
++        Cmd::Encode { key, rgb, w, h } => {
++            let e = encode(m, rgb, *w, *h)?;
++            *embedding = Some((*key, e, *w, *h));
++            SegEvent::Encoded { key: *key }
++        }
++        Cmd::Decode { key, req, points, labels, prev } => match embedding.as_ref().filter(|e| e.0 == *key) {
++            Some((_, emb, w, h)) => {
++                let (logits, ious) = decode(m, emb, *w, *h, points, labels, prev.clone())?;
++                SegEvent::Decoded { req: *req, logits, ious }
++            }
++            None => return Err("the image is not encoded".into()),
++        },
++        Cmd::Subject { .. } => return Ok(None),
++    }))
++}
++
++/// The salient-object model on a `side × side` RGB image: the subject's probability, 0..1.
++fn run_subject(s: &mut Session, kind: SubjectKind, rgb: &[u8], side: u32) -> Result<Vec<f32>, String> {
 +    let n = side as usize * side as usize;
 +    if rgb.len() < n * 3 {
 +        return Err("bad image".into());
 +    }
-+    // Planar, (v / 255 − 0.5), as the model was trained.
++    // Planar, normalised as each model was trained: BiRefNet with the ImageNet mean and std,
++    // IS-Net with (v / 255 − 0.5).
++    const MEAN: [f32; 3] = [0.485, 0.456, 0.406];
++    const STD: [f32; 3] = [0.229, 0.224, 0.225];
 +    let mut x = vec![0.0f32; 3 * n];
 +    for i in 0..n {
 +        for c in 0..3 {
-+            x[c * n + i] = f32::from(rgb[i * 3 + c]) / 255.0 - 0.5;
++            let v = f32::from(rgb[i * 3 + c]) / 255.0;
++            x[c * n + i] = match kind {
++                SubjectKind::BiRefNet => (v - MEAN[c]) / STD[c],
++                SubjectKind::IsNet => v - 0.5,
++            };
 +        }
 +    }
 +    let e = |e: ort::Error| e.to_string();
 +    let input = Tensor::from_array(([1usize, 3, side as usize, side as usize], x)).map_err(e)?;
 +    let out = s.run(ort::inputs!["input_image" => input]).map_err(e)?;
 +    let (_, y) = out[0].try_extract_tensor::<f32>().map_err(e)?;
-+    Ok(normalise(&y[..n.min(y.len())]))
++    let y = &y[..n.min(y.len())];
++    Ok(match kind {
++        // BiRefNet's output is logits: a calibrated probability after the sigmoid.
++        SubjectKind::BiRefNet => y.iter().map(|v| 1.0 / (1.0 + (-v).exp())).collect(),
++        SubjectKind::IsNet => normalise(y),
++    })
 +}
 +
 +/// Min–max to 0..1 (the salient-object models' outputs aren't calibrated).
@@ -3732,8 +3885,39 @@ index 0000000..356b924
 +        assert_eq!(handles("pathBlur", &f, &g).len(), 3);
 +    }
 +}
+diff --git a/crates/ui-egui/src/brush_picker.rs b/crates/ui-egui/src/brush_picker.rs
+index 184dc5a..e924abc 100644
+--- a/crates/ui-egui/src/brush_picker.rs
++++ b/crates/ui-egui/src/brush_picker.rs
+@@ -32,6 +32,8 @@ pub enum Pick {
+     OpenSettings,
+     /// Save the current brush as a new preset.
+     NewPreset,
++    /// Import Brushes… (`.abr`), as the picker's menu in Photoshop.
++    Import,
+ }
+ 
+ /// Picker view state kept in egui memory: the name filter and the collapsed groups.
+@@ -55,6 +57,7 @@ pub fn apply(app: &mut PhotocraftApp, ctx: &egui::Context, pick: Option<Pick>) {
+             let name = new_preset_name(&app.session.tools.presets);
+             run_or_status(app, "brush.presets.save", json!({ "name": name }));
+         }
++        Some(Pick::Import) => app.open_dialog_file(),
+     }
+ }
+ 
+@@ -122,6 +125,9 @@ pub fn body(ui: &mut egui::Ui, b: &mut BrushSettings, presets: &[BrushPreset]) -
+             if named(icons::button(ui, "square-plus", 24.0, false, "Create new brush preset from the current settings"), "New Brush Preset").clicked() {
+                 pick = Some(Pick::NewPreset);
+             }
++            if named(icons::button(ui, "folder-open", 24.0, false, "Import Brushes… (.abr)"), "Import Brushes…").clicked() {
++                pick = Some(Pick::Import);
++            }
+             if named(icons::button(ui, "sliders-horizontal", 24.0, false, "Brush Settings…  (F5): every option of this brush"), "Brush Settings…").clicked()
+             {
+                 pick = Some(Pick::OpenSettings);
 diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
-index 31eac83..aa11640 100644
+index af3444d..5173c06 100644
 --- a/crates/ui-egui/src/canvas.rs
 +++ b/crates/ui-egui/src/canvas.rs
 @@ -747,17 +747,18 @@ fn ensure_filter_preview(app: &mut PhotocraftApp, idx: usize) -> Option<(u32, u6
@@ -3757,7 +3941,7 @@ index 31eac83..aa11640 100644
          if let Some(r) = &result {
              let buf = photocraft_compose::flatten(r);
              let t1 = crate::gpu_canvas::now_ms();
-@@ -1546,6 +1547,12 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+@@ -1538,6 +1539,12 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
              ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
          } else if free_hover && (space_pan || app.ui.tool == Tool::Hand) {
              ctx.set_cursor_icon(egui::CursorIcon::Grab);
@@ -3770,7 +3954,21 @@ index 31eac83..aa11640 100644
          }
      }
      if tool == Tool::Hand && response.dragged() {
-@@ -1574,6 +1581,28 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+@@ -1558,6 +1565,13 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+             let d = xf.to_doc(p);
+             crate::layer_pick_ui::open(app, [p.x, p.y], d[0], d[1]);
+         }
++        // Right-click with the Pen or Path Selection tool: the path menu (Make Selection…), as Photoshop.
++        if response.secondary_clicked()
++            && crate::path_menu_ui::applies(tool)
++            && let Some(p) = response.interact_pointer_pos()
++        {
++            crate::path_menu_ui::open(&ctx, app, [p.x, p.y]);
++        }
+         // The (temporary) Hand pans above; its gestures never reach the tool underneath.
+         if tool == Tool::Hand {
+             (buttons.started, buttons.dragged, buttons.stopped) = (false, false, false);
+@@ -1566,6 +1580,28 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
          if tool == Tool::Zoom && crate::zoom_tool::drag(app, &ctx, &mut view, &xf, &buttons, response.interact_pointer_pos()) {
              (buttons.started, buttons.dragged, buttons.stopped) = (false, false, false);
          }
@@ -3799,7 +3997,13 @@ index 31eac83..aa11640 100644
          // A drag is only recognised once the pointer has moved past egui's click distance: the
          // gesture starts where the button went down, not where it is now (#123).
          let gesture_active_before = app.drag.is_some();
-@@ -1679,6 +1708,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+@@ -1666,11 +1702,13 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+         draw_transform_controls(app, &painter, &xf);
+         crate::paint_mouse::show_picker(app, &ctx);
+         crate::layer_pick_ui::show(app, &ctx);
++        crate::path_menu_ui::show(app, &ctx);
+         crate::snap_ui::draw(app, &painter, &xf);
+         if border == photocraft_engine::prefs::CanvasBorder::Line {
              painter.rect_stroke(img_rect, 0.0, Stroke::new(1.0, Color32::from_gray(20)), egui::StrokeKind::Outside);
          }
          crate::type_tool::draw_overlay(app, &painter, &xf);
@@ -3807,7 +4011,7 @@ index 31eac83..aa11640 100644
          crate::transform_tool::draw_overlay(app, &painter, &xf);
          crate::distort_ui::draw_overlay(app, &painter, &xf);
          crate::retouch_ui::draw_source_marker(app, &painter, &xf);
-@@ -2359,11 +2389,10 @@ fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
+@@ -2351,11 +2389,10 @@ fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
          Tool::Gradient => {
              if (end[0] - d.start[0]).abs() + (end[1] - d.start[1]).abs() >= 2.0 {
                  let o = app.ui.tool_options.clone();
@@ -3821,7 +4025,7 @@ index 31eac83..aa11640 100644
                  );
              }
          }
-@@ -2448,12 +2477,6 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
+@@ -2440,12 +2477,6 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
      json!(if (app.ui.mask_target || viewing) && has_mask { "mask" } else { "pixels" })
  }
  
@@ -4100,7 +4304,7 @@ index 140b3be..b4b1d05 100644
      if multi {
          v.push(Some((tl!("Merge Layers"), "layer.mergeLayers")));
 diff --git a/crates/ui-egui/src/layer_style.rs b/crates/ui-egui/src/layer_style.rs
-index 1974c9d..86929d4 100644
+index 1974c9d..7561a5b 100644
 --- a/crates/ui-egui/src/layer_style.rs
 +++ b/crates/ui-egui/src/layer_style.rs
 @@ -1,9 +1,10 @@
@@ -4280,7 +4484,7 @@ index 1974c9d..86929d4 100644
          .flat_map(|(k, v)| k.bytes().chain(v.to_string().into_bytes()))
          .fold(0xcbf2_9ce4_8422_2325, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3))
  }
-@@ -361,18 +467,51 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+@@ -361,18 +467,52 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                  f.insert("selected".into(), json!(BLENDING));
              }
              ui.add_space(4.0);
@@ -4311,8 +4515,9 @@ index 1974c9d..86929d4 100644
 +                    let show = resp.hovered() || is_sel || ui.rect_contains_pointer(rect);
 +                    if n < MAX_INSTANCES {
 +                        let pr = ui.interact(plus, ui.id().with(("fxplus", &key_name)), Sense::click()).on_hover_text(tl!("Add another instance of this effect"));
-+                        if show || pr.hovered() {
-+                            let c = if pr.hovered() { t.accent } else { t.text_dim };
++                        // Always shown, as Photoshop: the "+" is how you find a second stroke.
++                        {
++                            let c = if pr.hovered() { t.accent } else if show { t.text_dim } else { t.text_faint };
 +                            ui.painter().line_segment([plus.center() - vec2(4.5, 0.0), plus.center() + vec2(4.5, 0.0)], Stroke::new(1.6, c));
 +                            ui.painter().line_segment([plus.center() - vec2(0.0, 4.5), plus.center() + vec2(0.0, 4.5)], Stroke::new(1.6, c));
 +                        }
@@ -4336,7 +4541,7 @@ index 1974c9d..86929d4 100644
                  if on {
                      ui.painter().rect_filled(cb, 2.0, t.accent);
                      ui.painter().line_segment([cb.left_center() + vec2(3.0, 0.5), cb.center_bottom() + vec2(-1.0, -3.5)], Stroke::new(1.8, Color32::WHITE));
-@@ -383,30 +522,39 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+@@ -383,30 +523,39 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                  ui.painter().text(
                      rect.left_center() + vec2(28.0, 0.0),
                      egui::Align2::LEFT_CENTER,
@@ -4383,7 +4588,7 @@ index 1974c9d..86929d4 100644
                  match kind {
                      P::Slider(min, max, unit) => {
                          let mut v = p.get(key).and_then(Value::as_f64).unwrap_or(min as f64) as f32;
-@@ -477,11 +625,133 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+@@ -477,11 +626,133 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                  }
                  ui.add_space(2.0);
              }
@@ -4517,7 +4722,7 @@ index 1974c9d..86929d4 100644
  fn parse_hex(s: &str) -> Color32 {
      let s = s.trim_start_matches('#');
      let b = |i: usize| u8::from_str_radix(s.get(i..i + 2).unwrap_or("00"), 16).unwrap_or(0);
-@@ -540,6 +810,48 @@ mod tests {
+@@ -540,6 +811,48 @@ mod tests {
          assert_eq!((fx(&shown), fx(&st.doc)), (2, 0));
      }
  
@@ -4567,7 +4772,7 @@ index 1974c9d..86929d4 100644
      fn percent_fields_round_trip_through_the_engine() {
          let mut s = photocraft_engine::Session::new();
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index e141502..b4dee16 100644
+index e141502..782962c 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -16,6 +16,7 @@ macro_rules! tl {
@@ -4589,7 +4794,15 @@ index e141502..b4dee16 100644
  pub mod gallery_ui;
  pub mod gpu_canvas;
  pub mod gpu_status;
-@@ -236,6 +241,8 @@ pub struct Services {
+@@ -61,6 +66,7 @@ pub mod icons;
+ pub mod jobs_ui;
+ pub mod layer_menu_ui;
+ pub mod layer_pick_ui;
++pub mod path_menu_ui;
+ pub mod layer_props_ui;
+ mod layer_reveal;
+ pub mod layer_row_ui;
+@@ -236,6 +242,8 @@ pub struct Services {
      /// `photocraft_engine::preset_store`). Attached to the session once it arrives; without
      /// one, brush presets are session-only (web, tests).
      pub preset_store: Option<std::sync::mpsc::Receiver<photocraft_engine::preset_store::Opened>>,
@@ -4598,7 +4811,7 @@ index e141502..b4dee16 100644
  }
  
  pub struct PhotocraftApp {
-@@ -249,6 +256,10 @@ pub struct PhotocraftApp {
+@@ -249,6 +257,10 @@ pub struct PhotocraftApp {
      live_stroke: Option<canvas::LiveStroke>,
      /// Footprint trail of a retouching drag (see `stroke_trail`).
      trail: Option<stroke_trail::Trail>,
@@ -4609,7 +4822,7 @@ index e141502..b4dee16 100644
      /// Move tool drag shown live (`move_ui`).
      pub(crate) move_preview: Option<move_ui::MovePreview>,
      /// The next tool `Down` is a right-button drag that erases (see `paint_mouse`).
-@@ -387,6 +398,8 @@ impl PhotocraftApp {
+@@ -387,6 +399,8 @@ impl PhotocraftApp {
              drag: None,
              live_stroke: None,
              trail: None,
@@ -4618,7 +4831,7 @@ index e141502..b4dee16 100644
              move_preview: None,
              secondary_erase: false,
              defer_live_stroke: false,
-@@ -542,6 +555,10 @@ impl PhotocraftApp {
+@@ -542,6 +556,10 @@ impl PhotocraftApp {
                  return Ok(serde_json::json!({"pasted": false}));
              }
          }
@@ -4629,7 +4842,7 @@ index e141502..b4dee16 100644
          // Long commands become background jobs when enabled (`jobs_ui`); the rest run inline.
          let r = jobs_ui::run(self, id, params);
          if r.is_ok() && matches!(id, "edit.copy" | "edit.cut" | "edit.copyMerged") {
-@@ -841,6 +858,7 @@ impl eframe::App for PhotocraftApp {
+@@ -841,6 +859,7 @@ impl eframe::App for PhotocraftApp {
              self.checker = None;
          }
          self.drain_control(ctx);
@@ -4637,7 +4850,7 @@ index e141502..b4dee16 100644
          if self.ui.text_edit.is_some() && self.ui.tool != state::Tool::Type {
              type_tool::commit(self);
          }
-@@ -939,7 +957,6 @@ impl eframe::App for PhotocraftApp {
+@@ -939,7 +958,6 @@ impl eframe::App for PhotocraftApp {
          });
          if hidden == 0 {
              panels::floating_dock_windows(self, &ctx);
@@ -4951,6 +5164,19 @@ index a2cf049..08cbda4 100644
          });
      });
  }
+diff --git a/crates/ui-egui/src/paint_mouse.rs b/crates/ui-egui/src/paint_mouse.rs
+index 84647c8..044e24b 100644
+--- a/crates/ui-egui/src/paint_mouse.rs
++++ b/crates/ui-egui/src/paint_mouse.rs
+@@ -135,7 +135,7 @@ pub fn show_picker(app: &mut PhotocraftApp, ctx: &egui::Context) {
+         let mut b = before.clone();
+         let pick = egui::Frame::popup(ui.style()).show(ui, |ui| crate::brush_picker::body(ui, &mut b, &app.session.tools.presets)).inner;
+         crate::brush_panel::commit_gesture(app, ui.ctx(), &before, &b);
+-        if pick == Some(crate::brush_picker::Pick::OpenSettings) {
++        if matches!(pick, Some(crate::brush_picker::Pick::OpenSettings | crate::brush_picker::Pick::Import)) {
+             app.ui.brush_picker = None;
+         }
+         crate::brush_picker::apply(app, ui.ctx(), pick);
 diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
 index c2389b8..13a8429 100644
 --- a/crates/ui-egui/src/panels.rs
@@ -5417,8 +5643,214 @@ index c2389b8..13a8429 100644
 -        assert!(!app.session.active().unwrap().doc.layers[0].locks.transparency);
 -    }
 -}
+diff --git a/crates/ui-egui/src/path_menu_ui.rs b/crates/ui-egui/src/path_menu_ui.rs
+new file mode 100644
+index 0000000..fd67a96
+--- /dev/null
++++ b/crates/ui-egui/src/path_menu_ui.rs
+@@ -0,0 +1,200 @@
++//! Right-click on the canvas with the Pen or Path Selection tool: Photoshop's path menu
++//! (Make Selection…, Fill Path…, Stroke Path…, Create Vector Mask, Delete Path), and the
++//! Make Selection dialog (Feather Radius, Anti-aliased, Operation).
++
++use egui::{Context, Id};
++use serde_json::json;
++
++use crate::{PhotocraftApp, state::Tool};
++
++#[derive(Clone, Copy)]
++struct Menu {
++    pos: [f32; 2],
++}
++
++#[derive(Clone, Copy)]
++struct MakeSel {
++    feather: f32,
++    anti_alias: bool,
++    /// 0 new, 1 add, 2 subtract, 3 intersect.
++    op: usize,
++}
++
++fn menu_id() -> Id {
++    Id::new("canvas-path-menu")
++}
++fn dialog_id() -> Id {
++    Id::new("path-make-selection")
++}
++
++/// The tools whose right-click opens the path menu.
++pub fn applies(tool: Tool) -> bool {
++    matches!(tool, Tool::Pen | Tool::PathSelection)
++}
++
++/// True when there is a path for the menu to act on (one being drawn, or [`crate::vector_ui::active_path_name`]).
++fn has_path(app: &PhotocraftApp) -> bool {
++    app.ui.pen.as_ref().is_some_and(|p| p.knots.len() >= 2) || crate::vector_ui::active_path_name(app).is_some()
++}
++
++/// Open the menu at screen point `at`. False when there's no path (nothing opens).
++pub fn open(ctx: &Context, app: &mut PhotocraftApp, at: [f32; 2]) -> bool {
++    if !has_path(app) {
++        return false;
++    }
++    app.ui.brush_picker = None;
++    app.ui.layer_menu = None;
++    ctx.data_mut(|d| {
++        d.insert_temp(menu_id(), Menu { pos: at });
++    });
++    true
++}
++
++/// The path the commands act on; a path being drawn with the Pen is finished first.
++fn target(app: &mut PhotocraftApp) -> Option<String> {
++    if app.ui.pen.as_ref().is_some_and(|p| p.knots.len() >= 2) {
++        crate::vector_ui::pen_commit(app, false);
++        let on_layer = app.ui.tool_options.vector_mode == "shape";
++        app.ui.selected_path = Some(if on_layer { "layer" } else { "work" }.into());
++    }
++    crate::vector_ui::active_path_name(app)
++}
++
++fn report(app: &mut PhotocraftApp, r: Result<serde_json::Value, String>) {
++    if let Err(e) = r {
++        app.ui.status = e;
++        app.ui.status_error = true;
++    }
++}
++
++fn run_on_path(app: &mut PhotocraftApp, cmd: &str, mut params: serde_json::Value) {
++    let Some(name) = target(app) else { return };
++    params["name"] = json!(name);
++    let r = app.run(cmd, params);
++    report(app, r);
++}
++
++/// Show the open menu and the Make Selection dialog. Escape or a click outside closes the menu.
++pub fn show(app: &mut PhotocraftApp, ctx: &Context) {
++    show_dialog(app, ctx);
++    let Some(menu) = ctx.data(|d| d.get_temp::<Menu>(menu_id())) else { return };
++    let close = |ctx: &Context| ctx.data_mut(|d| d.remove::<Menu>(menu_id()));
++    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
++        close(ctx);
++        return;
++    }
++    let has_layer = app.session.active().is_some_and(|s| s.active_layer.is_some());
++    let screen = ctx.content_rect();
++    let id = Id::new("canvas-path-menu-area");
++    let size = ctx.memory(|m| m.area_rect(id)).map_or(egui::vec2(190.0, 140.0), |r| r.size());
++    let pos = egui::pos2(menu.pos[0].min(screen.right() - size.x).max(screen.left()), menu.pos[1].min(screen.bottom() - size.y).max(screen.top()));
++    let mut pick = None;
++    let area = egui::Area::new(id).order(egui::Order::Foreground).fixed_pos(pos).show(ctx, |ui| {
++        egui::Frame::menu(ui.style()).show(ui, |ui| {
++            ui.set_min_width(180.0);
++            ui.spacing_mut().item_spacing.y = 0.0;
++            let item = |ui: &mut egui::Ui, label: &str, enabled: bool| {
++                ui.add_enabled(enabled, egui::Button::new(tl!(label)).frame(false).min_size(egui::vec2(180.0, 22.0))).clicked()
++            };
++            if item(ui, "Make Selection...", true) {
++                pick = Some("select");
++            }
++            if item(ui, "Fill Path...", has_layer) {
++                pick = Some("fill");
++            }
++            if item(ui, "Stroke Path...", has_layer) {
++                pick = Some("stroke");
++            }
++            ui.separator();
++            if item(ui, "Create Vector Mask", has_layer) {
++                pick = Some("mask");
++            }
++            if item(ui, "Delete Path", true) {
++                pick = Some("delete");
++            }
++        });
++    });
++    if let Some(p) = pick {
++        close(ctx);
++        let fg = crate::vector_ui::hex(app.session.tools.foreground);
++        match p {
++            "select" => {
++                // As Photoshop: the operation starts at New; Add/Subtract/Intersect need a selection.
++                ctx.data_mut(|d| d.insert_temp(dialog_id(), MakeSel { feather: 0.0, anti_alias: true, op: 0 }));
++            }
++            "fill" => run_on_path(app, "path.fill", json!({"color": fg})),
++            "stroke" => run_on_path(app, "path.stroke", json!({"tool": "brush"})),
++            "mask" => run_on_path(app, "layer.vectorMask.fromPath", json!({})),
++            _ => run_on_path(app, "path.delete", json!({})),
++        }
++        return;
++    }
++    if ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !area.response.rect.contains(p))) {
++        close(ctx);
++    }
++}
++
++fn show_dialog(app: &mut PhotocraftApp, ctx: &Context) {
++    let Some(mut st) = ctx.data(|d| d.get_temp::<MakeSel>(dialog_id())) else { return };
++    let has_selection = app.session.active().is_some_and(|s| s.doc.selection.is_some());
++    let mut done: Option<bool> = None;
++    egui::Window::new(tl!("Make Selection"))
++        .id(dialog_id().with("win"))
++        .collapsible(false)
++        .resizable(false)
++        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
++        .show(ctx, |ui| {
++            ui.label(egui::RichText::new(tl!("Rendering")).strong());
++            ui.horizontal(|ui| {
++                ui.label(tl!("Feather Radius:"));
++                ui.add(egui::DragValue::new(&mut st.feather).range(0.0..=250.0).speed(0.1).max_decimals(1));
++                ui.label(tl!("pixels"));
++            });
++            ui.checkbox(&mut st.anti_alias, tl!("Anti-aliased"));
++            ui.add_space(6.0);
++            ui.label(egui::RichText::new(tl!("Operation")).strong());
++            for (i, l) in ["New Selection", "Add to Selection", "Subtract from Selection", "Intersect with Selection"].iter().enumerate() {
++                ui.add_enabled_ui(i == 0 || has_selection, |ui| ui.radio_value(&mut st.op, i, tl!(*l)));
++            }
++            ui.add_space(8.0);
++            ui.horizontal(|ui| {
++                if ui.button(tl!("OK")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
++                    done = Some(true);
++                }
++                if ui.button(tl!("Cancel")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
++                    done = Some(false);
++                }
++            });
++        });
++    match done {
++        None => {
++            ctx.data_mut(|d| d.insert_temp(dialog_id(), st));
++        }
++        Some(ok) => {
++            ctx.data_mut(|d| d.remove::<MakeSel>(dialog_id()));
++            if ok {
++                let mode = ["replace", "add", "subtract", "intersect"][if has_selection { st.op } else { 0 }];
++                let r = crate::vector_ui::path_to_selection(app, json!({"feather": st.feather, "antiAlias": st.anti_alias, "mode": mode}));
++                report(app, r);
++            }
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn opens_only_with_a_path_and_makes_a_feathered_selection() {
++        let ctx = Context::default();
++        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
++        app.run("file.new", json!({"width": 100, "height": 100})).unwrap();
++        assert!(!open(&ctx, &mut app, [10.0, 10.0]), "no path, no menu");
++        let square = json!({"subpaths": [{"closed": true, "knots": [[20, 20], [80, 20], [80, 80], [20, 80]]}]});
++        app.run("path.set", json!({"name": "work", "path": square})).unwrap();
++        assert!(open(&ctx, &mut app, [10.0, 10.0]));
++        crate::vector_ui::path_to_selection(&mut app, json!({"feather": 2.0, "antiAlias": true, "mode": "replace"})).unwrap();
++        assert!(app.session.active().unwrap().doc.selection.is_some());
++    }
++}
 diff --git a/crates/ui-egui/src/prefs_ui.rs b/crates/ui-egui/src/prefs_ui.rs
-index 04463d7..2b8cd55 100644
+index 6e3f583..bd850da 100644
 --- a/crates/ui-egui/src/prefs_ui.rs
 +++ b/crates/ui-egui/src/prefs_ui.rs
 @@ -541,6 +541,8 @@ pub fn invoke(app: &mut PhotocraftApp, _ctx: &egui::Context, id: &str, params: &
@@ -5655,7 +6087,7 @@ index 0e6863d..f4b0c39 100644
      let editing = crate::type_tool::handle_keys(app, ctx);
      // Registry, UI and menu-catalogue shortcuts (see [`crate::shortcut_dispatch::bindings`]).
 diff --git a/crates/ui-egui/src/state.rs b/crates/ui-egui/src/state.rs
-index b33e2db..6ce9e13 100644
+index 064b19f..4e7ed22 100644
 --- a/crates/ui-egui/src/state.rs
 +++ b/crates/ui-egui/src/state.rs
 @@ -316,6 +316,10 @@ pub struct ToolOptions {
@@ -5875,3 +6307,16 @@ index d0e1086..3e1d501 100644
          }
          _ => {
              for ln in &l.lines {
+diff --git a/crates/ui-egui/src/vector_ui.rs b/crates/ui-egui/src/vector_ui.rs
+index bd3a1ad..c660d53 100644
+--- a/crates/ui-egui/src/vector_ui.rs
++++ b/crates/ui-egui/src/vector_ui.rs
+@@ -30,7 +30,7 @@ fn rgb32(c: [f32; 4]) -> Color32 {
+     Color32::from_rgb(b(c[0]), b(c[1]), b(c[2]))
+ }
+ 
+-fn hex(c: [f32; 4]) -> String {
++pub fn hex(c: [f32; 4]) -> String {
+     let c = rgb32(c);
+     format!("#{:02x}{:02x}{:02x}", c.r(), c.g(), c.b())
+ }
