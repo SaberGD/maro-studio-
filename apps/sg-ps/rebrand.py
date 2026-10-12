@@ -142,11 +142,13 @@ def menus(root: Path) -> None:
     edit(root, "crates/ui-egui/src/menus.rs", [
         ('("help.discord", "Join the ArtCraft Discord…", &["Help"], None),', '("help.discord", "Saber Group Academy on Facebook", &["Help"], None),\n    ("help.contact", "Contact Us: Courses & Services…", &["Help"], None),\n    ("help.download", "Download the Desktop App (Windows / Mac)…", &["Help"], None),'),
         ('("help.website", "PhotoCraft Website", &["Help"], None),', f'("help.website", "{APP_NAME} Website", &["Help"], None),'),
-        ('("window.theme.studio", "Studio Theme", &["Window", "Theme"], None),', '("window.theme.studio", "HORIX Theme", &["Window", "Theme"], None),'),
+        # The legacy Studio shell hides or simplifies several panels.  Keep its enum for loading
+        # old preference files, but do not expose it as a user-selectable theme.
+        ('    ("window.theme.studio", "Studio Theme", &["Window", "Theme"], None),\n', ""),
         ('    ("help.artcraftWebsite", "ArtCraft Website", &["Help"], None),\n', ""),
         ('    ("help.github", "PhotoCraft on GitHub", &["Help"], None),\n', ""),
         ('    ("help.reportIssue", "Report an Issue…", &["Help"], None),\n', ""),
-        ('("window.theme.pro", "Pro Theme", &["Window", "Theme"], None),', '("window.theme.pro", "HORIX Pro Theme", &["Window", "Theme"], None),'),
+        ('("window.theme.pro", "Pro Theme", &["Window", "Theme"], None),', '("window.theme.pro", "HORIX Theme", &["Window", "Theme"], None),'),
     ])
 
 
@@ -245,19 +247,11 @@ pub fn url_for("""),
     edit(root, "crates/ui-egui/src/links.rs", [("/// HORIX: one line of Arabic", consts + "\n" + DESKTOP_BUTTONS + "/// HORIX: one line of Arabic")])
     edit(root, "crates/ui-egui/src/canvas.rs", [
         ("let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 330.0 + recent_h));",
-         "let card = Rect::from_center_size(area.center(), egui::vec2(470.0, 620.0 + recent_h));"),
+         "let card = Rect::from_center_size(area.center(), egui::vec2(470.0, 560.0 + recent_h));"),
         ("""            crate::links::discord_button(app, ui, 190.0);
             ui.add_space(10.0);
             crate::links::link_row(app, ui);""",
-         """            ui.horizontal(|ui| {
-                ui.add_space(((card.width() - 2.0 * 190.0 - 12.0) / 2.0).max(0.0));
-                ui.spacing_mut().item_spacing.x = 12.0;
-                crate::links::discord_button(app, ui, 190.0);
-                crate::links::contact_button(app, ui, 190.0);
-            });
-            ui.add_space(10.0);
-            crate::links::link_row(app, ui);
-            ui.add_space(22.0);
+         """            ui.add_space(8.0);
             crate::links::coming_soon(app, ui);"""),
         # The official lockup in place of the typed title: logo, descriptor, a short red rule, "BY SABER GROUP".
         ("""            ui.horizontal(|ui| {
@@ -301,53 +295,62 @@ pub fn url_for("""),
 def theme(root: Path) -> None:
     rel = "crates/ui-egui/src/theme.rs"
     edit(root, rel, [
-        # HORIX's default is the Studio layout (rounded cards, floating panels) in HORIX colours.
+        # HORIX uses the complete Pro shell, recoloured with the quieter Studio palette.  The
+        # legacy Studio shell remains deserializable for compatibility but is hidden and migrated.
         ("    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas (default).\n    #[default]\n    ProMedium,\n    Studio,",
-         "    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas.\n    ProMedium,\n    /// HORIX's default.\n    #[default]\n    Studio,"),
-        ('ThemeKind::Pro => "Pro (Dark)",', 'ThemeKind::Pro => "HORIX Pro (Dark)",'),
-        ('ThemeKind::Studio => "Studio (Dark)",', 'ThemeKind::Studio => "HORIX (Dark)",'),
-        ('"pro" | "prodark" | "photoshop" | "dark" =>', '"pro" | "prodark" | "photoshop" | "horixpro" =>'),
-        ('"studio" | "studiodark" =>', '"studio" | "studiodark" | "dark" | "horix" =>'),
+         "    /// HORIX's complete editor shell.\n    #[default]\n    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas.\n    ProMedium,\n    /// Legacy compatibility only; old Studio preferences migrate to HORIX Dark.\n    Studio,"),
+        ('pub const ALL: [ThemeKind; 5] = [ThemeKind::Pro, ThemeKind::ProMedium, ThemeKind::Studio, ThemeKind::StudioLight, ThemeKind::Classic];',
+         'pub const ALL: [ThemeKind; 4] = [ThemeKind::Pro, ThemeKind::ProMedium, ThemeKind::StudioLight, ThemeKind::Classic];'),
+        ('ThemeKind::Pro => "Pro (Dark)",', 'ThemeKind::Pro => "HORIX (Dark)",'),
+        ('ThemeKind::Studio => "Studio (Dark)",', 'ThemeKind::Studio => "HORIX (Legacy)",'),
+        ('"pro" | "prodark" | "photoshop" | "dark" =>', '"pro" | "prodark" | "photoshop" | "dark" | "horix" | "horixpro" =>'),
+        ('"studio" | "studiodark" => Some(ThemeKind::Studio),',
+         '"studio" | "studiodark" => Some(ThemeKind::Pro),'),
+        ('unwrap_or_else(|| Tokens::for_kind(ThemeKind::Studio))',
+         'unwrap_or_else(|| Tokens::for_kind(ThemeKind::Pro))'),
+        ('assert_eq!(ThemeKind::from_name("studio"), Some(ThemeKind::Studio));',
+         'assert_eq!(ThemeKind::from_name("studio"), Some(ThemeKind::Pro));\n'
+         '        assert!(!ThemeKind::ALL.contains(&ThemeKind::Studio));'),
     ])
-    # HORIX palette (brand/HORIX-Brand-Guide.md): Horus Ink #141314 canvas, Graphite #2A2727 panels,
-    # Falcon Ivory #F3EFE8 text, Horix Red #D63C32 primary actions, Vision Amber #EA993F active state.
+    # The fully featured Pro shell gets the exact visual palette of the preferred Studio theme.
+    # Keep `pro: true`, plus opaque tab/row colours, because those drive the complete panel UI.
     path = root / rel
     text = path.read_text(encoding="utf-8")
     start = text.index("            ThemeKind::Pro => Tokens {")
     end = text.index("            ThemeKind::Studio => Tokens {")
     horix = """            ThemeKind::Pro => Tokens {
                 kind,
-                chrome: Color32::from_rgb(42, 39, 39),
-                canvas: Color32::from_rgb(20, 19, 20),
-                canvas_dot: Color32::from_rgb(20, 19, 20),
-                dock: Color32::from_rgb(30, 28, 28),
-                card: Color32::from_rgb(42, 39, 39),
-                card_border: Color32::from_rgb(28, 26, 26),
-                field: Color32::from_rgb(28, 26, 26),
-                field_border: Color32::from_rgb(68, 61, 58),
-                hover: Color32::from_rgb(58, 52, 50),
-                pressed: Color32::from_rgb(76, 62, 54),
+                chrome: Color32::from_rgb(20, 20, 21),
+                canvas: Color32::from_rgb(14, 14, 15),
+                canvas_dot: Color32::from_rgb(46, 46, 50),
+                dock: Color32::from_rgb(17, 17, 18),
+                card: Color32::from_rgb(26, 26, 28),
+                card_border: Color32::from_rgb(40, 40, 44),
+                field: Color32::from_rgb(35, 35, 38),
+                field_border: Color32::from_rgb(52, 52, 57),
+                hover: Color32::from_rgb(44, 44, 48),
+                pressed: Color32::from_rgb(56, 56, 62),
                 text: Color32::from_rgb(243, 239, 232),
-                text_dim: Color32::from_rgb(196, 189, 180),
-                text_faint: Color32::from_rgb(140, 132, 124),
-                icon: Color32::from_rgb(222, 216, 207),
+                text_dim: Color32::from_rgb(150, 150, 158),
+                text_faint: Color32::from_rgb(96, 96, 104),
+                icon: Color32::from_rgb(196, 196, 204),
                 accent: Color32::from_rgb(234, 153, 63),
-                accent_soft: Color32::from_rgb(77, 55, 32),
-                accent_border: Color32::from_rgb(234, 153, 63),
-                accent_text: Color32::from_rgb(20, 19, 20),
-                separator: Color32::from_rgb(20, 19, 20),
-                shadow: Color32::from_black_alpha(160),
-                primary_bg: Color32::from_rgb(214, 60, 50),
-                primary_text: Color32::from_rgb(243, 239, 232),
-                danger: Color32::from_rgb(255, 112, 112),
-                warning: Color32::from_rgb(242, 193, 78),
-                radius_sm: 4.0,
-                radius: 6.0,
-                radius_lg: 8.0,
+                accent_soft: Color32::from_rgba_unmultiplied(234, 153, 63, 46),
+                accent_border: Color32::from_rgba_unmultiplied(234, 153, 63, 120),
+                accent_text: Color32::from_rgb(246, 200, 148),
+                separator: Color32::from_rgb(38, 38, 42),
+                shadow: Color32::from_black_alpha(140),
+                primary_bg: Color32::from_rgb(243, 239, 232),
+                primary_text: Color32::from_rgb(20, 19, 20),
+                danger: Color32::from_rgb(240, 96, 96),
+                warning: Color32::from_rgb(240, 190, 90),
+                radius_sm: 6.0,
+                radius: 8.0,
+                radius_lg: 12.0,
                 bevel: false,
                 pro: true,
-                tab_strip: Color32::from_rgb(30, 28, 28),
-                row_selected: Color32::from_rgb(77, 55, 32),
+                tab_strip: Color32::from_rgb(20, 20, 21),
+                row_selected: Color32::from_rgb(44, 44, 48),
             },
 """
     text = text[:start] + horix + text[end:]
@@ -381,8 +384,38 @@ def theme(root: Path) -> None:
          "pub fn mono(size: f32) -> FontId {"),
     ])
     edit(root, "crates/engine/src/prefs.rs", [
-        ('Classic = "classic" } default ProMedium);', 'Classic = "classic" } default Studio);'),
-        ("            theme: Theme::ProMedium,", "            theme: Theme::Studio,"),
+        ('Classic = "classic" } default ProMedium);', 'Classic = "classic" } default Pro);'),
+        ("            theme: Theme::ProMedium,", "            theme: Theme::Pro,"),
+        ('choice!(Theme { Pro = "pro", ProMedium = "proMedium", Studio = "studio", StudioLight = "studioLight", Classic = "classic" } default Pro);',
+         'choice!(Theme { Pro = "pro", ProMedium = "proMedium", Studio = "studio", StudioLight = "studioLight", Classic = "classic" } default Pro);\n'
+         '// HORIX: `studio` remains deserializable for old files, but is no longer selectable.\n'
+         'const HORIX_THEME_NAMES: &[&str] = &["pro", "proMedium", "studioLight", "classic"];'),
+        ('        "interface.theme" => Theme::NAMES,', '        "interface.theme" => HORIX_THEME_NAMES,'),
+    ])
+    edit(root, "crates/ui-egui/src/state.rs", [
+        ("            theme: crate::theme::ThemeKind::ProMedium,", "            theme: crate::theme::ThemeKind::Pro,"),
+    ])
+    edit(root, "crates/ui-egui/src/prefs_ui.rs", [
+        # Existing desktop and web preferences can still contain `studio`.  Load it into the new
+        # HORIX shell, then the normal preference sync writes `pro` back on the next frame.
+        ("        Theme::Studio => ThemeKind::Studio,", "        Theme::Studio => ThemeKind::Pro,"),
+        ("        ThemeKind::Studio => Theme::Studio,", "        ThemeKind::Studio => Theme::Pro,"),
+        ("    #[test]\n    fn preferences_persist_through_services_and_theme_follows() {",
+         "    #[test]\n"
+         "    fn legacy_studio_preference_migrates_to_horix_shell() {\n"
+         "        let session = photocraft_engine::Session::new();\n"
+         "        let mut saved: Value = serde_json::from_str(&session.prefs_to_json()).unwrap();\n"
+         "        saved[\"interface\"][\"theme\"] = json!(\"studio\");\n"
+         "        let (mut app, store) = app_with_saved(Some(serde_json::to_string(&saved).unwrap()));\n"
+         "        let ctx = egui::Context::default();\n"
+         "        tick(&mut app, &ctx);\n"
+         "        tick(&mut app, &ctx);\n"
+         "        assert_eq!(app.ui.theme, ThemeKind::Pro);\n"
+         "        assert_eq!(app.session.prefs().interface.theme, Theme::Pro);\n"
+         "        assert_eq!(stored(&store)[\"interface\"][\"theme\"], \"pro\");\n"
+         "    }\n\n"
+         "    #[test]\n"
+         "    fn preferences_persist_through_services_and_theme_follows() {"),
     ])
 
 
@@ -1204,6 +1237,8 @@ def web(root: Path) -> None:
         f'<defs><clipPath id="hx_reveal"><rect id="hx_wipe" x="{vx:g}" y="{vy - 20:g}" width="0" height="{vh + 40:g}"/></clipPath></defs>'
         f'<g class="hx-dim">{body}</g><g class="hx-lit" clip-path="url(#hx_reveal)">{body}</g>{eye}</svg>\n'
         '    <div class="hx-desc">THE VISIONARY AI EDITOR</div>\n'
+        '    <div class="hx-rule"></div>\n'
+        '    <div class="hx-by">BY SABER GROUP</div>\n'
         '    <div class="hx-track"><div class="hx-bar"></div></div>\n'
         '    <p class="hx-status" id="hx_status">بنحمّل HORIX…</p>')
     edit(root, "apps/photocraft-web/index.html", [
@@ -1237,27 +1272,33 @@ def web(root: Path) -> None:
 
 
 LOADER_CSS = """
-    /* HORIX loading screen: the logo is revealed toward the beak as the app downloads (real bytes,
-       see LOADER_SCRIPT), an amber rule under the logo is the progress bar, and the amber eye opens when
-       the app is ready. Plain CSS/SVG in the page: nothing more to download. */
-    #photocraft_loading { font-family: Cairo, 'Segoe UI', Tahoma, system-ui, sans-serif; transition: opacity .45s ease; }
+    /* HORIX loading screen: the start screen's own card (same canvas and dot grid, lockup, descriptor,
+       red rule, "BY SABER GROUP"), so the app opens on the same picture. The logo is revealed toward the
+       beak as the app downloads (real bytes, see LOADER_SCRIPT), a thin bar under it is the progress, and
+       the amber eye opens when the app is ready. Inter comes from the downloads page's fonts. */
+    @font-face { font-family: HorixInter; font-weight: 500; font-display: swap; src: url(/downloads/fonts/inter-latin-500-normal.woff2) format('woff2'); }
+    @font-face { font-family: HorixCairo; font-weight: 700; font-display: swap; src: url(/downloads/fonts/cairo-arabic-700-normal.woff2) format('woff2'); }
+    #photocraft_loading { font-family: HorixCairo, Cairo, 'Segoe UI', Tahoma, system-ui, sans-serif; transition: opacity .45s ease;
+      background-image: radial-gradient(circle, #1C1C1F 1.3px, transparent 1.8px); background-size: 22px 22px; background-position: 11px 11px; }
     #photocraft_loading.hx-out { opacity: 0; }
-    .hx-mark { display: block; width: 176px; height: auto; overflow: visible; }
-    .hx-dim path, .hx-dim polygon, .hx-dim rect { fill: rgba(243, 239, 232, .08); }
+    .hx-mark { display: block; width: 190px; height: auto; overflow: visible; }
+    .hx-dim path, .hx-dim polygon, .hx-dim rect { fill: rgba(242, 239, 233, .07); }
     .hx-dim .x { fill: rgba(214, 60, 50, .12); }
-    .hx-lit path, .hx-lit polygon, .hx-lit rect { fill: #F3EFE8; }
+    .hx-lit path, .hx-lit polygon, .hx-lit rect { fill: #F2EFE9; }
     .hx-lit .x { fill: #D63C32; }
     #hx_wipe { transition: width .35s cubic-bezier(.2, .8, .2, 1); }
     .hx-eye { fill: #EA993F; opacity: .55; transform-box: fill-box; transform-origin: 50% 40%; transform: scaleY(.12);
       transition: transform .55s cubic-bezier(.3, 1.6, .5, 1), opacity .3s; }
     .hx-ready .hx-eye { opacity: 1; transform: none; }
-    .hx-desc { margin-top: 20px; color: #F3EFE8; font: 600 11px/1 Inter, 'Segoe UI', system-ui, sans-serif; letter-spacing: .18em; direction: ltr; }
-    .hx-track { position: relative; width: 160px; height: 2px; margin: 12px 0 16px; overflow: hidden; background: rgba(243, 239, 232, .1); }
-    .hx-bar { position: absolute; inset: 0 auto 0 0; width: 0; background: #EA993F; transition: width .35s cubic-bezier(.2, .8, .2, 1); }
+    .hx-desc { margin-top: 12px; color: #F2EFE9; font: 500 12px/1.2 HorixInter, Inter, 'Segoe UI', system-ui, sans-serif; letter-spacing: 0; direction: ltr; }
+    .hx-rule { width: 28px; height: 2px; margin: 7px 0 6px; background: #D63C32; }
+    .hx-by { color: #606067; font: 500 10.5px/1.2 HorixInter, Inter, 'Segoe UI', system-ui, sans-serif; direction: ltr; }
+    .hx-track { position: relative; width: 160px; height: 2px; margin: 22px 0 14px; border-radius: 1px; overflow: hidden; background: #232326; }
+    .hx-bar { position: absolute; inset: 0 auto 0 0; width: 0; background: #D63C32; transition: width .35s cubic-bezier(.2, .8, .2, 1); }
     .hx-busy .hx-bar { width: 100% !important; animation: hx-breathe 1.1s ease-in-out infinite; }
     @keyframes hx-breathe { 50% { opacity: .45; } }
     .hx-status { min-height: 1.6em; margin: 0 0 8px; font-size: 13px; line-height: 1.5; direction: rtl; }
-    .hx-status bdi { unicode-bidi: isolate; direction: ltr; color: #8C847C; font: 12px Inter, system-ui, sans-serif; }
+    .hx-status bdi { unicode-bidi: isolate; direction: ltr; color: #606067; font: 12px HorixInter, Inter, system-ui, sans-serif; }
     /* While bytes keep arriving the "taking long" hint stays hidden; the script shows it after 15 s without progress. */
     #photocraft_loading.hx-flowing #photocraft_stalled { visibility: hidden; animation: none; }
     #photocraft_loading.hx-stuck #photocraft_stalled { visibility: visible; animation: none; }
@@ -1331,7 +1372,8 @@ LOADER_SCRIPT = """  <script>
         out.removeAttribute('id'); out.id = 'hx_loading_out';
         out.className = 'hx-flowing hx-busy';
         out.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-          'background:#0E0E0F;color:#96969E;font:14px Cairo,system-ui,sans-serif;pointer-events:none;z-index:5;transition:opacity .45s ease';
+          'background:#0E0E0F radial-gradient(circle, #1C1C1F 1.3px, transparent 1.8px) 11px 11px / 22px 22px;color:#96969E;' +
+          'font:14px HorixCairo,Cairo,system-ui,sans-serif;pointer-events:none;z-index:5;transition:opacity .45s ease';
         var st = out.querySelector('.hx-status'); if (st) st.textContent = 'جاهز';
         var stalled = out.querySelector('#sgps_stalled'); if (stalled) { stalled.removeAttribute('id'); stalled.style.visibility = 'hidden'; }
         document.body.appendChild(out);
