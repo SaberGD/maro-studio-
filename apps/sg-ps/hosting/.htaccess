@@ -13,6 +13,7 @@ DirectoryIndex index.html
 # 2) نوع الملفات (بدونه المتصفح يرفض ملف الـwasm)
 AddType application/wasm .wasm
 AddType text/javascript .js
+AddType application/octet-stream .onnx
 
 # 3) الضغط: السيرفر مش بيضغط ملف الـwasm لوحده، فالبناء بيجهّز نسخ مضغوطة جنبه
 #    (sg-ps_bg.wasm.br و .gz). المتصفح بياخد أصغر نسخة يقدر يفكها: ~8MB بدل ~25MB.
@@ -50,7 +51,7 @@ AddType text/javascript .js
 # 4) الكاش: أسماء الملفات ثابتة في كل نسخة، فالمتصفح بيسأل السيرفر كل مرة (ولو الملف ما اتغيرش
 #    بيرجع 304 من غير ما ينزّله تاني)
 <IfModule mod_headers.c>
-  <FilesMatch "(\.(wasm|br|gz|js|svg|html)|^)$">
+  <FilesMatch "(\.(wasm|br|gz|js|svg|html|onnx)|^)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
   Header always set X-Content-Type-Options "nosniff"

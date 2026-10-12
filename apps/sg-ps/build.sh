@@ -56,6 +56,8 @@ cp "$HERE/hosting/.htaccess" "$APP/.htaccess"
 sed '/^# >>> compressed-wasm/,/^# <<< compressed-wasm/d' "$HERE/hosting/.htaccess" > "$WORK/site/htaccess-plain"
 grep -q "compressed-wasm" "$WORK/site/htaccess-plain" && { echo "error: htaccess-plain still has the compressed block" >&2; exit 1; }
 cp "$HERE/hosting/waitlist.php" "$APP/waitlist.php"
+# HORIX AI selection: MobileSAM (first Quick / Object Selection) and U²-Netp (first Select Subject).
+python3 -I "$HERE/ai/fetch.py" "$APP/models" web
 # Desktop download page; the zips themselves live on engsaber.space/sgps-downloads/.
 DL="$WORK/site/downloads"
 cp -R "$HERE/hosting/download" "$DL"
@@ -83,6 +85,12 @@ cp "$WORK/src/LICENSE-MIT" "$APP/LICENSE.txt"
   cat "$HERE/assets/fonts/OFL-BarlowCondensed.txt"
   printf '\n==== OFL-Cairo.txt (download page) ====\n\n'
   cat "$HERE/assets/fonts/OFL-Cairo.txt"
+  printf '\n==== MobileSAM (models/) ====\n\n'
+  printf 'MobileSAM, Copyright the MobileSAM authors (github.com/ChaoningZhang/MobileSAM). ONNX export by\nhuggingface.co/Acly/MobileSAM (MIT). Mask decoder from Segment Anything, Copyright Meta Platforms, Inc.\nRuns in the browser with Microsoft onnxruntime-web (MIT), loaded from cdn.jsdelivr.net.\n\n'
+  cat "$HERE/ai/LICENSE-MobileSAM.txt"
+  printf '\n==== U2-Netp (models/u2netp.onnx) ====\n\n'
+  printf 'U^2-Net, Copyright Xuebin Qin et al. (github.com/xuebinqin/U-2-Net). ONNX export by rembg\n(github.com/danielgatis/rembg, MIT).\n\n'
+  cat "$HERE/ai/LICENSE-U2Net.txt"
 } > "$APP/THIRD-PARTY-NOTICES.txt"
 
 # Nothing from the old name may be left in file names.
