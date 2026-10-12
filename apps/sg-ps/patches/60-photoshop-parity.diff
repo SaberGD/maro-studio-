@@ -970,6 +970,138 @@ index b3da839..891805b 100644
              let mut app = PhotocraftApp::new(Session::new(), services);
              app.integrated_titlebar = cfg!(target_os = "macos");
              // Long commands and file opens run as background jobs with progress and Cancel (#210).
+diff --git a/crates/algo/src/matting.rs b/crates/algo/src/matting.rs
+index f55fe2f..8fab06a 100644
+--- a/crates/algo/src/matting.rs
++++ b/crates/algo/src/matting.rs
+@@ -427,6 +427,127 @@ pub fn refine_mask(sampler: &dyn Sampler, mask: &(dyn Fn(Rect) -> Vec<f32> + Syn
+     crate::segment::trim_region(Region { bbox, mask: out })
+ }
+ 
++/// A Refine Edge Brush stroke (document pixels): where it paints, the edge is refined from the
++/// image; an erase stroke takes earlier strokes back.
++#[derive(Clone, Debug, PartialEq)]
++pub struct BrushStroke {
++    pub radius: f32,
++    pub points: Vec<[f32; 2]>,
++    pub erase: bool,
++}
++
++/// The guided-filter radius the Refine Edge Brush uses on a `canvas`-sized image: about 0.6% of
++/// the long side (5 px at 800 px measured best on AIM-500 hair and fur, against 4, 8 and 12, and
++/// against closed-form, KNN and learning-based matting).
++pub fn brush_filter_radius(canvas: Rect) -> usize {
++    ((canvas.width().max(canvas.height()) as f32 / 160.0).round() as usize).clamp(2, 64)
++}
++
++/// The strokes' coverage (0–1, soft 1 px rim) over their bounding box, in order: painting raises
++/// it to the brush, erasing lowers it.
++pub fn brush_coverage(strokes: &[BrushStroke], canvas: Rect) -> Option<(Rect, Vec<f32>)> {
++    let mut bbox: Option<Rect> = None;
++    for s in strokes {
++        let r = s.radius.max(0.5).ceil() as i32 + 1;
++        for p in &s.points {
++            let b = Rect::new(p[0].floor() as i32 - r, p[1].floor() as i32 - r, p[0].ceil() as i32 + r + 1, p[1].ceil() as i32 + r + 1);
++            bbox = Some(bbox.map_or(b, |a| a.union(&b)));
++        }
++    }
++    let bbox = bbox?.intersect(&canvas);
++    if bbox.is_empty() {
++        return None;
++    }
++    let (w, h) = (bbox.width() as usize, bbox.height() as usize);
++    let mut cov = vec![0.0f32; w * h];
++    for s in strokes {
++        let r = s.radius.max(0.5);
++        let mut stroke = vec![0.0f32; w * h];
++        // Discs along the path, at most a quarter radius apart.
++        let mut stamps: Vec<[f32; 2]> = Vec::new();
++        for (i, p) in s.points.iter().enumerate() {
++            if let Some(q) = i.checked_sub(1).map(|j| s.points[j]) {
++                let d = ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2)).sqrt();
++                let n = (d / (r * 0.25).max(0.5)).ceil() as usize;
++                for k in 1..n {
++                    let t = k as f32 / n as f32;
++                    stamps.push([q[0] + (p[0] - q[0]) * t, q[1] + (p[1] - q[1]) * t]);
++                }
++            }
++            stamps.push(*p);
++        }
++        for c in stamps {
++            let (x0, y0) = (((c[0] - r - 1.0).floor() as i32).max(bbox.x0), ((c[1] - r - 1.0).floor() as i32).max(bbox.y0));
++            let (x1, y1) = (((c[0] + r + 2.0).ceil() as i32).min(bbox.x1), ((c[1] + r + 2.0).ceil() as i32).min(bbox.y1));
++            for y in y0..y1 {
++                for x in x0..x1 {
++                    let d = ((x as f32 + 0.5 - c[0]).powi(2) + (y as f32 + 0.5 - c[1]).powi(2)).sqrt();
++                    let v = (r - d + 0.5).clamp(0.0, 1.0);
++                    let o = &mut stroke[(y - bbox.y0) as usize * w + (x - bbox.x0) as usize];
++                    *o = o.max(v);
++                }
++            }
++        }
++        for (c, v) in cov.iter_mut().zip(&stroke) {
++            *c = if s.erase { c.min(1.0 - v) } else { c.max(*v) };
++        }
++    }
++    Some((bbox, cov))
++}
++
++/// Refine Edge Brush: under the strokes, the selection `mask` is refined from the image with a
++/// guided filter (radius [`brush_filter_radius`]); elsewhere `base` (the dialog's refined edge,
++/// or the selection itself) is kept. Returns the combined region.
++pub fn brush_refine(
++    sampler: &dyn Sampler,
++    mask: &(dyn Fn(Rect) -> Vec<f32> + Sync),
++    base: Option<&Region>,
++    strokes: &[BrushStroke],
++    canvas: Rect,
++) -> Option<Region> {
++    let Some((cb, cov)) = brush_coverage(strokes, canvas) else { return base.cloned() };
++    let r = brush_filter_radius(canvas);
++    // The filter reads `r` pixels around every painted pixel.
++    let area = cb.inflate(r as i32 * 2).intersect(&canvas);
++    let aw = area.width() as usize;
++    let m = mask(area);
++    let img = sampler.rgb(area);
++    let q = guided_filter_color(&img, &m, r, EPS);
++    let out_box = match base {
++        Some(b) => b.bbox.union(&cb),
++        None => cb,
++    }
++    .intersect(&canvas);
++    let (ow, oh) = (out_box.width() as usize, out_box.height() as usize);
++    let cw = cb.width() as usize;
++    let mut out = vec![0u8; ow * oh];
++    for y in 0..oh {
++        let dy = out_box.y0 + y as i32;
++        for x in 0..ow {
++            let dx = out_box.x0 + x as i32;
++            let b = match base {
++                Some(b) => b.at(dx, dy),
++                None => {
++                    if area.contains(dx, dy) {
++                        m[(dy - area.y0) as usize * aw + (dx - area.x0) as usize]
++                    } else {
++                        0.0
++                    }
++                }
++            };
++            let c = if cb.contains(dx, dy) { cov[(dy - cb.y0) as usize * cw + (dx - cb.x0) as usize] } else { 0.0 };
++            let v = if c > 0.0 && area.contains(dx, dy) {
++                let f = q[(dy - area.y0) as usize * aw + (dx - area.x0) as usize].clamp(0.0, 1.0);
++                b + (f - b) * c
++            } else {
++                b
++            };
++            out[y * ow + x] = (v.clamp(0.0, 1.0) * 255.0).round() as u8;
++        }
++    }
++    crate::segment::trim_region(Region { bbox: out_box, mask: out })
++}
++
+ /// A mask reader over a [`Region`] (zero outside its box).
+ pub fn region_reader(reg: &Region) -> impl Fn(Rect) -> Vec<f32> + Sync + '_ {
+     move |r: Rect| {
 diff --git a/crates/engine/src/edit_cmds.rs b/crates/engine/src/edit_cmds.rs
 index 4b5aff3..726f34b 100644
 --- a/crates/engine/src/edit_cmds.rs
@@ -1331,10 +1463,50 @@ index d1cda7d..310341f 100644
  fn spot_healing_removes_blemish_all_types() {
      for (depth, kind) in [(8u64, "contentAware"), (16, "contentAware"), (32, "contentAware"), (8, "proximityMatch"), (16, "createTexture")] {
 diff --git a/crates/engine/src/smartselect_cmds.rs b/crates/engine/src/smartselect_cmds.rs
-index d3c2024..30e3543 100644
+index d3c2024..50787b8 100644
 --- a/crates/engine/src/smartselect_cmds.rs
 +++ b/crates/engine/src/smartselect_cmds.rs
-@@ -220,6 +220,45 @@ macro_rules! spec {
+@@ -130,6 +130,22 @@ fn focus_area(s: &mut Session, p: &Value) -> Result<Value> {
+     apply(s, "Focus Area", region, mode(p, "replace"))
+ }
+ 
++/// Refine Edge Brush strokes: `"brush": [{"radius": px, "points": [[x, y], …], "erase": bool}, …]`.
++fn brush_strokes(p: &Value) -> Vec<matting::BrushStroke> {
++    let num = |v: &Value| v.as_f64().map(|x| x as f32);
++    p.get("brush")
++        .and_then(Value::as_array)
++        .into_iter()
++        .flatten()
++        .filter_map(|s| {
++            let radius = s.get("radius").and_then(num)?.clamp(0.5, 2000.0);
++            let points: Vec<[f32; 2]> =
++                s.get("points")?.as_array()?.iter().filter_map(|q| Some([num(q.get(0)?)?, num(q.get(1)?)?])).filter(|q| q[0].is_finite() && q[1].is_finite()).collect();
++            (!points.is_empty()).then(|| matting::BrushStroke { radius, points, erase: s.get("erase").and_then(Value::as_bool).unwrap_or(false) })
++        })
++        .collect()
++}
++
+ fn refine_params(p: &Value) -> RefineParams {
+     RefineParams {
+         radius: f(p, "radius", 0.0).clamp(0.0, 250.0),
+@@ -156,9 +172,15 @@ fn refine_edge(s: &mut Session, p: &Value) -> Result<Value> {
+     if decontaminate && matches!(output.as_str(), "selection" | "layerMask") {
+         output = "newLayerWithMask".into();
+     }
++    let strokes = brush_strokes(p);
+     let region = with_sampler(s, b(p, "sampleAllLayers", false), |smp, doc| {
+         let sel = doc.selection.as_ref()?;
+-        matting::refine_mask(smp, &matting::surface_reader(sel), sel.content_bounds(), doc.bounds(), &params)
++        let reader = matting::surface_reader(sel);
++        let region = matting::refine_mask(smp, &reader, sel.content_bounds(), doc.bounds(), &params);
++        if strokes.is_empty() {
++            return region;
++        }
++        matting::brush_refine(smp, &reader, region.as_ref(), &strokes, doc.bounds())
+     })?;
+     let d = s.active().ok_or(EngineError::NoDocument)?;
+     let active = d.active_layer.filter(|id| d.doc.layer(*id).is_some());
+@@ -220,6 +242,45 @@ macro_rules! spec {
  }
  
  /// Smart selection command specs.
@@ -1380,6 +1552,39 @@ index d3c2024..30e3543 100644
  pub fn specs() -> Vec<CommandSpec> {
      vec![
          spec!(
+@@ -250,7 +311,7 @@ pub fn specs() -> Vec<CommandSpec> {
+             "select.refineEdge",
+             "Refine Edge",
+             [],
+-            r##"{"radius":px=0,"smartRadius":bool=false,"smooth":0..100=0,"feather":px=0,"contrast":0..100=0,"shiftEdge":-100..100=0,"decontaminate":bool=false,"amount":0..100=100,"output":"selection|layerMask|newLayer|newLayerWithMask"="selection","sampleAllLayers":bool=false}"##,
++            r##"{"radius":px=0,"smartRadius":bool=false,"smooth":0..100=0,"feather":px=0,"contrast":0..100=0,"shiftEdge":-100..100=0,"decontaminate":bool=false,"amount":0..100=100,"output":"selection|layerMask|newLayer|newLayerWithMask"="selection","sampleAllLayers":bool=false,"brush":json}"##,
+             has_selection,
+             refine_edge
+         ),
+@@ -429,6 +490,23 @@ mod tests {
+             .count()
+     }
+ 
++    #[test]
++    fn refine_edge_brush_softens_only_where_painted() {
++        let mut s = blurred_edge_selected();
++        // Paint down the edge over the top half; erase the top quarter again.
++        let stroke = |erase: bool, y1: f32| json!({"radius": 6, "points": [[40, 0], [40, y1]], "erase": erase});
++        s.execute("select.refineEdge", json!({"brush": [stroke(false, 20.0)]})).unwrap();
++        let sel = s.active().unwrap().doc.selection.clone().unwrap();
++        assert!(soft_count(&sel, 12) >= 2, "painted edge not soft");
++        assert_eq!(soft_count(&sel, 32), 0, "unpainted edge must stay as it was");
++        assert!(sel.sample_channel(5, 12, 0) > 0.99 && sel.sample_channel(75, 12, 0) < 0.01);
++        s.execute("edit.undo", json!({})).unwrap();
++        s.execute("select.refineEdge", json!({"brush": [stroke(false, 20.0), stroke(true, 8.0)]})).unwrap();
++        let sel = s.active().unwrap().doc.selection.clone().unwrap();
++        assert_eq!(soft_count(&sel, 1), 0, "erased");
++        assert!(soft_count(&sel, 16) >= 2);
++    }
++
+     #[test]
+     fn refine_edge_outputs_and_undo() {
+         // Selection output: the hard edge becomes a soft matte following the blur.
 diff --git a/crates/text/src/layout.rs b/crates/text/src/layout.rs
 index 37710f7..fb40b64 100644
 --- a/crates/text/src/layout.rs
@@ -2197,7 +2402,7 @@ index 0000000..353dc27
 +    }
 +}
 diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
-index 31eac83..8f0234f 100644
+index 31eac83..5275696 100644
 --- a/crates/ui-egui/src/canvas.rs
 +++ b/crates/ui-egui/src/canvas.rs
 @@ -747,17 +747,18 @@ fn ensure_filter_preview(app: &mut PhotocraftApp, idx: usize) -> Option<(u32, u6
@@ -2221,7 +2426,17 @@ index 31eac83..8f0234f 100644
          if let Some(r) = &result {
              let buf = photocraft_compose::flatten(r);
              let t1 = crate::gpu_canvas::now_ms();
-@@ -1679,6 +1680,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+@@ -1546,6 +1547,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+             ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+         } else if free_hover && (space_pan || app.ui.tool == Tool::Hand) {
+             ctx.set_cursor_icon(egui::CursorIcon::Grab);
++        } else {
++            // Select and Mask's Refine Edge Brush paints on the canvas under its dialog.
++            crate::refine_brush::canvas(app, &ctx, rect, &xf, &painter);
+         }
+     }
+     if tool == Tool::Hand && response.dragged() {
+@@ -1679,6 +1683,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
              painter.rect_stroke(img_rect, 0.0, Stroke::new(1.0, Color32::from_gray(20)), egui::StrokeKind::Outside);
          }
          crate::type_tool::draw_overlay(app, &painter, &xf);
@@ -2229,7 +2444,7 @@ index 31eac83..8f0234f 100644
          crate::transform_tool::draw_overlay(app, &painter, &xf);
          crate::distort_ui::draw_overlay(app, &painter, &xf);
          crate::retouch_ui::draw_source_marker(app, &painter, &xf);
-@@ -2359,11 +2361,10 @@ fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
+@@ -2359,11 +2364,10 @@ fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
          Tool::Gradient => {
              if (end[0] - d.start[0]).abs() + (end[1] - d.start[1]).abs() >= 2.0 {
                  let o = app.ui.tool_options.clone();
@@ -2243,7 +2458,7 @@ index 31eac83..8f0234f 100644
                  );
              }
          }
-@@ -2448,12 +2449,6 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
+@@ -2448,12 +2452,6 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
      json!(if (app.ui.mask_target || viewing) && has_mask { "mask" } else { "pixels" })
  }
  
@@ -2272,8 +2487,26 @@ index 4e56932..0cb70bc 100644
              match d.kind {
                  DialogKind::NewDocument => crate::new_doc_ui::body(ui, &mut fields),
                  DialogKind::About if fields.get("systemInfo").and_then(Value::as_bool) == Some(true) => {
+diff --git a/crates/ui-egui/src/dock.rs b/crates/ui-egui/src/dock.rs
+index 69530b1..2873537 100644
+--- a/crates/ui-egui/src/dock.rs
++++ b/crates/ui-egui/src/dock.rs
+@@ -97,11 +97,10 @@ impl Group {
+         }
+     }
+ 
+-    pub fn tabs(self, pro: bool) -> &'static [&'static str] {
++    pub fn tabs(self, _pro: bool) -> &'static [&'static str] {
+         match self {
+             // Photoshop Essentials: Color | Swatches | Gradients | Patterns.
+-            Group::Color if pro => &["Color", "Swatches", "Gradients", "Patterns"],
+-            Group::Color => &["Swatches", "Color", "Gradients", "Patterns"],
++            Group::Color => &["Color", "Swatches", "Gradients", "Patterns"],
+             Group::Properties => &["Properties", "Adjustments"],
+             Group::Character => &["Character", "Paragraph"],
+             Group::Navigator => &["Navigator", "Histogram", "Info"],
 diff --git a/crates/ui-egui/src/filter_dialog.rs b/crates/ui-egui/src/filter_dialog.rs
-index 5389ea5..08dadad 100644
+index 5389ea5..f6a01b8 100644
 --- a/crates/ui-egui/src/filter_dialog.rs
 +++ b/crates/ui-egui/src/filter_dialog.rs
 @@ -144,6 +144,52 @@ pub const PREVIEWED: &[&str] = &[
@@ -2343,10 +2576,11 @@ index 5389ea5..08dadad 100644
      for p in parse_spec(spec.params) {
          let v = match &p.kind {
              Kind::Range { default, .. } => json!(default),
-@@ -361,6 +410,16 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+@@ -361,6 +410,17 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
              }
          }
      }
++    crate::refine_brush::options_ui(ui, f);
 +    if let Some(mut view) = f.get("__view").and_then(Value::as_str).map(str::to_string) {
 +        ui.add_space(4.0);
 +        ui.horizontal(|ui| {
@@ -2360,7 +2594,7 @@ index 5389ea5..08dadad 100644
      if let Some(mut preview) = f.get("__preview").and_then(Value::as_bool) {
          ui.add_space(4.0);
          crate::widgets::checkbox(ui, &mut preview, tl!("Preview"));
-@@ -377,6 +436,19 @@ pub fn params_of(f: &Map<String, Value>) -> Value {
+@@ -377,6 +437,19 @@ pub fn params_of(f: &Map<String, Value>) -> Value {
  
  /// Compute a preview document: run `command` with `params` on the proxy (scaled) copy of `doc`.
  pub fn preview_document(doc: &Document, active: Option<photocraft_doc::LayerId>, command: &str, params: &Value, k: u32) -> Option<Document> {
@@ -2380,10 +2614,13 @@ index 5389ea5..08dadad 100644
      let proxy = crate::proxy::proxy_document(doc, k);
      let mut s = photocraft_engine::Session::new();
      s.add_document(proxy, None);
-@@ -395,8 +467,21 @@ pub fn preview_document(doc: &Document, active: Option<photocraft_doc::LayerId>,
+@@ -395,8 +468,24 @@ pub fn preview_document(doc: &Document, active: Option<photocraft_doc::LayerId>,
              }
          }
      }
++    if k > 1 {
++        crate::refine_brush::scale_strokes(&mut p, k as f64);
++    }
 +    let selection = selection_preview(command);
 +    if selection
 +        && command == "select.refineEdge"
@@ -2403,7 +2640,7 @@ index 5389ea5..08dadad 100644
  }
  
  /// Cached preview state on the app.
-@@ -429,6 +514,20 @@ mod tests {
+@@ -429,6 +518,20 @@ mod tests {
          );
      }
  
@@ -2953,7 +3190,7 @@ index 1974c9d..86929d4 100644
      fn percent_fields_round_trip_through_the_engine() {
          let mut s = photocraft_engine::Session::new();
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index e141502..89b7e8a 100644
+index e141502..e4eba31 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -16,6 +16,7 @@ macro_rules! tl {
@@ -2964,7 +3201,15 @@ index e141502..89b7e8a 100644
  pub mod adjust_editors;
  pub mod adjust_preview;
  pub mod adjust_ui;
-@@ -236,6 +237,8 @@ pub struct Services {
+@@ -50,6 +51,7 @@ pub mod file_open;
+ pub mod file_ui;
+ pub mod fill_ui;
+ pub mod filter_dialog;
++pub mod refine_brush;
+ pub mod gallery_ui;
+ pub mod gpu_canvas;
+ pub mod gpu_status;
+@@ -236,6 +238,8 @@ pub struct Services {
      /// `photocraft_engine::preset_store`). Attached to the session once it arrives; without
      /// one, brush presets are session-only (web, tests).
      pub preset_store: Option<std::sync::mpsc::Receiver<photocraft_engine::preset_store::Opened>>,
@@ -2973,7 +3218,7 @@ index e141502..89b7e8a 100644
  }
  
  pub struct PhotocraftApp {
-@@ -249,6 +252,8 @@ pub struct PhotocraftApp {
+@@ -249,6 +253,8 @@ pub struct PhotocraftApp {
      live_stroke: Option<canvas::LiveStroke>,
      /// Footprint trail of a retouching drag (see `stroke_trail`).
      trail: Option<stroke_trail::Trail>,
@@ -2982,7 +3227,7 @@ index e141502..89b7e8a 100644
      /// Move tool drag shown live (`move_ui`).
      pub(crate) move_preview: Option<move_ui::MovePreview>,
      /// The next tool `Down` is a right-button drag that erases (see `paint_mouse`).
-@@ -387,6 +392,7 @@ impl PhotocraftApp {
+@@ -387,6 +393,7 @@ impl PhotocraftApp {
              drag: None,
              live_stroke: None,
              trail: None,
@@ -2990,7 +3235,7 @@ index e141502..89b7e8a 100644
              move_preview: None,
              secondary_erase: false,
              defer_live_stroke: false,
-@@ -542,6 +548,10 @@ impl PhotocraftApp {
+@@ -542,6 +549,10 @@ impl PhotocraftApp {
                  return Ok(serde_json::json!({"pasted": false}));
              }
          }
@@ -3001,7 +3246,7 @@ index e141502..89b7e8a 100644
          // Long commands become background jobs when enabled (`jobs_ui`); the rest run inline.
          let r = jobs_ui::run(self, id, params);
          if r.is_ok() && matches!(id, "edit.copy" | "edit.cut" | "edit.copyMerged") {
-@@ -841,6 +851,7 @@ impl eframe::App for PhotocraftApp {
+@@ -841,6 +852,7 @@ impl eframe::App for PhotocraftApp {
              self.checker = None;
          }
          self.drain_control(ctx);
@@ -3009,11 +3254,47 @@ index e141502..89b7e8a 100644
          if self.ui.text_edit.is_some() && self.ui.tool != state::Tool::Type {
              type_tool::commit(self);
          }
+@@ -939,7 +951,6 @@ impl eframe::App for PhotocraftApp {
+         });
+         if hidden == 0 {
+             panels::floating_dock_windows(self, &ctx);
+-            panels::properties_window(self, &ctx);
+             brush_panel::window(self, &ctx);
+             preset_panels::windows(self, &ctx);
+             type_panels_ui::windows(self, &ctx);
 diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
-index c2389b8..445e62d 100644
+index c2389b8..53eae36 100644
 --- a/crates/ui-egui/src/panels.rs
 +++ b/crates/ui-egui/src/panels.rs
-@@ -640,12 +640,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -189,12 +189,12 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+                 }
+             }
+             let ctx = ui.ctx().clone();
+-            if t.pro && icons::button(ui, "ellipsis", bx, false, tl!("Edit Toolbar…")).clicked() {
++            if icons::button(ui, "ellipsis", bx, false, tl!("Edit Toolbar…")).clicked() {
+                 let _ = crate::menus::invoke(app, &ctx, "edit.toolbar", json!({}));
+             }
+             ui.add_space(if t.pro { 8.0 } else { 14.0 });
+             color_chips(app, ui);
+-            if t.pro {
++            {
+                 ui.add_space(8.0);
+                 let quick_mask = app.session.active().is_some_and(|s| s.doc.quick_mask.is_some());
+                 if icons::button(
+@@ -400,10 +400,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+             ui.painter().line_segment([r.left_top(), r.right_top()], Stroke::new(1.0, t.separator));
+             ui.painter().line_segment([r.left_bottom(), r.right_bottom()], Stroke::new(1.0, t.separator));
+             ui.horizontal_centered(|ui| {
+-                if t.pro {
+-                    crate::chrome_ui::home_button(app, ui);
+-                    widgets::vline(ui, 22.0);
+-                }
++                crate::chrome_ui::home_button(app, ui);
++                widgets::vline(ui, 22.0);
+                 let _ = icons::button(ui, icons::tool_icon(app.ui.tool), if t.pro { 26.0 } else { 28.0 }, !t.pro, tl!(app.ui.tool.label()));
+                 if t.pro {
+                     let (r, _) = ui.allocate_exact_size(vec2(10.0, 20.0), Sense::hover());
+@@ -640,12 +638,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                          if widgets::dropdown(ui, "gradient-mode", &mut classic, &[(false, "Gradient"), (true, "Classic gradient")], 118.0) {
                              app.ui.tool_options.gradient_classic = classic;
                          }
@@ -3028,7 +3309,48 @@ index c2389b8..445e62d 100644
                          widgets::vline(ui, 22.0);
                          ui.spacing_mut().item_spacing.x = 2.0;
                          let before = app.ui.tool_options.clone();
-@@ -1329,17 +1325,40 @@ fn blend_options(groups: bool) -> Vec<(BlendMode, &'static str)> {
+@@ -922,8 +916,7 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+                 ("clock", tl!("History"), Group::History),
+             ];
+             for (icon, name, g) in entries {
+-                // Studio floats Properties outside the dock.
+-                let docked = t.pro || g != Group::Properties;
++                let docked = true;
+                 let on = g.shown(&p) && !(docked && app.ui.dock.is_collapsed(g));
+                 if icons::rail_button(ui, icon, rb, on, name).clicked() {
+                     crate::dock::rail_click(app, g, docked);
+@@ -952,10 +945,9 @@ pub fn request_dock_width(ctx: &egui::Context, w: f32) {
+ 
+ fn dock_panels(app: &mut PhotocraftApp, ui: &mut egui::Ui, p: &crate::state::Panels, t: &Tokens) {
+     use crate::dock::Group;
+-    // Floating in Studio, Properties docks only in Pro (Photoshop).
+     let shown: Vec<Group> = [
+         (Group::Color, p.color),
+-        (Group::Properties, t.pro && p.properties),
++        (Group::Properties, p.properties),
+         (Group::Character, p.character),
+         (Group::Navigator, p.navigator),
+         (Group::History, p.history),
+@@ -1310,36 +1302,44 @@ fn color_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+ 
+ // ----------------------------------------------------------------------------- layers
+ 
+-/// The simple themes' single lock button. On the Background it converts the layer to a normal
+-/// one, as clicking the Background's lock does in Photoshop. Elsewhere it clears every lock when
+-/// any is set, and locks all otherwise. Toggling only "lock all" would leave the Background's
+-/// transparency lock (still showing as locked), and a second click would lock its pixels,
+-/// shutting out the Eraser and every other paint tool (#76).
+-fn simple_lock_toggle(background: bool, l: &Layer) -> (String, Value) {
+-    if background {
+-        return ("layer.new.layerFromBackground".into(), json!({}));
+-    }
+-    let k = &l.locks;
+-    let locked = k.transparency || k.pixels || k.position || k.artboard || k.all;
+-    let locks = if locked { json!({"transparency": false, "pixels": false, "position": false, "artboard": false, "all": false}) } else { json!({"all": true}) };
+-    ("layer.setProps".into(), json!({"layer": l.id.0, "locks": locks}))
+-}
+-
+ fn blend_options(groups: bool) -> Vec<(BlendMode, &'static str)> {
      std::iter::once(BlendMode::PassThrough).filter(|_| groups).chain(BlendMode::LAYER_MODES).map(|m| (m, m.label())).collect()
  }
  
@@ -3077,7 +3399,205 @@ index c2389b8..445e62d 100644
      }
      let Some(st) = app.session.active() else {
          empty(ui, tl!("No document"));
-@@ -2444,6 +2463,25 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
+@@ -1353,7 +1353,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+     let mut actions: Vec<(String, Value)> = Vec::new();
+ 
+     let t = Tokens::get(ui.ctx());
+-    if t.pro {
++    {
+         ui.horizontal(|ui| {
+             ui.spacing_mut().item_spacing.x = 2.0;
+             let (r, _) = ui.allocate_exact_size(vec2(64.0, 22.0), Sense::hover());
+@@ -1412,12 +1412,12 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+             // In a narrow panel with long translated labels, drop the "Lock:" text (the icons keep
+             // their tooltips) rather than let the Fill label run over the lock icons.
+             let gap = ui.spacing().item_spacing.x;
+-            let icons_w = if t.pro { 5.0 * 20.0 } else { 22.0 + gap };
++            let icons_w = 5.0 * 20.0;
+             let fits = body_text_width(ui, lock_label) + icons_w + body_text_width(ui, fill_label) + 66.0 + 2.0 * gap <= ui.available_width();
+             if fits {
+                 label(ui, lock_label);
+             }
+-            if t.pro {
++            {
+                 ui.spacing_mut().item_spacing.x = 0.0;
+                 let lk = l.locks;
+                 for (key, icon, tip, on) in [
+@@ -1432,12 +1432,6 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+                     }
+                 }
+             }
+-            if !t.pro {
+-                let locked = l.locks.transparency || l.locks.position || l.locks.all;
+-                if icons::button(ui, if locked { "lock" } else { "lock-open" }, 22.0, locked, tl!("Lock layer")).clicked() {
+-                    actions.push(simple_lock_toggle(bg, l));
+-                }
+-            }
+             ui.add_enabled_ui(!bg, |ui| {
+                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                     let mut f = l.fill_opacity * 100.0;
+@@ -1978,92 +1972,6 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+ 
+ // ----------------------------------------------------------------------------- properties
+ 
+-/// Floating Properties card anchored to the canvas' top-right corner.
+-pub fn properties_window(app: &mut PhotocraftApp, ctx: &egui::Context) {
+-    // Pro (Photoshop) docks Properties; Studio floats it over the canvas.
+-    if !app.ui.panels.properties || Tokens::get(ctx).pro {
+-        return;
+-    }
+-    let Some(st) = app.session.active() else { return };
+-    let Some(id) = st.active_layer else { return };
+-    let Some(layer) = st.doc.layer(id) else { return };
+-    // The floating card appears for adjustment and fill layers (their controls live here).
+-    if !matches!(layer.content, LayerContent::Adjustment(_) | LayerContent::Fill(_)) {
+-        return;
+-    }
+-    let layer = layer.clone();
+-    let t = Tokens::get(ctx);
+-    let canvas = app.last_canvas_rect;
+-    let width = 320.0;
+-    let pos = pos2(canvas.right() - width - 12.0, canvas.top() + 44.0);
+-    let frame = egui::Frame::NONE
+-        .fill(t.card)
+-        .stroke(Stroke::new(1.0, t.card_border))
+-        .corner_radius(CornerRadius::same(t.radius_lg as u8))
+-        .shadow(egui::Shadow { offset: [0, 12], blur: 36, spread: 0, color: t.shadow })
+-        .inner_margin(egui::Margin::same(14));
+-    // A floating panel (Order::Middle like other panels, so menus, popups and dialogs stay above
+-    // it), anchored to the canvas corner and dragged by its title off the part being worked on.
+-    let card_id = egui::Id::new("properties-card");
+-    let offset: egui::Vec2 = ctx.data(|m| m.get_temp(card_id)).unwrap_or_default();
+-    let mut drag = egui::Vec2::ZERO;
+-    let shown = egui::Area::new(card_id).order(egui::Order::Middle).fixed_pos(pos + offset).show(ctx, |ui| {
+-        frame.show(ui, |ui| {
+-            ui.set_width(width - 28.0);
+-            let title = ui.horizontal(|ui| {
+-                ui.label(RichText::new(tl!("Properties")).font(theme::semibold(13.5)).color(t.text));
+-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+-                    if icons::button(ui, "minus", 22.0, false, tl!("Hide Properties")).clicked() {
+-                        app.ui.panels.properties = false;
+-                    }
+-                });
+-            });
+-            let bar = title.response.rect.with_max_x(title.response.rect.right() - 28.0);
+-            let grip = ui.interact(bar, card_id.with("title"), Sense::drag());
+-            if grip.hovered() || grip.dragged() {
+-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+-            }
+-            drag = grip.drag_delta();
+-            ui.add_space(6.0);
+-            let icon = match &layer.content {
+-                LayerContent::Adjustment(_) => "sliders-horizontal",
+-                LayerContent::Group(_) => "folder",
+-                LayerContent::Fill(_) => "paint-bucket",
+-                _ => "image",
+-            };
+-            ui.horizontal(|ui| {
+-                let (r, _) = ui.allocate_exact_size(vec2(32.0, 32.0), Sense::hover());
+-                ui.painter().rect_filled(r, t.radius_sm, t.field);
+-                icons::paint(ui, r, icon, 17.0, t.icon);
+-                ui.vertical(|ui| {
+-                    ui.label(RichText::new(&layer.name).font(theme::medium(13.0)).color(t.text));
+-                    let kind = match &layer.content {
+-                        LayerContent::Adjustment(a) => crate::i18n::fmt(tl!("{name} Properties"), &[("name", tl!(a.label()))]),
+-                        // Whole phrases ("Type Layer"), as the Properties header translates them.
+-                        other => tl!(&format!("{} Layer", other.kind_name())).to_string(),
+-                    };
+-                    ui.label(RichText::new(kind).small().color(t.text_faint));
+-                });
+-            });
+-            ui.add_space(8.0);
+-            widgets::hairline(ui);
+-            ui.add_space(8.0);
+-            if let LayerContent::Adjustment(adj) = &layer.content {
+-                adjustment_controls(app, ui, id, adj);
+-            } else {
+-                layer_controls(app, ui, &layer);
+-            }
+-        });
+-    });
+-    if drag != egui::Vec2::ZERO && canvas.is_positive() {
+-        // Keep the title bar inside the canvas.
+-        let r = shown.response.rect.translate(drag);
+-        let dx = (canvas.left() - r.left()).max(0.0) - (r.right() - canvas.right()).max(0.0);
+-        let dy = (canvas.top() - r.top()).max(0.0) - (r.top() + 40.0 - canvas.bottom()).max(0.0);
+-        ctx.data_mut(|m| m.insert_temp(card_id, offset + drag + egui::vec2(dx, dy)));
+-    }
+-}
+-
+ fn adjustment_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId, adj: &photocraft_doc::Adjustment) {
+     crate::adjust_editors::layer_editor(app, ui, id, adj);
+     ui.add_space(6.0);
+@@ -2087,34 +1995,8 @@ fn adjustment_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId,
+     }
+ }
+ 
+-fn layer_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
+-    let t = Tokens::get(ui.ctx());
+-    if let Some(s) = layer.surface() {
+-        let b = app.cached_bounds(layer.id.0, s);
+-        egui::Grid::new("props-grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
+-            for (k, v) in [("X", b.x0.to_string()), ("Y", b.y0.to_string()), ("W", b.width().to_string()), ("H", b.height().to_string())] {
+-                ui.label(RichText::new(k).color(t.text_dim));
+-                ui.label(RichText::new(format!("{v} px")).font(theme::mono(12.0)).color(t.text));
+-                ui.end_row();
+-            }
+-        });
+-        ui.add_space(6.0);
+-    }
+-    let mut o = layer.opacity * 100.0;
+-    let r = widgets::slider_row(ui, tl!("Opacity"), &mut o, 0.0..=100.0, "%", None);
+-    if r.drag_stopped() || (r.changed() && !r.dragged()) {
+-        let _ = app.run("layer.setProps", json!({"layer": layer.id.0, "opacity": o / 100.0}));
+-    }
+-    let mut f = layer.fill_opacity * 100.0;
+-    let r = widgets::slider_row(ui, tl!("Fill"), &mut f, 0.0..=100.0, "%", None);
+-    if r.drag_stopped() || (r.changed() && !r.dragged()) {
+-        let _ = app.run("layer.setProps", json!({"layer": layer.id.0, "fill": f / 100.0}));
+-    }
+-}
+-
+-/// Docked Properties body (Pro theme).
++/// Docked Properties body.
+ fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+-    let t = Tokens::get(ui.ctx());
+     let Some(st) = app.session.active() else {
+         empty(ui, tl!("No properties"));
+         return;
+@@ -2131,7 +2013,7 @@ fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+     // Header: kind icon, layer name and kind (#155); sections below draw their own separators.
+     crate::props_layout::header(ui, layer);
+     let is_adjustment = matches!(layer.content, LayerContent::Adjustment(_));
+-    if is_adjustment || layer.artboard().is_some() || !t.pro {
++    if is_adjustment || layer.artboard().is_some() {
+         ui.add_space(4.0);
+         widgets::hairline(ui);
+         ui.add_space(6.0);
+@@ -2140,21 +2022,9 @@ fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+         adjustment_controls(app, ui, id, adj);
+     } else if layer.artboard().is_some() {
+         crate::artboard_ui::properties(app, ui, layer);
+-    } else if t.pro {
++    } else {
+         // Transform, Align, the kind's sections and Quick Actions.
+         crate::layer_props_ui::properties(app, ui, layer);
+-    } else {
+-        if matches!(layer.content, LayerContent::Fill(photocraft_doc::Fill::Gradient { .. })) {
+-            crate::gradient_ui::properties(app, ui, layer);
+-            ui.add_space(6.0);
+-        }
+-        layer_controls(app, ui, layer);
+-        if matches!(layer.content, LayerContent::Text(_)) {
+-            crate::type_tool::type_properties(app, ui);
+-        }
+-        if matches!(layer.content, LayerContent::Shape(_)) {
+-            crate::vector_ui::shape_properties(app, ui, id);
+-        }
+     }
+ }
+ 
+@@ -2444,6 +2314,25 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
          if resp.double_clicked() {
              crate::layer_style::open(app, kind);
          }
@@ -3103,7 +3623,7 @@ index c2389b8..445e62d 100644
      }
  }
  
-@@ -2466,22 +2504,6 @@ fn selection_mode_buttons(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -2466,22 +2355,6 @@ fn selection_mode_buttons(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
      ui.spacing_mut().item_spacing.x = 8.0;
  }
  
@@ -3126,6 +3646,199 @@ index c2389b8..445e62d 100644
  #[cfg(test)]
  mod color_tests {
      use super::*;
+@@ -2526,53 +2399,3 @@ mod color_tests {
+         assert_eq!(srgb_bytes(h.state().session.tools.foreground), [0, 255, 0]);
+     }
+ }
+-
+-#[cfg(test)]
+-mod lock_tests {
+-    use super::*;
+-    use crate::canvas::{ToolEvent, tool_event};
+-    use egui::Modifiers;
+-
+-    fn click_lock(app: &mut PhotocraftApp) {
+-        let st = app.session.active().unwrap();
+-        let l = st.active_layer.and_then(|id| st.doc.layer(id)).unwrap();
+-        let (cmd, p) = simple_lock_toggle(crate::doc_props_ui::is_background(&st.doc, l), l);
+-        app.run(&cmd, p).unwrap();
+-    }
+-
+-    fn erase_line(app: &mut PhotocraftApp) {
+-        app.ui.tool = Tool::Eraser;
+-        let m = Modifiers::NONE;
+-        tool_event(app, ToolEvent::Down { x: 10.0, y: 40.0, pressure: 1.0 }, m);
+-        tool_event(app, ToolEvent::Move { x: 100.0, y: 40.0, pressure: 1.0 }, m);
+-        tool_event(app, ToolEvent::Up { x: 100.0, y: 40.0 }, m);
+-    }
+-
+-    #[test]
+-    fn simple_lock_button_never_locks_the_eraser_out_of_the_background() {
+-        // #76: the simple themes' lock button used to toggle "lock all" on the Background, which
+-        // kept showing as locked and then refused every paint tool.
+-        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+-        app.run("file.new", json!({"width": 120, "height": 80})).unwrap();
+-        app.run("tools.setColors", json!({"background": "#ff0000"})).unwrap();
+-        app.run("tools.setBrush", json!({"brush": {"size": 12, "hardness": 1.0}})).unwrap();
+-        // Clicking the Background's lock converts it to a normal layer (Photoshop).
+-        click_lock(&mut app);
+-        let l = &app.session.active().unwrap().doc.layers[0];
+-        assert_eq!(l.name, "Layer 0");
+-        assert!(!(l.locks.transparency || l.locks.pixels || l.locks.position || l.locks.all));
+-        erase_line(&mut app);
+-        assert!(!app.ui.status_error, "{}", app.ui.status);
+-        assert_eq!(app.session.active().unwrap().doc.layers[0].surface().unwrap().rgba(50, 40)[3], 0.0, "erased to transparency");
+-        // On a normal layer the button locks all, then unlocks everything.
+-        click_lock(&mut app);
+-        assert!(app.session.active().unwrap().doc.layers[0].locks.all);
+-        click_lock(&mut app);
+-        let k = app.session.active().unwrap().doc.layers[0].locks;
+-        assert!(!(k.transparency || k.pixels || k.position || k.artboard || k.all));
+-        // A layer with only transparency locked unlocks in one click.
+-        app.run("layer.setProps", json!({"locks": {"transparency": true}})).unwrap();
+-        click_lock(&mut app);
+-        assert!(!app.session.active().unwrap().doc.layers[0].locks.transparency);
+-    }
+-}
+diff --git a/crates/ui-egui/src/refine_brush.rs b/crates/ui-egui/src/refine_brush.rs
+new file mode 100644
+index 0000000..ed25c9b
+--- /dev/null
++++ b/crates/ui-egui/src/refine_brush.rs
+@@ -0,0 +1,133 @@
++//! Select and Mask's Refine Edge Brush (Photoshop): with the brush on in the dialog, strokes on
++//! the canvas mark where the edge is refined from the image (hair, fur); ⌥-strokes take the
++//! refinement back. Strokes are the command's `brush` parameter, so the live preview, OK and
++//! automation all see the same thing.
++
++use egui::{Color32, Pos2, Stroke};
++use serde_json::{Map, Value, json};
++
++use crate::PhotocraftApp;
++use crate::canvas::ViewXform;
++
++const COMMAND: &str = "select.refineEdge";
++/// Brush on/off and its size (diameter, document pixels) in the dialog's fields.
++const ON: &str = "__brushOn";
++const SIZE: &str = "__brushSize";
++/// The stroke being painted: points (document pixels) and whether it erases.
++const LIVE: &str = "pc-refine-brush-live";
++
++fn owns(f: &Map<String, Value>) -> bool {
++    f.get("__command").and_then(Value::as_str) == Some(COMMAND)
++}
++
++fn size(f: &Map<String, Value>) -> f32 {
++    f.get(SIZE).and_then(Value::as_f64).map_or(40.0, |v| v as f32)
++}
++
++/// The brush's controls in the Select and Mask dialog.
++pub fn options_ui(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
++    if !owns(f) {
++        return;
++    }
++    ui.add_space(4.0);
++    let mut on = f.get(ON).and_then(Value::as_bool).unwrap_or(false);
++    crate::widgets::checkbox(ui, &mut on, tl!("Refine Edge Brush"));
++    f.insert(ON.into(), json!(on));
++    if on {
++        let mut s = size(f);
++        crate::widgets::slider_row(ui, tl!("Brush Size"), &mut s, 1.0..=1000.0, "px", None);
++        f.insert(SIZE.into(), json!(s.round()));
++        let n = f.get("brush").and_then(Value::as_array).map_or(0, Vec::len);
++        ui.horizontal(|ui| {
++            ui.label(egui::RichText::new(crate::i18n::fmt(tl!("Paint over hair or fur; {key} to erase"), &[("key", &crate::shortcuts::pretty("Alt"))])).small());
++        });
++        if n > 0 && crate::widgets::secondary_button(ui, tl!("Clear Brush Strokes"), 0.0).clicked() {
++            f.remove("brush");
++        }
++    }
++}
++
++/// Canvas input and drawing while the brush is on (the canvas is otherwise inert under the
++/// dialog). Returns true when the brush handled the pointer.
++pub fn canvas(app: &mut PhotocraftApp, ctx: &egui::Context, rect: egui::Rect, xf: &ViewXform, painter: &egui::Painter) -> bool {
++    let Some(d) = app.ui.dialogs.iter_mut().find(|d| owns(&d.fields)) else { return false };
++    if d.fields.get(ON).and_then(Value::as_bool) != Some(true) {
++        return false;
++    }
++    let id = egui::Id::new(LIVE);
++    let mut live: Option<(Vec<[f32; 2]>, bool)> = ctx.data(|m| m.get_temp(id));
++    let radius = size(&d.fields) / 2.0;
++    let (down, alt, origin) = ctx.input(|i| (i.pointer.primary_down(), i.modifiers.alt, i.pointer.press_origin()));
++    let free = crate::dialogs::free_pointer_over(ctx, rect);
++    if down {
++        if let Some(p) = ctx.pointer_latest_pos() {
++            let doc = xf.to_doc(p);
++            let pt = [doc[0] as f32, doc[1] as f32];
++            match live.as_mut() {
++                Some((pts, _)) => {
++                    if pts.last().is_none_or(|l| (l[0] - pt[0]).abs() + (l[1] - pt[1]).abs() > 0.5) {
++                        pts.push(pt);
++                    }
++                }
++                // A stroke starts on the free canvas only (not on the dialog).
++                None if free.is_some() && origin.is_some_and(|o| rect.contains(o)) => live = Some((vec![pt], alt)),
++                None => {}
++            }
++        }
++    } else if let Some((pts, erase)) = live.take() {
++        let stroke = json!({"radius": radius, "points": pts, "erase": erase});
++        match d.fields.get_mut("brush").and_then(Value::as_array_mut) {
++            Some(a) => a.push(stroke),
++            None => {
++                d.fields.insert("brush".into(), json!([stroke]));
++            }
++        }
++    }
++    // The stroke in progress, then the brush outline under the pointer.
++    let width = radius * 2.0 * xf.zoom;
++    if let Some((pts, erase)) = &live {
++        let col = if *erase { Color32::from_rgba_unmultiplied(80, 160, 255, 90) } else { Color32::from_rgba_unmultiplied(255, 255, 255, 90) };
++        let screen: Vec<Pos2> = pts.iter().map(|p| xf.to_screen(p[0], p[1])).collect();
++        for p in &screen {
++            painter.circle_filled(*p, width / 2.0, col);
++        }
++        if screen.len() > 1 {
++            painter.add(egui::Shape::line(screen, Stroke::new(width, col)));
++        }
++    }
++    let hover = free.or_else(|| live.is_some().then(|| ctx.pointer_latest_pos()).flatten());
++    if let Some(p) = hover {
++        painter.circle_stroke(p, width / 2.0, Stroke::new(1.5, Color32::BLACK));
++        painter.circle_stroke(p, width / 2.0, Stroke::new(1.0, Color32::WHITE));
++        painter.text(p, egui::Align2::CENTER_CENTER, if alt { "−" } else { "+" }, egui::FontId::proportional(13.0), Color32::WHITE);
++        ctx.set_cursor_icon(egui::CursorIcon::None);
++    }
++    let handled = live.is_some() || hover.is_some();
++    ctx.data_mut(|m| match live {
++        Some(l) => {
++            m.insert_temp(id, l);
++        }
++        None => m.remove::<(Vec<[f32; 2]>, bool)>(id),
++    });
++    if handled {
++        ctx.request_repaint();
++    }
++    handled
++}
++
++/// Brush strokes scaled for a proxy preview `k` times smaller than the document.
++pub fn scale_strokes(params: &mut Value, k: f64) {
++    let Some(a) = params.get_mut("brush").and_then(Value::as_array_mut) else { return };
++    for s in a {
++        if let Some(r) = s.get("radius").and_then(Value::as_f64) {
++            s["radius"] = json!((r / k).max(0.5));
++        }
++        if let Some(pts) = s.get_mut("points").and_then(Value::as_array_mut) {
++            for p in pts {
++                if let (Some(x), Some(y)) = (p.get(0).and_then(Value::as_f64), p.get(1).and_then(Value::as_f64)) {
++                    *p = json!([x / k, y / k]);
++                }
++            }
++        }
++    }
++}
 diff --git a/crates/ui-egui/src/retouch_ui.rs b/crates/ui-egui/src/retouch_ui.rs
 index 8afb4bc..be60bbf 100644
 --- a/crates/ui-egui/src/retouch_ui.rs
