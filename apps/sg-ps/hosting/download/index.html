@@ -91,6 +91,9 @@
     .card.mine .tag { display: inline-block; }
     .req { color: var(--muted); font-size: 14px; margin: 0 0 22px; }
     .card .btn { align-self: flex-start; }
+    .full { display: none; margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+    .full a { color: var(--ivory); text-underline-offset: 3px; }
+    .full a:hover { color: var(--amber); }
     .card .btn-line:hover { border-color: var(--amber); }
     .card.mine .btn-line { background: var(--ivory); border-color: var(--ivory); color: var(--chrome); }
     .card.mine .btn-line:hover { background: var(--amber); border-color: var(--amber); }
@@ -200,6 +203,7 @@
             </div>
             <p class="req">ويندوز 10 و 11 <bdi>(64-bit)</bdi><span data-size="windows"></span></p>
             <a class="btn btn-line" data-file="windows" href="https://engsaber.space/sgps-downloads/HORIX-windows-x64.zip">تحميل لويندوز</a>
+            <p class="full">أو <a data-file="windows-full" href="https://engsaber.space/sgps-downloads/HORIX-windows-x64-full.zip">النسخة الكاملة</a><span data-size="windows-full"></span>: فيها موديل أدق لـ <bdi>Select Subject</bdi> بيشتغل على كارت الشاشة.</p>
             <ol class="steps">
               <li><span>فك ضغط الملف وافتح فولدر <b><bdi>HORIX</bdi></b>.</span></li>
               <li><span>شغّل <b><bdi>HORIX.exe</bdi></b>.</span></li>
@@ -215,6 +219,7 @@
             </div>
             <p class="req"><bdi>macOS 11</bdi> أو أحدث · <bdi>Apple Silicon</bdi> و <bdi>Intel</bdi><span data-size="macos"></span></p>
             <a class="btn btn-line" data-file="macos" href="https://engsaber.space/sgps-downloads/HORIX-macos-universal.zip">تحميل لماك</a>
+            <p class="full">أو <a data-file="macos-full" href="https://engsaber.space/sgps-downloads/HORIX-macos-universal-full.zip">النسخة الكاملة</a><span data-size="macos-full"></span>: فيها موديل أدق لـ <bdi>Select Subject</bdi> بيشتغل على كارت الشاشة.</p>
             <ol class="steps">
               <li><span>افتح الملف بعد التحميل واسحب <b><bdi>HORIX</bdi></b> لفولدر <b><bdi>Applications</bdi></b>.</span></li>
               <li><span>أول مرة بس: لو ظهرت رسالة <b><bdi>"HORIX" Not Opened</bdi></b> دوس <b><bdi>Done</bdi></b>، وافتح <b><bdi>System Settings</bdi></b> ← <b><bdi>Privacy &amp; Security</bdi></b>، انزل لتحت ودوس <b><bdi>Open Anyway</bdi></b> قدام <bdi>HORIX</bdi> واكتب باسورد الماك.</span></li>
@@ -332,13 +337,17 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (d) {
           if (!d) return;
-          ['windows', 'macos'].forEach(function (k) {
+          ['windows', 'macos', 'windows-full', 'macos-full'].forEach(function (k) {
             var f = d[k];
             if (!f) return;
             var mb = ' · ' + (f.size / 1048576).toFixed(0) + ' ميجا';
             var url = 'https://engsaber.space/sgps-downloads/' + f.file + '?v=' + encodeURIComponent(d.build);
             document.querySelectorAll('[data-size="' + k + '"]').forEach(function (el) { el.textContent = mb; });
-            document.querySelectorAll('[data-file="' + k + '"]').forEach(function (el) { el.href = url; });
+            document.querySelectorAll('[data-file="' + k + '"]').forEach(function (el) {
+              el.href = url;
+              // The full downloads show once a build has published them.
+              var p = el.closest('.full'); if (p) p.style.display = 'block';
+            });
           });
           document.getElementById('version').textContent = 'الإصدار ' + d.version + ' · ' + d.date;
         })

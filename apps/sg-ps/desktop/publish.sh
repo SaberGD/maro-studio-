@@ -20,6 +20,8 @@ API="https://developers.hostinger.com/api/hosting/v1"
 
 WIN="$(ls "$DIR"/HORIX-*-windows-x64-portable.zip | head -1)"
 MAC="$(ls "$DIR"/HORIX-*-macos-universal.zip | head -1)"
+WINF="$(ls "$DIR"/HORIX-*-windows-x64-full.zip | head -1)"
+MACF="$(ls "$DIR"/HORIX-*-macos-universal-full.zip | head -1)"
 VERSION="$(basename "$WIN" | sed -n 's/^HORIX-\(.*\)-windows-x64-portable\.zip$/\1/p')"
 size() { stat -c%s "$1" 2>/dev/null || stat -f%z "$1"; }
 
@@ -28,16 +30,24 @@ CREDS="$(curl -fsS -X POST -H "Authorization: Bearer $HOSTINGER_API_TOKEN" -H "C
 field() { python3 -c 'import json,sys; print(json.loads(sys.argv[1])[sys.argv[2]])' "$CREDS" "$1"; }
 URL="$(field url)"; AUTH="$(field auth_key)"; REST="$(field rest_auth_key)"
 
-# upload <local file> <name in the folder>: TUS create, then the bytes in one PATCH.
+# upload <local file> <name in the folder>: TUS create, then the bytes in 64 MB PATCH chunks (the
+# full downloads are over 1 GB; one request that size may be refused).
 upload() {
   local n; n="$(size "$1")"
   curl -fsS -o /dev/null -X POST "${URL%/}/$FOLDER/$2?override=true" \
     -H "X-Auth: $AUTH" -H "X-Auth-Rest: $REST" -H "Tus-Resumable: 1.0.0" \
     -H "Upload-Length: $n" -H "Upload-Offset: 0"
-  local off; off="$(curl -fsS -D - -o /dev/null -X PATCH "${URL%/}/$FOLDER/$2?override=true" \
-    -H "X-Auth: $AUTH" -H "X-Auth-Rest: $REST" -H "Tus-Resumable: 1.0.0" \
-    -H "Content-Type: application/offset+octet-stream" -H "Upload-Offset: 0" \
-    --data-binary "@$1" | tr -d '\r' | awk 'tolower($1)=="upload-offset:" {print $2}')"
+  local off=0 got part; part="$(mktemp)"
+  while [ "$off" -lt "$n" ]; do
+    dd if="$1" of="$part" bs=1048576 skip=$((off / 1048576)) count=64 status=none
+    got="$(curl -fsS -D - -o /dev/null -X PATCH "${URL%/}/$FOLDER/$2?override=true" \
+      -H "X-Auth: $AUTH" -H "X-Auth-Rest: $REST" -H "Tus-Resumable: 1.0.0" \
+      -H "Content-Type: application/offset+octet-stream" -H "Upload-Offset: $off" \
+      --data-binary "@$part" | tr -d '\r' | awk 'tolower($1)=="upload-offset:" {print $2}')"
+    [ -n "$got" ] && [ "$got" -gt "$off" ] || { echo "error: $2 upload stalled at $off of $n bytes" >&2; rm -f "$part"; exit 1; }
+    off="$got"
+  done
+  rm -f "$part"
   [ "$off" = "$n" ] || { echo "error: $2 upload incomplete ($off of $n bytes)" >&2; exit 1; }
   echo "uploaded $2 ($n bytes)"
 }
@@ -45,21 +55,25 @@ upload() {
 upload "$HERE/../hosting/downloads/.htaccess" .htaccess
 upload "$WIN" HORIX-windows-x64.zip
 upload "$MAC" HORIX-macos-universal.zip
+upload "$WINF" HORIX-windows-x64-full.zip
+upload "$MACF" HORIX-macos-universal-full.zip
 JSON="$(mktemp)"
-python3 - "$JSON" "$VERSION" "$BUILD" "$(size "$WIN")" "$(size "$MAC")" <<'PY'
+python3 - "$JSON" "$VERSION" "$BUILD" "$(size "$WIN")" "$(size "$MAC")" "$(size "$WINF")" "$(size "$MACF")" <<'PY'
 import json, sys, datetime
-out, version, build, win, mac = sys.argv[1:6]
+out, version, build, win, mac, winf, macf = sys.argv[1:8]
 json.dump({
     "version": version, "build": build, "date": datetime.date.today().isoformat(),
     "windows": {"file": "HORIX-windows-x64.zip", "size": int(win)},
     "macos": {"file": "HORIX-macos-universal.zip", "size": int(mac)},
+    "windows-full": {"file": "HORIX-windows-x64-full.zip", "size": int(winf)},
+    "macos-full": {"file": "HORIX-macos-universal-full.zip", "size": int(macf)},
 }, open(out, "w"))
 PY
 upload "$JSON" latest.json
 
 # Check what visitors get (browser user agent: Hostinger's bot protection answers curl with 403).
 UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
-for f in HORIX-windows-x64.zip:"$WIN" HORIX-macos-universal.zip:"$MAC"; do
+for f in HORIX-windows-x64.zip:"$WIN" HORIX-macos-universal.zip:"$MAC" HORIX-windows-x64-full.zip:"$WINF" HORIX-macos-universal-full.zip:"$MACF"; do
   name="${f%%:*}"; want="$(size "${f#*:}")"
   got="$(curl -fsSI -A "$UA" "https://$DOMAIN/$FOLDER/$name?v=$BUILD" | tr -d '\r' | awk 'tolower($1)=="content-length:" {print $2}' | tail -1)"
   [ "$got" = "$want" ] || { echo "error: https://$DOMAIN/$FOLDER/$name serves $got bytes, expected $want" >&2; exit 1; }
