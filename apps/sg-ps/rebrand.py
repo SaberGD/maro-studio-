@@ -1209,9 +1209,11 @@ def web(root: Path) -> None:
     edit(root, "apps/photocraft-web/index.html", [
         ('data-bin="photocraft-web"', 'data-bin="sg-ps"'),
         ("<title>PhotoCraft</title>", f'<title>{APP_NAME}</title>\n  <link data-trunk rel="icon" href="horix-favicon.svg">\n'
-                                      f'  <meta name="theme-color" content="#141314">'),
-        ("background: #262626;", "background: #141314;"),
-        ("color: #b8b8b8;", "color: #C4BDB4;"),
+                                      f'  <meta name="theme-color" content="#0E0E0F">'),
+        # The loading screen takes the default HORIX (Dark) theme's neutral canvas and dim text,
+        # so the first frame of the app follows it without a colour jump (it read reddish).
+        ("background: #262626;", "background: #0E0E0F;"),
+        ("color: #b8b8b8;", "color: #96969E;"),
         ("color: #e0e0e0;", "color: #EA993F;"),
         ("<p>Loading PhotoCraft&hellip;</p>", loading),
         ("""    <p id="photocraft_stalled">This is taking longer than usual. If PhotoCraft doesn't start, its files may have failed to
@@ -1236,7 +1238,7 @@ def web(root: Path) -> None:
 
 LOADER_CSS = """
     /* HORIX loading screen: the logo is revealed toward the beak as the app downloads (real bytes,
-       see LOADER_SCRIPT), the red rule of the logo is the progress bar, and the amber eye opens when
+       see LOADER_SCRIPT), an amber rule under the logo is the progress bar, and the amber eye opens when
        the app is ready. Plain CSS/SVG in the page: nothing more to download. */
     #photocraft_loading { font-family: Cairo, 'Segoe UI', Tahoma, system-ui, sans-serif; transition: opacity .45s ease; }
     #photocraft_loading.hx-out { opacity: 0; }
@@ -1251,7 +1253,7 @@ LOADER_CSS = """
     .hx-ready .hx-eye { opacity: 1; transform: none; }
     .hx-desc { margin-top: 20px; color: #F3EFE8; font: 600 11px/1 Inter, 'Segoe UI', system-ui, sans-serif; letter-spacing: .18em; direction: ltr; }
     .hx-track { position: relative; width: 160px; height: 2px; margin: 12px 0 16px; overflow: hidden; background: rgba(243, 239, 232, .1); }
-    .hx-bar { position: absolute; inset: 0 auto 0 0; width: 0; background: #D63C32; transition: width .35s cubic-bezier(.2, .8, .2, 1); }
+    .hx-bar { position: absolute; inset: 0 auto 0 0; width: 0; background: #EA993F; transition: width .35s cubic-bezier(.2, .8, .2, 1); }
     .hx-busy .hx-bar { width: 100% !important; animation: hx-breathe 1.1s ease-in-out infinite; }
     @keyframes hx-breathe { 50% { opacity: .45; } }
     .hx-status { min-height: 1.6em; margin: 0 0 8px; font-size: 13px; line-height: 1.5; direction: rtl; }
@@ -1329,7 +1331,7 @@ LOADER_SCRIPT = """  <script>
         out.removeAttribute('id'); out.id = 'hx_loading_out';
         out.className = 'hx-flowing hx-busy';
         out.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-          'background:#141314;color:#C4BDB4;font:14px Cairo,system-ui,sans-serif;pointer-events:none;z-index:5;transition:opacity .45s ease';
+          'background:#0E0E0F;color:#96969E;font:14px Cairo,system-ui,sans-serif;pointer-events:none;z-index:5;transition:opacity .45s ease';
         var st = out.querySelector('.hx-status'); if (st) st.textContent = 'جاهز';
         var stalled = out.querySelector('#sgps_stalled'); if (stalled) { stalled.removeAttribute('id'); stalled.style.visibility = 'hidden'; }
         document.body.appendChild(out);
