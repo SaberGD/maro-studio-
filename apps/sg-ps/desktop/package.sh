@@ -104,6 +104,7 @@ expected = {
     "HORIX/HORIX.exe", "HORIX/README.txt", "HORIX/onnxruntime.dll", "HORIX/LICENSE-onnxruntime.txt",
     "HORIX/ThirdPartyNotices-onnxruntime.txt", "HORIX/LICENSE.txt", "HORIX/THIRD-PARTY-NOTICES.txt",
     "HORIX/models/mobile_sam_image_encoder.onnx", "HORIX/models/sam_mask_decoder_multi.onnx",
+    "HORIX/models/isnet-general-use.onnx",
 }
 with zipfile.ZipFile(sys.argv[1]) as archive:
     files = {name for name in archive.namelist() if not name.endswith("/")}
