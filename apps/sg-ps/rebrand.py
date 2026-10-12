@@ -1253,7 +1253,7 @@ LOADER_CSS = """
     .hx-rule { width: 28px; height: 2px; margin: 7px 0 6px; background: #D63C32; }
     .hx-by { color: #606067; font: 500 10.5px/1.2 HorixInter, Inter, 'Segoe UI', system-ui, sans-serif; direction: ltr; }
     .hx-track { position: relative; width: 160px; height: 2px; margin: 22px 0 14px; border-radius: 1px; overflow: hidden; background: #232326; }
-    .hx-bar { position: absolute; inset: 0 auto 0 0; width: 0; background: #EA993F; transition: width .35s cubic-bezier(.2, .8, .2, 1); }
+    .hx-bar { position: absolute; inset: 0 auto 0 0; width: 0; background: #D63C32; transition: width .35s cubic-bezier(.2, .8, .2, 1); }
     .hx-busy .hx-bar { width: 100% !important; animation: hx-breathe 1.1s ease-in-out infinite; }
     @keyframes hx-breathe { 50% { opacity: .45; } }
     .hx-status { min-height: 1.6em; margin: 0 0 8px; font-size: 13px; line-height: 1.5; direction: rtl; }
