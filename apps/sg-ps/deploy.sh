@@ -116,8 +116,8 @@ if [ -n "$bad" ]; then
   exit 1
 fi
 
-# 3b) The AI selection model is served whole (the page fetches it on the first Quick Selection).
-for m in mobile_sam_image_encoder.onnx sam_mask_decoder_multi.onnx; do
+# 3b) The AI selection models are served whole (the page fetches them on first use).
+for m in mobile_sam_image_encoder.onnx sam_mask_decoder_multi.onnx u2netp.onnx; do
   want="$(size "$SITE/horix/models/$m")"
   got="$(curl -fsS -A "$UA" -H "Accept-Encoding: identity" -o /dev/null -w '%{size_download}' "https://$DOMAIN/horix/models/$m?v=$RANDOM" || echo 0)"
   [ "$got" = "$want" ] || { echo "error: https://$DOMAIN/horix/models/$m is $got bytes, expected $want" >&2; exit 1; }

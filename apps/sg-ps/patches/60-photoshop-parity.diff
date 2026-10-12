@@ -258,21 +258,22 @@ index 0353811..dd15ab2 100644
   "thiserror 2.0.21",
   "wasm-bindgen",
 diff --git a/apps/photocraft-web/index.html b/apps/photocraft-web/index.html
-index 91efe82..c90d641 100644
+index 91efe82..35b0cae 100644
 --- a/apps/photocraft-web/index.html
 +++ b/apps/photocraft-web/index.html
-@@ -404,6 +404,74 @@
+@@ -404,6 +404,101 @@
      #sgps_wl .go:disabled { opacity: .6; cursor: wait; }
      #sgps_wl .x { position: absolute; top: 8px; left: 10px; background: none; border: 0; color: #EA993F; font-size: 22px; cursor: pointer; }
    </style>
 +  <script>
 +    // HORIX AI selection: MobileSAM in the browser (onnxruntime-web, loaded on the first Quick /
-+    // Object Selection). The models come from ./models/; the runtime from jsDelivr. The app asks
++    // Object Selection), and U²-Netp for Select Subject (loaded on its first use). The models come from ./models/; the runtime from jsDelivr. The app asks
 +    // through window.horixAi (see web.rs WebSegmenter) and polls for results.
 +    (function () {
 +      var ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 +      var MODELS = new URL('models/', document.baseURI).href;
 +      var ready = null, enc = null, dec = null, emb = null, queue = Promise.resolve(), out = [];
++      var rt = null, subj = null;
 +      function script(src) {
 +        return new Promise(function (res, rej) {
 +          var s = document.createElement('script');
@@ -288,11 +289,18 @@ index 91efe82..c90d641 100644
 +        }
 +        return ort.InferenceSession.create(url, { executionProviders: ['wasm'] });
 +      }
-+      function load() {
-+        if (ready) return ready;
-+        ready = script(ORT + 'ort.webgpu.min.js').then(async function () {
++      function runtime() {
++        if (rt) return rt;
++        rt = script(ORT + 'ort.webgpu.min.js').then(function () {
 +          ort.env.wasm.wasmPaths = ORT;
 +          ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(navigator.hardwareConcurrency || 4, 8) : 1;
++        });
++        rt.catch(function () { rt = null; });
++        return rt;
++      }
++      function load() {
++        if (ready) return ready;
++        ready = runtime().then(async function () {
 +          enc = await session(MODELS + 'mobile_sam_image_encoder.onnx', true);
 +          dec = await session(MODELS + 'sam_mask_decoder_multi.onnx', false);
 +        });
@@ -329,6 +337,25 @@ index 91efe82..c90d641 100644
 +            out.push({ type: 'decoded', req: req, logits: await r.low_res_masks.getData(), ious: await r.iou_predictions.getData() });
 +          });
 +        },
++        // Select Subject: rgb is side × side; answers the subject's probability (0..1).
++        subject: function (req, rgb, side) {
++          queue = queue.then(async function () {
++            await runtime();
++            if (!subj) subj = await session(MODELS + 'u2netp.onnx', false);
++            var n = side * side, x = new Float32Array(3 * n), max = 1e-6;
++            var mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
++            for (var i = 0; i < rgb.length; i++) if (rgb[i] > max) max = rgb[i];
++            for (var i = 0; i < n; i++) for (var c = 0; c < 3; c++) x[c * n + i] = (rgb[i * 3 + c] / max - mean[c]) / std[c];
++            var r = await subj.run({ [subj.inputNames[0]]: new ort.Tensor('float32', x, [1, 3, side, side]) });
++            var y = await r[subj.outputNames[0]].getData(), lo = Infinity, hi = -Infinity;
++            for (var i = 0; i < n; i++) { if (y[i] < lo) lo = y[i]; if (y[i] > hi) hi = y[i]; }
++            var k = hi - lo > 1e-6 ? 1 / (hi - lo) : 0, m = new Float32Array(n);
++            for (var i = 0; i < n; i++) m[i] = (y[i] - lo) * k;
++            out.push({ type: 'subject', req: req, mask: m });
++          }).catch(function (e) {
++            out.push({ type: 'subjectFailed', msg: String((e && e.message) || e) });
++          });
++        },
 +        poll: function () { return out.splice(0, out.length); }
 +      };
 +    })();
@@ -337,10 +364,10 @@ index 91efe82..c90d641 100644
      // SG - PS: if the app stops (an internal error or the browser running out of memory), say so
      // instead of leaving a frozen canvas, and show the technical details to send to the team.
 diff --git a/apps/photocraft-web/src/web.rs b/apps/photocraft-web/src/web.rs
-index 65937d3..7795366 100644
+index 65937d3..0c12543 100644
 --- a/apps/photocraft-web/src/web.rs
 +++ b/apps/photocraft-web/src/web.rs
-@@ -211,12 +211,62 @@ fn services(inbox: Inbox, ctx: egui::Context) -> Services {
+@@ -211,12 +211,73 @@ fn services(inbox: Inbox, ctx: egui::Context) -> Services {
          // Preferences live in the browser's localStorage.
          load_prefs: Some(Box::new(|| local_storage()?.get_item(PREFS_KEY).ok().flatten())),
          save_prefs: Some(Box::new(|text: &str| local_storage().ok_or("no localStorage")?.set_item(PREFS_KEY, text).map_err(|e| format!("{e:?}")))),
@@ -351,8 +378,8 @@ index 65937d3..7795366 100644
  
  const PREFS_KEY: &str = "horix.preferences";
  
-+/// HORIX AI selection in the browser: the page's `window.horixAi` (index.html) runs MobileSAM
-+/// with onnxruntime-web; results are polled every frame.
++/// HORIX AI selection in the browser: the page's `window.horixAi` (index.html) runs MobileSAM and
++/// U²-Netp with onnxruntime-web; results are polled every frame.
 +struct WebSegmenter;
 +
 +impl WebSegmenter {
@@ -394,11 +421,22 @@ index 65937d3..7795366 100644
 +                "encoded" => Some(SegEvent::Encoded { key: get(&e, "key").as_string()?.parse().ok()? }),
 +                "decoded" => Some(SegEvent::Decoded { req: get(&e, "req").as_f64()? as u64, logits: f32s(get(&e, "logits")), ious: f32s(get(&e, "ious")) }),
 +                "failed" => Some(SegEvent::Failed { msg: get(&e, "msg").as_string().unwrap_or_default() }),
++                "subject" => Some(SegEvent::Subject { req: get(&e, "req").as_f64()? as u64, mask: f32s(get(&e, "mask")) }),
++                "subjectFailed" => Some(SegEvent::SubjectFailed { msg: get(&e, "msg").as_string().unwrap_or_default() }),
 +                _ => None,
 +            })
 +            .collect()
 +    }
++    fn subject_side(&self) -> Option<u32> {
++        Some(SUBJECT_SIDE)
++    }
++    fn subject(&mut self, req: u64, rgb: Vec<u8>, side: u32) {
++        Self::call("subject", &[(req as f64).into(), js_sys::Uint8Array::from(rgb.as_slice()).into(), side.into()]);
++    }
 +}
++
++/// U²-Netp's input side (Select Subject in the browser; 4.6 MB against the desktop's IS-Net).
++const SUBJECT_SIDE: u32 = 320;
 +
  fn local_storage() -> Option<web_sys::Storage> {
      web_sys::window()?.local_storage().ok().flatten()
@@ -419,11 +457,12 @@ index f268d08..31c05cf 100644
  # Finder double-click / Open With / Dock drops arrive as Apple events; this small audited crate
 diff --git a/apps/photocraft/src/ai_model.rs b/apps/photocraft/src/ai_model.rs
 new file mode 100644
-index 0000000..a9b2863
+index 0000000..593c409
 --- /dev/null
 +++ b/apps/photocraft/src/ai_model.rs
-@@ -0,0 +1,339 @@
-+//! HORIX AI selection on the desktop: MobileSAM through Microsoft's onnxruntime, loaded at run
+@@ -0,0 +1,489 @@
++//! HORIX AI selection on the desktop: MobileSAM (Quick / Object Selection) and IS-Net (Select
++//! Subject) through Microsoft's onnxruntime, loaded at run
 +//! time from the app folder (`onnxruntime.dll` / `libonnxruntime.dylib` / `.so` next to the
 +//! executable, or in the macOS bundle's Frameworks), with the models in `models/` beside it (or
 +//! the bundle's Resources). The model runs on a worker thread; see `photocraft_ui_egui::ai_segment`.
@@ -437,10 +476,14 @@ index 0000000..a9b2863
 +
 +const ENCODER: &str = "mobile_sam_image_encoder.onnx";
 +const DECODER: &str = "sam_mask_decoder_multi.onnx";
++/// IS-Net (DIS, general use; Apache-2.0): salient object, 1024 × 1024 input.
++const SUBJECT: &str = "isnet-general-use.onnx";
++const SUBJECT_SIDE: u32 = 1024;
 +
 +enum Cmd {
 +    Encode { key: u64, rgb: Vec<u8>, w: u32, h: u32 },
 +    Decode { key: u64, req: u64, points: Vec<[f32; 2]>, labels: Vec<f32>, prev: Option<Vec<f32>> },
++    Subject { req: u64, rgb: Vec<u8>, side: u32 },
 +}
 +
 +pub struct NativeSegmenter {
@@ -470,6 +513,12 @@ index 0000000..a9b2863
 +    }
 +    fn poll(&mut self) -> Vec<SegEvent> {
 +        self.rx.try_iter().collect()
++    }
++    fn subject_side(&self) -> Option<u32> {
++        Some(SUBJECT_SIDE)
++    }
++    fn subject(&mut self, req: u64, rgb: Vec<u8>, side: u32) {
++        let _ = self.tx.send(Cmd::Subject { req, rgb, side });
 +    }
 +}
 +
@@ -509,40 +558,75 @@ index 0000000..a9b2863
 +    dec: Session,
 +}
 +
++/// Loads onnxruntime once (the first model to need it).
++fn runtime() -> Result<(), String> {
++    static INIT: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
++    INIT.get_or_init(|| {
++        let lib = find(runtime_name()).ok_or_else(|| format!("{} not found next to HORIX", runtime_name()))?;
++        ort::init_from(lib.to_string_lossy().to_string()).with_name("horix").commit().map(|_| ()).map_err(|e| e.to_string())
++    })
++    .clone()
++}
++
++fn session(p: &Path) -> Result<Session, String> {
++    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 8);
++    Session::builder().and_then(|b| b.with_intra_threads(threads)).and_then(|b| b.commit_from_file(p)).map_err(|e| e.to_string())
++}
++
 +fn load() -> Result<Model, String> {
-+    let lib = find(runtime_name()).ok_or_else(|| format!("{} not found next to HORIX", runtime_name()))?;
++    runtime()?;
 +    let enc = find(ENCODER).ok_or("the AI model files are missing (models folder)")?;
 +    let dec = find(DECODER).ok_or("the AI model files are missing (models folder)")?;
-+    ort::init_from(lib.to_string_lossy().to_string()).with_name("horix").commit().map_err(|e| e.to_string())?;
-+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 8);
-+    let session = |p: &Path| -> Result<Session, String> {
-+        Session::builder().and_then(|b| b.with_intra_threads(threads)).and_then(|b| b.commit_from_file(p)).map_err(|e| e.to_string())
-+    };
 +    Ok(Model { enc: session(&enc)?, dec: session(&dec)? })
++}
++
++fn load_subject() -> Result<Session, String> {
++    runtime()?;
++    session(&find(SUBJECT).ok_or("the Select Subject model is missing (models folder)")?)
 +}
 +
 +fn worker(rx: Receiver<Cmd>, tx: Sender<SegEvent>) {
 +    let mut model: Option<Model> = None;
 +    let mut failed: Option<String> = None;
 +    let mut embedding: Option<(u64, Vec<f32>, u32, u32)> = None;
++    let mut subject: Option<Result<Session, String>> = None;
 +    while let Ok(mut cmd) = rx.recv() {
 +        // Only the newest image matters: skip encodes superseded by a later one.
 +        while let Cmd::Encode { .. } = cmd {
 +            match rx.try_recv() {
 +                Ok(next @ Cmd::Encode { .. }) => cmd = next,
 +                Ok(other) => {
-+                    run(&mut model, &mut failed, &mut embedding, cmd, &tx);
++                    run(&mut model, &mut failed, &mut embedding, &mut subject, cmd, &tx);
 +                    cmd = other;
 +                    break;
 +                }
 +                Err(_) => break,
 +            }
 +        }
-+        run(&mut model, &mut failed, &mut embedding, cmd, &tx);
++        run(&mut model, &mut failed, &mut embedding, &mut subject, cmd, &tx);
 +    }
 +}
 +
-+fn run(model: &mut Option<Model>, failed: &mut Option<String>, embedding: &mut Option<(u64, Vec<f32>, u32, u32)>, cmd: Cmd, tx: &Sender<SegEvent>) {
++fn run(
++    model: &mut Option<Model>,
++    failed: &mut Option<String>,
++    embedding: &mut Option<(u64, Vec<f32>, u32, u32)>,
++    subject: &mut Option<Result<Session, String>>,
++    cmd: Cmd,
++    tx: &Sender<SegEvent>,
++) {
++    // Select Subject has its own model, loaded on first use.
++    if let Cmd::Subject { req, rgb, side } = cmd {
++        let ev = match subject.get_or_insert_with(load_subject) {
++            Ok(s) => run_subject(s, &rgb, side).map_or_else(|msg| SegEvent::SubjectFailed { msg }, |mask| SegEvent::Subject { req, mask }),
++            Err(msg) => {
++                log::warn!("HORIX AI: {msg}");
++                SegEvent::SubjectFailed { msg: msg.clone() }
++            }
++        };
++        let _ = tx.send(ev);
++        return;
++    }
 +    if let Some(msg) = failed {
 +        let _ = tx.send(SegEvent::Failed { msg: msg.clone() });
 +        return;
@@ -568,8 +652,36 @@ index 0000000..a9b2863
 +            Some((_, emb, w, h)) => decode(m, emb, *w, *h, &points, &labels, prev).map(|(logits, ious)| SegEvent::Decoded { req, logits, ious }),
 +            None => Err("the image is not encoded".into()),
 +        },
++        Cmd::Subject { .. } => return,
 +    };
 +    let _ = tx.send(result.unwrap_or_else(|msg| SegEvent::Failed { msg }));
++}
++
++/// IS-Net on a `side × side` RGB image: the subject's probability, normalised to 0..1.
++fn run_subject(s: &mut Session, rgb: &[u8], side: u32) -> Result<Vec<f32>, String> {
++    let n = side as usize * side as usize;
++    if rgb.len() < n * 3 {
++        return Err("bad image".into());
++    }
++    // Planar, (v / 255 − 0.5), as the model was trained.
++    let mut x = vec![0.0f32; 3 * n];
++    for i in 0..n {
++        for c in 0..3 {
++            x[c * n + i] = f32::from(rgb[i * 3 + c]) / 255.0 - 0.5;
++        }
++    }
++    let e = |e: ort::Error| e.to_string();
++    let input = Tensor::from_array(([1usize, 3, side as usize, side as usize], x)).map_err(e)?;
++    let out = s.run(ort::inputs!["input_image" => input]).map_err(e)?;
++    let (_, y) = out[0].try_extract_tensor::<f32>().map_err(e)?;
++    Ok(normalise(&y[..n.min(y.len())]))
++}
++
++/// Min–max to 0..1 (the salient-object models' outputs aren't calibrated).
++fn normalise(y: &[f32]) -> Vec<f32> {
++    let (lo, hi) = y.iter().fold((f32::MAX, f32::MIN), |(a, b), v| (a.min(*v), b.max(*v)));
++    let k = if hi - lo > 1e-6 { 1.0 / (hi - lo) } else { 0.0 };
++    y.iter().map(|v| (v - lo) * k).collect()
 +}
 +
 +fn encode(m: &mut Model, rgb: &[u8], w: u32, h: u32) -> Result<Vec<f32>, String> {
@@ -704,6 +816,82 @@ index 0000000..a9b2863
 +        }
 +        let k = names.len().max(1) as f32;
 +        println!("app mean IoU after stroke, +1, +2, +3: {:.3} {:.3} {:.3} {:.3}", tot[0] / k, tot[1] / k, tot[2] / k, tot[3] / k);
++    }
++
++    /// Select Subject through the app against salient-object ground truth (e.g. DUTS-TE):
++    /// `HORIX_AI_DIR=… HORIX_AI_SUBJECT_EVAL=<dir of NAME.ppm / NAME.pgm> cargo test -p photocraft
++    /// --release ai_model -- --ignored --nocapture`.
++    #[test]
++    #[ignore = "needs the onnxruntime library, the model and an evaluation set"]
++    fn select_subject_eval() {
++        let Some(dir) = std::env::var_os("HORIX_AI_SUBJECT_EVAL").map(PathBuf::from) else { return };
++        let mut names: Vec<String> = std::fs::read_dir(&dir)
++            .into_iter()
++            .flatten()
++            .filter_map(|e| e.ok()?.file_name().into_string().ok()?.strip_suffix(".ppm").map(String::from))
++            .collect();
++        names.sort();
++        let ctx = egui::Context::default();
++        let mut seg: Option<Box<dyn Segmenter>> = Some(Box::new(NativeSegmenter::start()));
++        let (mut tot, mut etot, mut ms) = (0.0f32, 0.0f32, 0.0f64);
++        for n in &names {
++            let (w, h, rgb) = pnm(&dir.join(format!("{n}.ppm")).to_string_lossy());
++            let (_, _, g) = pnm(&dir.join(format!("{n}.pgm")).to_string_lossy());
++            let mut doc = photocraft_doc::Document::new("t", photocraft_geom::Size::new(w as u32, h as u32), photocraft_color::ColorMode::Rgb, photocraft_color::SampleType::U8);
++            let mut l = photocraft_doc::Layer::raster("bg", photocraft_color::PixelFormat::RGBA8);
++            let px: Vec<f32> = rgb.chunks_exact(3).flat_map(|p| [f32::from(p[0]) / 255.0, f32::from(p[1]) / 255.0, f32::from(p[2]) / 255.0, 1.0]).collect();
++            if let Some(s) = l.surface_mut() {
++                s.write_region(photocraft_geom::Rect::new(0, 0, w as i32, h as i32), &px);
++            }
++            doc.layers.push(l);
++            let mut session = photocraft_engine::Session::new();
++            session.add_document(doc, None);
++            let mut app = PhotocraftApp::new(session, Services { segmenter: seg.take(), ..Default::default() });
++            let t0 = std::time::Instant::now();
++            app.run("select.subject", serde_json::json!({})).unwrap();
++            for _ in 0..3000 {
++                photocraft_ui_egui::ai_segment::poll(&mut app, &ctx);
++                if !photocraft_ui_egui::ai_segment::busy(&app) {
++                    break;
++                }
++                std::thread::sleep(std::time::Duration::from_millis(5));
++            }
++            ms += t0.elapsed().as_secs_f64() * 1000.0;
++            let s = app.session.active().and_then(|s| s.doc.selection.clone());
++            let sel: Vec<bool> = (0..w * h).map(|k| s.as_ref().is_some_and(|s| s.sample_channel((k % w) as i32, (k / w) as i32, 0) >= 0.5)).collect();
++            let gt: Vec<bool> = g.iter().map(|v| *v > 127).collect();
++            // The edge band: pixels within 1% of the long side of the true outline.
++            let r = (w.max(h) / 100).max(2);
++            let mut edge = vec![0u32; (w + 1) * (h + 1)];
++            for y in 0..h {
++                for x in 0..w {
++                    let k = y * w + x;
++                    let e = (x + 1 < w && gt[k] != gt[k + 1]) || (y + 1 < h && gt[k] != gt[k + w]);
++                    edge[(y + 1) * (w + 1) + x + 1] = u32::from(e) + edge[y * (w + 1) + x + 1] + edge[(y + 1) * (w + 1) + x] - edge[y * (w + 1) + x];
++                }
++            }
++            let near = |x: usize, y: usize| {
++                let (x0, y0, x1, y1) = (x.saturating_sub(r), y.saturating_sub(r), (x + r + 1).min(w), (y + r + 1).min(h));
++                edge[y1 * (w + 1) + x1] + edge[y0 * (w + 1) + x0] > edge[y0 * (w + 1) + x1] + edge[y1 * (w + 1) + x0]
++            };
++            let (mut i, mut u, mut ei, mut eu) = (0usize, 0usize, 0usize, 0usize);
++            for k in 0..w * h {
++                let (a, b) = (sel[k], gt[k]);
++                i += usize::from(a && b);
++                u += usize::from(a || b);
++                if near(k % w, k / w) {
++                    ei += usize::from(a && b);
++                    eu += usize::from(a || b);
++                }
++            }
++            let (iou, eiou) = (i as f32 / u.max(1) as f32, ei as f32 / eu.max(1) as f32);
++            println!("{n} {iou:.3} edge {eiou:.3} {}", app.ui.status);
++            tot += iou;
++            etot += eiou;
++            seg = app.services.segmenter.take();
++        }
++        let k = names.len().max(1);
++        println!("Select Subject mean IoU {:.4}, edge band {:.4} ({:.0} ms avg)", tot / k as f32, etot / k as f32, ms / k as f64);
 +    }
 +
 +    fn biggest(m: &[bool], w: usize, h: usize) -> Option<Vec<usize>> {
@@ -1228,10 +1416,10 @@ index 0cbd3eb..e7256d5 100644
  #[test]
 diff --git a/crates/ui-egui/src/ai_segment.rs b/crates/ui-egui/src/ai_segment.rs
 new file mode 100644
-index 0000000..ae9c918
+index 0000000..353dc27
 --- /dev/null
 +++ b/crates/ui-egui/src/ai_segment.rs
-@@ -0,0 +1,559 @@
+@@ -0,0 +1,776 @@
 +//! HORIX AI selection: Quick Selection and Object Selection driven by MobileSAM (a lightweight
 +//! Segment Anything; weights Apache-2.0, ONNX export MIT), as Photoshop's selection tools are
 +//! driven by a trained model.
@@ -1244,7 +1432,11 @@ index 0000000..ae9c918
 +//! correcting stroke fixes the leak instead of cutting a hole. The result is snapped to the image
 +//! edges at full resolution and combined with the selection the run started from.
 +//!
-+//! Without the service, or when the model can't load, the classic tools run instead.
++//! Select Subject runs a second, salient-object model (IS-Net on the desktop, U²-Netp in the
++//! browser; Apache-2.0) on the whole image, stretched to the model's square input; its soft mask
++//! becomes the selection.
++//!
++//! Without the service, or when a model can't load, the classic tools run instead.
 +
 +use std::hash::{Hash, Hasher};
 +
@@ -1270,6 +1462,11 @@ index 0000000..ae9c918
 +    Decoded { req: u64, logits: Vec<f32>, ious: Vec<f32> },
 +    /// The model is unavailable (files missing, runtime error).
 +    Failed { msg: String },
++    /// Select Subject `req` finished: the subject's probability (0..1), `side × side` over the
++    /// image stretched to a square.
++    Subject { req: u64, mask: Vec<f32> },
++    /// The Select Subject model is unavailable.
++    SubjectFailed { msg: String },
 +}
 +
 +/// The platform's model runner. Calls return at once; results arrive through [`Segmenter::poll`].
@@ -1282,6 +1479,22 @@ index 0000000..ae9c918
 +    fn decode(&mut self, key: u64, req: u64, points: Vec<[f32; 2]>, labels: Vec<f32>, prev: Option<Vec<f32>>);
 +    /// Results since the last call.
 +    fn poll(&mut self) -> Vec<SegEvent>;
++    /// The Select Subject model's (square) input side, when the service has one.
++    fn subject_side(&self) -> Option<u32> {
++        None
++    }
++    /// Run the Select Subject model on an RGB image `side × side` (8-bit, row-major).
++    fn subject(&mut self, _req: u64, _rgb: Vec<u8>, _side: u32) {}
++}
++
++/// A Select Subject request waiting for the model.
++struct SubjectRun {
++    req: u64,
++    doc: DocId,
++    side: u32,
++    base: Option<Surface>,
++    mode: SelectionMode,
++    params: serde_json::Value,
 +}
 +
 +#[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1328,6 +1541,8 @@ index 0000000..ae9c918
 +    failed: Option<String>,
 +    /// (document, revision, all layers) last checked for a prefetch.
 +    checked: Option<(DocId, u64, bool)>,
++    subject: Option<SubjectRun>,
++    subject_failed: Option<String>,
 +}
 +
 +/// The AI tools can run (a model service is attached and hasn't failed).
@@ -1337,8 +1552,123 @@ index 0000000..ae9c918
 +
 +/// A run is waiting for the model (the canvas keeps polling).
 +pub fn busy(app: &PhotocraftApp) -> bool {
-+    app.ai.encoding.is_some() || app.ai.in_flight.is_some()
++    app.ai.encoding.is_some() || app.ai.in_flight.is_some() || app.ai.subject.is_some()
 +}
++
++/// Select Subject through the model (`params` as `select.subject`'s). Returns false when the
++/// classic command should run instead.
++pub fn subject(app: &mut PhotocraftApp, params: &serde_json::Value) -> bool {
++    if app.ai.subject_failed.is_some() {
++        return false;
++    }
++    let Some(side) = app.services.segmenter.as_ref().and_then(|s| s.subject_side()) else { return false };
++    let all = params.get("sampleAllLayers").and_then(serde_json::Value::as_bool).unwrap_or(true);
++    let mode = match params.get("mode").and_then(serde_json::Value::as_str).unwrap_or("replace") {
++        "add" => SelectionMode::Add,
++        "subtract" => SelectionMode::Subtract,
++        "intersect" => SelectionMode::Intersect,
++        _ => SelectionMode::Replace,
++    };
++    let Some(st) = app.session.active() else { return false };
++    let (doc, base) = (st.doc.id, st.doc.selection.clone());
++    let Some((rgb, w, h, _)) = photocraft_engine::smartselect_cmds::sample_rgb8(&app.session, all, side) else { return false };
++    let rgb = stretch_rgb(&rgb, w as usize, h as usize, side as usize);
++    app.ai.next_req += 1;
++    let req = app.ai.next_req;
++    app.ai.subject = Some(SubjectRun { req, doc, side, base, mode, params: params.clone() });
++    if let Some(seg) = app.services.segmenter.as_mut() {
++        seg.subject(req, rgb, side);
++    }
++    app.ui.status = "HORIX AI: finding the subject…".into();
++    app.ui.status_error = false;
++    true
++}
++
++/// Bilinear resize of an RGB image to `side × side` (the model's square input).
++fn stretch_rgb(rgb: &[u8], w: usize, h: usize, side: usize) -> Vec<u8> {
++    let mut out = vec![0u8; side * side * 3];
++    if w == 0 || h == 0 || rgb.len() < w * h * 3 {
++        return out;
++    }
++    let px = |x: usize, y: usize, c: usize| f32::from(rgb[(y.min(h - 1) * w + x.min(w - 1)) * 3 + c]);
++    for j in 0..side {
++        let sy = ((j as f32 + 0.5) * h as f32 / side as f32 - 0.5).max(0.0);
++        let (y0, ty) = (sy.floor() as usize, sy.fract());
++        for i in 0..side {
++            let sx = ((i as f32 + 0.5) * w as f32 / side as f32 - 0.5).max(0.0);
++            let (x0, tx) = (sx.floor() as usize, sx.fract());
++            for c in 0..3 {
++                let v = (px(x0, y0, c) * (1.0 - tx) + px(x0 + 1, y0, c) * tx) * (1.0 - ty) + (px(x0, y0 + 1, c) * (1.0 - tx) + px(x0 + 1, y0 + 1, c) * tx) * ty;
++                out[(j * side + i) * 3 + c] = v.round().clamp(0.0, 255.0) as u8;
++            }
++        }
++    }
++    out
++}
++
++/// A Select Subject mask (`side × side` probabilities over the canvas stretched to a square) as a
++/// selection region over the document, upsampled bilinearly.
++pub fn region_from_prob(mask: &[f32], side: usize, canvas: Rect) -> Option<Region> {
++    if side == 0 || mask.len() < side * side || canvas.is_empty() {
++        return None;
++    }
++    let (cw, ch) = (canvas.width() as f32, canvas.height() as f32);
++    let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
++    for y in 0..side {
++        for x in 0..side {
++            if mask[y * side + x] > 0.02 {
++                x0 = x0.min(x);
++                y0 = y0.min(y);
++                x1 = x1.max(x + 1);
++                y1 = y1.max(y + 1);
++            }
++        }
++    }
++    if x0 == usize::MAX {
++        return None;
++    }
++    let to_x = |c: usize| canvas.x0 + (c as f32 * cw / side as f32).floor() as i32;
++    let to_y = |c: usize| canvas.y0 + (c as f32 * ch / side as f32).floor() as i32;
++    let bbox = Rect::new(to_x(x0.saturating_sub(1)), to_y(y0.saturating_sub(1)), to_x((x1 + 1).min(side)) + 1, to_y((y1 + 1).min(side)) + 1).intersect(&canvas);
++    if bbox.is_empty() {
++        return None;
++    }
++    let (w, h) = (bbox.width() as usize, bbox.height() as usize);
++    let at = |x: usize, y: usize| mask[y.min(side - 1) * side + x.min(side - 1)];
++    let mut out = vec![0u8; w * h];
++    for (j, row) in out.chunks_mut(w).enumerate() {
++        let sy = (((bbox.y0 - canvas.y0) as f32 + j as f32 + 0.5) * side as f32 / ch - 0.5).max(0.0);
++        let (yi, ty) = (sy.floor() as usize, sy.fract());
++        for (i, o) in row.iter_mut().enumerate() {
++            let sx = (((bbox.x0 - canvas.x0) as f32 + i as f32 + 0.5) * side as f32 / cw - 0.5).max(0.0);
++            let (xi, tx) = (sx.floor() as usize, sx.fract());
++            let v = (at(xi, yi) * (1.0 - tx) + at(xi + 1, yi) * tx) * (1.0 - ty) + (at(xi, yi + 1) * (1.0 - tx) + at(xi + 1, yi + 1) * tx) * ty;
++            *o = (v.clamp(0.0, 1.0) * 255.0).round() as u8;
++        }
++    }
++    photocraft_algo::segment::trim_region(Region { bbox, mask: out })
++}
++
++/// The Select Subject result: the model's mask combined with the selection.
++fn apply_subject(app: &mut PhotocraftApp, run: SubjectRun, mask: &[f32]) {
++    let Some(st) = app.session.active().filter(|s| s.doc.id == run.doc) else { return };
++    let canvas = st.doc.bounds();
++    // The model's soft edge as is: snapping it to the image (as Quick Selection does) measured no
++    // better on DUTS-TE or HRSOD and cost 0.4 s.
++    let region = region_from_prob(mask, run.side as usize, canvas);
++    match photocraft_engine::smartselect_cmds::set_selection_from(&mut app.session, "Select Subject", run.base.as_ref(), region.as_ref(), run.mode) {
++        Ok(_) => {
++            app.sync_views();
++            app.ui.status = "HORIX AI: subject selected".into();
++            app.ui.status_error = false;
++        }
++        Err(e) => {
++            app.ui.status = e.to_string();
++            app.ui.status_error = true;
++        }
++    }
++}
++
 +
 +/// Identity of the pixels the tools analyse: the active layer's (or every visible layer's) tiles
 +/// and blending. A selection change keeps it, so strokes don't re-encode the image.
@@ -1637,11 +1967,30 @@ index 0000000..ae9c918
 +                    let _ = app.run(cmd, p);
 +                }
 +            }
++            SegEvent::Subject { req, mask } => {
++                if let Some(run) = app.ai.subject.take_if(|r| r.req == req) {
++                    apply_subject(app, run, &mask);
++                }
++            }
++            SegEvent::SubjectFailed { msg } => {
++                app.ai.subject_failed = Some(msg.clone());
++                if let Some(run) = app.ai.subject.take() {
++                    app.ui.status = format!("HORIX AI unavailable ({msg}): using the classic Select Subject");
++                    app.ui.status_error = true;
++                    let _ = app.run("select.subject", run.params);
++                }
++            }
 +        }
 +    }
 +    prefetch(app);
 +    if busy(app) {
-+        app.ui.status = if app.ai.encoding.is_some() { "HORIX AI: analyzing the image…".into() } else { "HORIX AI: selecting…".into() };
++        app.ui.status = if app.ai.subject.is_some() {
++            "HORIX AI: finding the subject…".into()
++        } else if app.ai.encoding.is_some() {
++            "HORIX AI: analyzing the image…".into()
++        } else {
++            "HORIX AI: selecting…".into()
++        };
 +        app.ui.status_error = false;
 +        ctx.request_repaint_after(std::time::Duration::from_millis(40));
 +    }
@@ -1719,12 +2068,15 @@ index 0000000..ae9c918
 +        assert!(region_from_logits(&vec![-1.0; LOW * LOW], 1, 100, 100, canvas).is_none());
 +    }
 +
++    /// The decodes a [`Mock`] saw: (point count, labels, with a previous mask).
++    type Calls = std::rc::Rc<std::cell::RefCell<Vec<(usize, Vec<f32>, bool)>>>;
++
 +    /// A model that answers at once: the mask is a square around the foreground points' centre,
 +    /// shrunk while background points are present.
 +    #[derive(Default)]
 +    struct Mock {
 +        out: Vec<SegEvent>,
-+        calls: std::rc::Rc<std::cell::RefCell<Vec<(usize, Vec<f32>, bool)>>>,
++        calls: Calls,
 +    }
 +
 +    impl Segmenter for Mock {
@@ -1746,6 +2098,59 @@ index 0000000..ae9c918
 +        fn poll(&mut self) -> Vec<SegEvent> {
 +            std::mem::take(&mut self.out)
 +        }
++        fn subject_side(&self) -> Option<u32> {
++            Some(16)
++        }
++        /// The subject: the middle half of the image (4..12 of 16).
++        fn subject(&mut self, req: u64, rgb: Vec<u8>, side: u32) {
++            assert_eq!(rgb.len(), (side * side * 3) as usize);
++            let s = side as usize;
++            let mask = (0..s * s).map(|i| if (4..12).contains(&(i % s)) && (4..12).contains(&(i / s)) { 1.0 } else { 0.0 }).collect();
++            self.out.push(SegEvent::Subject { req, mask });
++        }
++    }
++
++    #[test]
++    fn select_subject_runs_on_the_model_and_falls_back_when_it_fails() {
++        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services { segmenter: Some(Box::new(Mock::default())), ..Default::default() });
++        app.run("file.new", serde_json::json!({"width": 320, "height": 160})).unwrap();
++        assert_eq!(app.run("select.subject", serde_json::json!({})).unwrap()["ai"], true);
++        assert!(busy(&app));
++        poll(&mut app, &egui::Context::default());
++        assert!(!busy(&app));
++        let sel = |app: &PhotocraftApp, x: i32, y: i32| app.session.active().unwrap().doc.selection.as_ref().map_or(0.0, |s| s.sample_channel(x, y, 0));
++        // The square mask stretched over 320 × 160: x 80..240, y 40..120.
++        assert!(sel(&app, 160, 80) > 0.99 && sel(&app, 100, 50) > 0.99);
++        assert!(sel(&app, 40, 80) < 0.01 && sel(&app, 160, 140) < 0.01 && sel(&app, 300, 20) < 0.01);
++        // A failed model: the classic command runs, and keeps running from then on.
++        app.services.segmenter = Some(Box::new(Failing));
++        assert_eq!(app.run("select.subject", serde_json::json!({})).unwrap()["ai"], true);
++        poll(&mut app, &egui::Context::default());
++        assert!(app.ai.subject.is_none() && app.ai.subject_failed.is_some());
++        assert!(app.run("select.subject", serde_json::json!({})).unwrap().get("ai").is_none());
++    }
++
++    struct Failing;
++
++    impl Segmenter for Failing {
++        fn encode(&mut self, _: u64, _: Vec<u8>, _: u32, _: u32) {}
++        fn decode(&mut self, _: u64, _: u64, _: Vec<[f32; 2]>, _: Vec<f32>, _: Option<Vec<f32>>) {}
++        fn poll(&mut self) -> Vec<SegEvent> {
++            vec![SegEvent::SubjectFailed { msg: "no model".into() }]
++        }
++        fn subject_side(&self) -> Option<u32> {
++            Some(16)
++        }
++    }
++
++    #[test]
++    fn subject_mask_upsamples_over_the_canvas() {
++        let mut m = vec![0.0f32; 8 * 8];
++        m[3 * 8 + 4] = 1.0;
++        let r = region_from_prob(&m, 8, Rect::new(0, 0, 80, 40)).unwrap();
++        // Cell (4, 3) is x 40..50, y 15..20.
++        assert!(r.at(45, 17) > 0.9 && r.at(20, 17) < 0.01 && r.at(45, 35) < 0.01);
++        assert!(region_from_prob(&[0.0; 64], 8, Rect::new(0, 0, 80, 40)).is_none());
 +    }
 +
 +    #[test]
@@ -2548,7 +2953,7 @@ index 1974c9d..86929d4 100644
      fn percent_fields_round_trip_through_the_engine() {
          let mut s = photocraft_engine::Session::new();
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index e141502..03080da 100644
+index e141502..89b7e8a 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -16,6 +16,7 @@ macro_rules! tl {
@@ -2585,7 +2990,18 @@ index e141502..03080da 100644
              move_preview: None,
              secondary_erase: false,
              defer_live_stroke: false,
-@@ -841,6 +847,7 @@ impl eframe::App for PhotocraftApp {
+@@ -542,6 +548,10 @@ impl PhotocraftApp {
+                 return Ok(serde_json::json!({"pasted": false}));
+             }
+         }
++        // HORIX AI: Select Subject runs on the model when there is one (the result arrives later).
++        if id == "select.subject" && !self.automation_input && ai_segment::subject(self, &params) {
++            return Ok(serde_json::json!({"ai": true}));
++        }
+         // Long commands become background jobs when enabled (`jobs_ui`); the rest run inline.
+         let r = jobs_ui::run(self, id, params);
+         if r.is_ok() && matches!(id, "edit.copy" | "edit.cut" | "edit.copyMerged") {
+@@ -841,6 +851,7 @@ impl eframe::App for PhotocraftApp {
              self.checker = None;
          }
          self.drain_control(ctx);

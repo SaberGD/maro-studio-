@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Download (once, cached) and verify the files HORIX AI selection ships with.
 
-Usage: python3 -I apps/sg-ps/ai/fetch.py <dest dir> models|windows|macos|linux
+Usage: python3 -I apps/sg-ps/ai/fetch.py <dest dir> models|web|windows|macos|linux
 
-  models   MobileSAM image encoder + mask decoder (ONNX), for the web build and the desktop apps
+  models   the desktop apps' models: MobileSAM image encoder + mask decoder (Quick / Object
+           Selection) and IS-Net general use (Select Subject, 179 MB)
+  web      the web build's models: MobileSAM, and U²-Netp for Select Subject (4.6 MB)
   windows  onnxruntime.dll                       (Microsoft onnxruntime 1.22.0, MIT)
   macos    libonnxruntime.dylib (universal2)
   linux    libonnxruntime.so
@@ -24,9 +26,13 @@ from pathlib import Path
 
 ORT = "https://github.com/microsoft/onnxruntime/releases/download/v1.22.0/"
 SAM = "https://huggingface.co/Acly/MobileSAM/resolve/main/"
+REMBG = "https://github.com/danielgatis/rembg/releases/download/v0.0.0/"
 FILES = {
     "mobile_sam_image_encoder.onnx": (SAM + "mobile_sam_image_encoder.onnx", "580f5fb648ea1062c0aabc26217aed56921985f03f0cbbd852bba81d760cc749"),
     "sam_mask_decoder_multi.onnx": (SAM + "sam_mask_decoder_multi.onnx", "8976b90a87ba50a6a72217a5ff994f7d25ce16f2229fcc1ed259e1294c622ffe"),
+    # IS-Net (xuebinqin/DIS) and U²-Netp (xuebinqin/U-2-Net), Apache-2.0, as exported by rembg.
+    "isnet-general-use.onnx": (REMBG + "isnet-general-use.onnx", "60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a"),
+    "u2netp.onnx": (REMBG + "u2netp.onnx", "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8"),
     "onnxruntime-win-x64-1.22.0.zip": (ORT + "onnxruntime-win-x64-1.22.0.zip", "174c616efc0271194488642a72f1a514e01487da4dfe84c49296d66e40ebe0da"),
     "onnxruntime-osx-universal2-1.22.0.tgz": (ORT + "onnxruntime-osx-universal2-1.22.0.tgz", "cfa6f6584d87555ed9f6e7e8a000d3947554d589efe3723b8bfa358cd263d03c"),
     "onnxruntime-linux-x64-1.22.0.tgz": (ORT + "onnxruntime-linux-x64-1.22.0.tgz", None),
@@ -70,8 +76,9 @@ def main() -> None:
         sys.exit(__doc__)
     dest, what = Path(sys.argv[1]), sys.argv[2]
     dest.mkdir(parents=True, exist_ok=True)
-    if what == "models":
-        for n in ("mobile_sam_image_encoder.onnx", "sam_mask_decoder_multi.onnx"):
+    if what in ("models", "web"):
+        sam = ("mobile_sam_image_encoder.onnx", "sam_mask_decoder_multi.onnx")
+        for n in sam + (("isnet-general-use.onnx",) if what == "models" else ("u2netp.onnx",)):
             (dest / n).write_bytes(get(n))
     elif what in ("windows", "macos", "linux"):
         name, kind, lib, out = {

@@ -48,13 +48,16 @@ licences() {
 }
 
 # HORIX AI selection: MobileSAM (Apache-2.0), its ONNX export (MIT, huggingface.co/Acly/MobileSAM),
-# Segment Anything (Apache-2.0) and Microsoft onnxruntime (MIT, its own notices file beside it).
+# Segment Anything (Apache-2.0), IS-Net (Apache-2.0) and Microsoft onnxruntime (MIT, its own notices file beside it).
 ai_notices() {
   printf '\n==== MobileSAM (models/mobile_sam_image_encoder.onnx, models/sam_mask_decoder_multi.onnx) ====\n\n'
   printf 'MobileSAM, Copyright the MobileSAM authors (github.com/ChaoningZhang/MobileSAM). ONNX export by\nhuggingface.co/Acly/MobileSAM (MIT). Mask decoder from Segment Anything, Copyright Meta Platforms, Inc.\n\n'
   cat "$HERE/../ai/LICENSE-MobileSAM.txt"
   printf '\n==== Segment Anything ====\n\n'
   cat "$HERE/../ai/LICENSE-SegmentAnything.txt"
+  printf '\n==== IS-Net (models/isnet-general-use.onnx) ====\n\n'
+  printf 'IS-Net / DIS, Copyright Xuebin Qin et al. (github.com/xuebinqin/DIS). ONNX export by rembg\n(github.com/danielgatis/rembg, MIT).\n\n'
+  cat "$HERE/../ai/LICENSE-ISNet.txt"
 }
 
 windows_readme() {
@@ -86,7 +89,7 @@ case "$OS" in
     mkdir -p "$PKG"
     cp "$TARGET_DIR/$T/release/photocraft.exe" "$PKG/HORIX.exe"
     windows_readme "$PKG"
-    # HORIX AI selection: the runtime beside the exe, the model in models/.
+    # HORIX AI selection: the runtime beside the exe, the models (MobileSAM, IS-Net) in models/.
     "$PY" -I "$HERE/../ai/fetch.py" "$PKG" windows
     "$PY" -I "$HERE/../ai/fetch.py" "$PKG/models" models
     licences "$PKG"
@@ -119,7 +122,7 @@ PYEOF
     lipo -info "$APP/Contents/MacOS/HORIX"
     cp "$WORK/src/assets/app-icon/photocraft.icns" "$APP/Contents/Resources/HORIX.icns"
     licences "$APP/Contents/Resources"
-    # HORIX AI selection: the runtime in Frameworks, the model in Resources/models.
+    # HORIX AI selection: the runtime in Frameworks, the models in Resources/models.
     mkdir -p "$APP/Contents/Frameworks"
     "$PY" -I "$HERE/../ai/fetch.py" "$APP/Contents/Frameworks" macos
     mv "$APP/Contents/Frameworks/"*-onnxruntime.txt "$APP/Contents/Resources/"
