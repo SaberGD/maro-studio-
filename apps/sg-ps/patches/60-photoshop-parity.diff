@@ -1102,6 +1102,113 @@ index f55fe2f..8fab06a 100644
  /// A mask reader over a [`Region`] (zero outside its box).
  pub fn region_reader(reg: &Region) -> impl Fn(Rect) -> Vec<f32> + Sync + '_ {
      move |r: Rect| {
+diff --git a/crates/engine/src/color_cmds.rs b/crates/engine/src/color_cmds.rs
+index 555ca29..3d84c7f 100644
+--- a/crates/engine/src/color_cmds.rs
++++ b/crates/engine/src/color_cmds.rs
+@@ -112,6 +112,9 @@ pub struct ColorSettings {
+     pub policy_cmyk: Policy,
+     pub policy_gray: Policy,
+     /// Ask what to do when an opened file's embedded profile differs from the working space.
++    /// Off by default: the file opens at once with its own profile (Preserve). Stored under a
++    /// new key so the old default (ask) that earlier versions saved doesn't come back.
++    #[serde(rename = "askOnOpenMismatch")]
+     pub ask_on_mismatch: bool,
+     pub ask_on_paste: bool,
+     /// Ask when an opened file has no profile.
+@@ -137,7 +140,7 @@ impl Default for ColorSettings {
+             policy_rgb: Policy::Preserve,
+             policy_cmyk: Policy::Preserve,
+             policy_gray: Policy::Preserve,
+-            ask_on_mismatch: true,
++            ask_on_mismatch: false,
+             ask_on_paste: true,
+             ask_on_missing: false,
+             intent: Intent::RelativeColorimetric.id().into(),
+@@ -389,6 +392,12 @@ fn cms_err(e: photocraft_cms::CmsError) -> EngineError {
+ // ------------------------------------------------------------------ profiles
+ 
+ /// ICC colour space of a document mode.
++/// Built-in profiles a document in `mode` can carry: (id, description). File › New lists them.
++pub fn profiles_for_mode(mode: ColorMode) -> Vec<(&'static str, &'static str)> {
++    let space = mode_space(mode);
++    Builtin::ALL.into_iter().filter(|b| b.profile().color_space == space).map(|b| (b.id(), b.description())).collect()
++}
++
+ pub fn mode_space(mode: ColorMode) -> ColorSpace {
+     match mode {
+         ColorMode::Grayscale | ColorMode::Bitmap | ColorMode::Duotone => ColorSpace::Gray,
+@@ -955,7 +964,7 @@ pub fn specs() -> Vec<CommandSpec> {
+             "edit.colorSettings",
+             "Color Settings…",
+             ["Edit"],
+-            r##"{"workingRgb":"srgb|display-p3|adobe-rgb-compat|prophoto-compat|linear-srgb|rec2020","workingCmyk":"coated-cmyk","workingGray":"sgray|gray-gamma-2.2","policyRgb":"preserve|convert|off","policyCmyk":"preserve|convert|off","policyGray":"preserve|convert|off","askOnMismatch":bool=true,"askOnPaste":bool=true,"askOnMissing":bool=false,"intent":"relative|perceptual|saturation|absolute","blendTextGamma":1.0..2.2|bool=1.45,"bpc":bool=true,"dither":bool=true,"monitorProfile":"auto|srgb|display-p3|adobe-rgb-compat|prophoto-compat|rec2020","reset":bool=false} (working spaces and the monitor profile also accept .icc paths; monitor `auto` = the main display's profile when the platform provides it, else sRGB)"##,
++            r##"{"workingRgb":"srgb|display-p3|adobe-rgb-compat|prophoto-compat|linear-srgb|rec2020","workingCmyk":"coated-cmyk","workingGray":"sgray|gray-gamma-2.2","policyRgb":"preserve|convert|off","policyCmyk":"preserve|convert|off","policyGray":"preserve|convert|off","askOnMismatch":bool=false,"askOnPaste":bool=true,"askOnMissing":bool=false,"intent":"relative|perceptual|saturation|absolute","blendTextGamma":1.0..2.2|bool=1.45,"bpc":bool=true,"dither":bool=true,"monitorProfile":"auto|srgb|display-p3|adobe-rgb-compat|prophoto-compat|rec2020","reset":bool=false} (working spaces and the monitor profile also accept .icc paths; monitor `auto` = the main display's profile when the platform provides it, else sRGB)"##,
+             always,
+             color_settings,
+             true,
+@@ -1225,12 +1234,29 @@ mod settings_tests {
+     // The Blend Text Colors Using Gamma test is `tests/text_gamma.rs`: it changes the
+     // process-wide text gamma, which would race every unit test here that composites type.
+ 
++    #[test]
++    fn new_document_color_profile() {
++        let mut s = Session::new();
++        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
++        assert!(s.active().unwrap().doc.icc_profile.is_none(), "working space by default");
++        s.execute("file.new", json!({"width": 8, "height": 8, "profile": "display-p3"})).unwrap();
++        assert!(desc(&s.active().unwrap().doc).unwrap().starts_with("Display P3"));
++        assert!(s.execute("file.new", json!({"width": 8, "height": 8, "profile": "coated-cmyk"})).is_err(), "a CMYK profile on an RGB document");
++        assert!(profiles_for_mode(ColorMode::Rgb).iter().any(|(id, _)| *id == "adobe-rgb-compat"));
++        assert!(profiles_for_mode(ColorMode::Cmyk).iter().all(|(id, _)| *id == "coated-cmyk"));
++    }
++
+     #[test]
+     fn open_policies() {
+         let mut s = Session::new();
+-        // Preserve (default): an Adobe RGB file keeps its profile and asks.
++        // Preserve (default): an Adobe RGB file keeps its profile and opens without asking.
++        let (_, r) = s.open_document(tagged("adobe-rgb-compat"), None);
++        assert_eq!((r["action"].as_str(), r["mismatch"].as_bool(), r["ask"].as_bool()), (Some("kept"), Some(true), Some(false)));
++        // Ask When Opening, ticked in Color Settings, asks.
++        s.execute("edit.colorSettings", json!({"askOnMismatch": true})).unwrap();
+         let (_, r) = s.open_document(tagged("adobe-rgb-compat"), None);
+-        assert_eq!((r["action"].as_str(), r["mismatch"].as_bool(), r["ask"].as_bool()), (Some("kept"), Some(true), Some(true)));
++        assert_eq!(r["ask"].as_bool(), Some(true));
++        s.execute("edit.colorSettings", json!({"askOnMismatch": false})).unwrap();
+         assert!(desc(&s.active().unwrap().doc).unwrap().starts_with("Adobe RGB"));
+         // Matching profiles never ask.
+         let (_, r) = s.open_document(tagged("srgb"), None);
+diff --git a/crates/engine/src/commands.rs b/crates/engine/src/commands.rs
+index 7c1e04c..c065e4c 100644
+--- a/crates/engine/src/commands.rs
++++ b/crates/engine/src/commands.rs
+@@ -214,7 +214,7 @@ fn build() -> Vec<CommandSpec> {
+             "New…",
+             ["File"],
+             Some("Cmd+N"),
+-            r##"{"width":u32=1920,"height":u32=1080,"mode":"rgb|gray|cmyk|lab"="rgb","depth":8|16|32=8,"background":"white|black|backgroundColor|transparent|#rrggbb"="white","resolution":ppi=72,"name":str}"##,
++            r##"{"width":u32=1920,"height":u32=1080,"mode":"rgb|gray|cmyk|lab"="rgb","depth":8|16|32=8,"background":"white|black|backgroundColor|transparent|#rrggbb"="white","resolution":ppi=72,"name":str,"profile":"working|<profile id>|<.icc path>"="working"}"##,
+             always,
+             |s, p| {
+                 // A size given as a float (`512.0`, as JSON from a UI field) is still that size (#254).
+@@ -255,6 +255,16 @@ fn build() -> Vec<CommandSpec> {
+                     }
+                 };
+                 doc.resolution_dpi = res;
++                // Advanced Options › Color Profile: the working space (the default; the document
++                // stays untagged and follows it) or a profile embedded in the document.
++                let spec = p.get("profile").and_then(Value::as_str).unwrap_or("working");
++                if !matches!(spec, "working" | "") {
++                    let prof = s.color.resolve(spec, Some(&doc), None)?;
++                    if prof.color_space != crate::color_cmds::mode_space(doc.mode) {
++                        return Err(EngineError::BadParams { cmd: "file.new".into(), msg: format!("profile `{}` doesn't fit the colour mode", prof.description) });
++                    }
++                    doc.icc_profile = Some(prof.to_bytes());
++                }
+                 let i = s.add_document(doc, None);
+                 Ok(json!({ "document": i }))
+             }
 diff --git a/crates/engine/src/edit_cmds.rs b/crates/engine/src/edit_cmds.rs
 index 4b5aff3..726f34b 100644
 --- a/crates/engine/src/edit_cmds.rs
@@ -2401,8 +2508,305 @@ index 0000000..353dc27
 +        assert_ne!(k(&s), a);
 +    }
 +}
+diff --git a/crates/ui-egui/src/blur_handles.rs b/crates/ui-egui/src/blur_handles.rs
+new file mode 100644
+index 0000000..ab9e3e6
+--- /dev/null
++++ b/crates/ui-egui/src/blur_handles.rs
+@@ -0,0 +1,291 @@
++//! Blur Gallery on-canvas controls (Photoshop): while a Blur Gallery dialog is open the blur's
++//! geometry is drawn on the image and dragged there: Path Blur's arrow and its end points,
++//! Tilt-Shift's focus and transition lines (and the dot that rotates them), the Iris and Spin
++//! ellipses with their size and feather handles, and every blur's centre pin. The handles edit
++//! the dialog's own fields (`startX`, `centerX`, `radiusX`, `focus`…, fractions of the selection
++//! bounds or else the canvas, as the filter reads them), so the preview follows.
++
++use egui::{Color32, Pos2, Shape, Stroke, pos2, vec2};
++use serde_json::{Map, Value, json};
++
++use crate::PhotocraftApp;
++use crate::canvas::ViewXform;
++
++const PREFIX: &str = "filter.blurGallery.";
++/// The handle being dragged.
++const DRAG: &str = "pc-blur-handle-drag";
++
++fn num(f: &Map<String, Value>, k: &str, d: f32) -> f32 {
++    f.get(k).and_then(Value::as_f64).map_or(d, |v| v as f32)
++}
++
++/// The area the filter's fractions refer to: the selection's bounds, else the canvas.
++fn reference(app: &PhotocraftApp) -> Option<[f32; 4]> {
++    let st = app.session.active()?;
++    let canvas = st.doc.bounds();
++    let b = match &st.doc.selection {
++        Some(s) => s.content_bounds().intersect(&canvas),
++        None => canvas,
++    };
++    let b = if b.is_empty() { canvas } else { b };
++    Some([b.x0 as f32, b.y0 as f32, b.width() as f32, b.height() as f32])
++}
++
++struct Geo {
++    b: [f32; 4],
++}
++
++impl Geo {
++    fn ss(&self) -> f32 {
++        self.b[2].min(self.b[3]).max(1.0)
++    }
++    /// Fractions → document pixels.
++    fn doc(&self, fx: f32, fy: f32) -> [f32; 2] {
++        [self.b[0] + fx * self.b[2], self.b[1] + fy * self.b[3]]
++    }
++    /// Document pixels → fractions.
++    fn frac(&self, p: [f32; 2]) -> [f32; 2] {
++        [(p[0] - self.b[0]) / self.b[2].max(1.0), (p[1] - self.b[1]) / self.b[3].max(1.0)]
++    }
++}
++
++/// A draggable point: its key and position (document pixels).
++type Handle = (&'static str, [f32; 2]);
++
++fn handles(kind: &str, f: &Map<String, Value>, g: &Geo) -> Vec<Handle> {
++    let c = g.doc(num(f, "centerX", 0.5), num(f, "centerY", 0.5));
++    let ss = g.ss();
++    match kind {
++        "pathBlur" => vec![("start", g.doc(num(f, "startX", 0.2), num(f, "startY", 0.5))), ("end", g.doc(num(f, "endX", 0.8), num(f, "endY", 0.5)))],
++        "tiltShift" => {
++            let (s, co) = num(f, "angle", 0.0).to_radians().sin_cos();
++            let (n, d) = ([s, co], [co, -s]);
++            let (f0, f1) = (num(f, "focus", 0.1) * ss, (num(f, "focus", 0.1) + num(f, "transition", 0.15)) * ss);
++            let at = |k: f32, along: f32| [c[0] + n[0] * k + d[0] * along, c[1] + n[1] * k + d[1] * along];
++            vec![("center", c), ("focus", at(f0, 0.0)), ("transition", at(f1, 0.0)), ("rotate", at(f0, 0.35 * ss))]
++        }
++        "irisBlur" | "spinBlur" => {
++            let (s, co) = num(f, "angle", 0.0).to_radians().sin_cos();
++            let (rx, ry) = (num(f, "radiusX", if kind == "irisBlur" { 0.35 } else { 0.3 }) * ss, num(f, "radiusY", if kind == "irisBlur" { 0.25 } else { 0.3 }) * ss);
++            let mut v = vec![("center", c), ("radiusX", [c[0] + co * rx, c[1] + s * rx]), ("radiusY", [c[0] - s * ry, c[1] + co * ry])];
++            if kind == "irisBlur" {
++                let fe = num(f, "feather", 0.5);
++                v.push(("feather", [c[0] + co * rx * fe, c[1] + s * rx * fe]));
++            }
++            v
++        }
++        _ => vec![("center", c)],
++    }
++}
++
++/// Apply a drag of handle `h` to document point `p`.
++fn drag(kind: &str, h: &str, p: [f32; 2], f: &mut Map<String, Value>, g: &Geo) {
++    let r3 = |v: f32| json!((v * 1000.0).round() / 1000.0);
++    let fr = g.frac(p);
++    let (fx, fy) = (fr[0].clamp(0.0, 1.0), fr[1].clamp(0.0, 1.0));
++    let c = g.doc(num(f, "centerX", 0.5), num(f, "centerY", 0.5));
++    let (dx, dy) = (p[0] - c[0], p[1] - c[1]);
++    let ss = g.ss();
++    let (s, co) = num(f, "angle", 0.0).to_radians().sin_cos();
++    match (kind, h) {
++        (_, "center") => {
++            f.insert("centerX".into(), r3(fx));
++            f.insert("centerY".into(), r3(fy));
++        }
++        ("pathBlur", "start") => {
++            f.insert("startX".into(), r3(fx));
++            f.insert("startY".into(), r3(fy));
++        }
++        ("pathBlur", "end") => {
++            f.insert("endX".into(), r3(fx));
++            f.insert("endY".into(), r3(fy));
++        }
++        ("tiltShift", "focus") => {
++            f.insert("focus".into(), r3(((dx * s + dy * co).abs() / ss).clamp(0.0, 1.0)));
++        }
++        ("tiltShift", "transition") => {
++            let t = (dx * s + dy * co).abs() / ss - num(f, "focus", 0.1);
++            f.insert("transition".into(), r3(t.clamp(0.01, 1.0)));
++        }
++        ("tiltShift", "rotate") => {
++            // The band runs along (cos a, −sin a): the angle that points it at the pointer,
++            // folded into −90…90 (a band has no direction).
++            let mut a = (-dy).atan2(dx).to_degrees();
++            if a > 90.0 {
++                a -= 180.0;
++            } else if a < -90.0 {
++                a += 180.0;
++            }
++            f.insert("angle".into(), json!(a.round()));
++        }
++        (_, "radiusX") => {
++            f.insert("radiusX".into(), r3(((dx * co + dy * s).abs() / ss).clamp(0.01, 1.0)));
++        }
++        (_, "radiusY") => {
++            f.insert("radiusY".into(), r3(((-dx * s + dy * co).abs() / ss).clamp(0.01, 1.0)));
++        }
++        ("irisBlur", "feather") => {
++            let rx = num(f, "radiusX", 0.35) * ss;
++            f.insert("feather".into(), r3(((dx * co + dy * s) / rx.max(1.0)).clamp(0.0, 0.99)));
++        }
++        _ => {}
++    }
++}
++
++fn line(painter: &egui::Painter, a: Pos2, b: Pos2, dashed: bool) {
++    let shadow = Stroke::new(3.0, Color32::from_black_alpha(140));
++    let white = Stroke::new(1.5, Color32::WHITE);
++    if dashed {
++        painter.extend(Shape::dashed_line(&[a, b], shadow, 8.0, 6.0));
++        painter.extend(Shape::dashed_line(&[a, b], white, 8.0, 6.0));
++    } else {
++        painter.line_segment([a, b], shadow);
++        painter.line_segment([a, b], white);
++    }
++}
++
++fn ellipse(painter: &egui::Painter, c: Pos2, rx: f32, ry: f32, angle: f32, dashed: bool) {
++    let (s, co) = angle.to_radians().sin_cos();
++    let pts: Vec<Pos2> = (0..=72)
++        .map(|i| {
++            let t = i as f32 / 72.0 * std::f32::consts::TAU;
++            let (u, v) = (t.cos() * rx, t.sin() * ry);
++            pos2(c.x + u * co - v * s, c.y + u * s + v * co)
++        })
++        .collect();
++    for w in pts.windows(2) {
++        line(painter, w[0], w[1], dashed);
++    }
++}
++
++fn dot(painter: &egui::Painter, p: Pos2, r: f32, hot: bool) {
++    painter.circle_filled(p, r + 1.5, Color32::from_black_alpha(150));
++    painter.circle_filled(p, r, if hot { Color32::from_rgb(234, 153, 63) } else { Color32::WHITE });
++}
++
++/// Draw the open Blur Gallery's controls and handle their drags. Returns true when the pointer
++/// is on (or dragging) a control.
++pub fn canvas(app: &mut PhotocraftApp, ctx: &egui::Context, rect: egui::Rect, xf: &ViewXform, painter: &egui::Painter) -> bool {
++    let Some(g) = reference(app).map(|b| Geo { b }) else { return false };
++    let Some(d) = app.ui.dialogs.iter_mut().find(|d| d.fields.get("__command").and_then(Value::as_str).is_some_and(|c| c.starts_with(PREFIX))) else {
++        return false;
++    };
++    let kind = d.fields.get("__command").and_then(Value::as_str).unwrap_or_default()[PREFIX.len()..].to_string();
++    // Several pins or paths (set through `pins` / `paths`) aren't edited here.
++    if d.fields.get("pins").or_else(|| d.fields.get("paths")).is_some_and(|v| !v.is_null()) {
++        return false;
++    }
++    let id = egui::Id::new(DRAG);
++    let mut held: Option<String> = ctx.data(|m| m.get_temp(id));
++    let (pressed, down, hover) = ctx.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.pointer.latest_pos()));
++    let free = crate::dialogs::free_pointer_over(ctx, rect);
++    let hs = handles(&kind, &d.fields, &g);
++    let to_screen = |p: [f32; 2]| xf.to_screen(p[0], p[1]);
++    let near = free.and_then(|p| hs.iter().map(|(k, q)| (*k, to_screen(*q).distance(p))).filter(|(_, dist)| *dist <= 12.0).min_by(|a, b| a.1.total_cmp(&b.1)).map(|(k, _)| k));
++    if pressed && held.is_none() {
++        held = near.map(str::to_string);
++    }
++    if !down {
++        held = None;
++    }
++    if let (Some(h), Some(p)) = (held.as_deref(), hover) {
++        let q = xf.to_doc(p);
++        drag(&kind, h, [q[0] as f32, q[1] as f32], &mut d.fields, &g);
++    }
++    // Draw from the (possibly just changed) fields.
++    let f = &d.fields;
++    let hs = handles(&kind, f, &g);
++    let ss = g.ss() * xf.zoom;
++    let c = to_screen(g.doc(num(f, "centerX", 0.5), num(f, "centerY", 0.5)));
++    match kind.as_str() {
++        "pathBlur" => {
++            let (a, b) = (to_screen(hs[0].1), to_screen(hs[1].1));
++            line(painter, a, b, false);
++            let v = (b - a).normalized();
++            let n = vec2(-v.y, v.x);
++            for side in [n, -n] {
++                line(painter, b, b - v * 16.0 + side * 8.0, false);
++            }
++        }
++        "tiltShift" => {
++            let (s, co) = num(f, "angle", 0.0).to_radians().sin_cos();
++            let (n, dd) = (vec2(s, co), vec2(co, -s));
++            let len = rect.width().max(rect.height()) * 2.0;
++            let f0 = num(f, "focus", 0.1) * ss;
++            let f1 = f0 + num(f, "transition", 0.15) * ss;
++            for (k, dashed) in [(f0, false), (-f0, false), (f1, true), (-f1, true)] {
++                let o = c + n * k;
++                line(painter, o - dd * len, o + dd * len, dashed);
++            }
++        }
++        "irisBlur" | "spinBlur" => {
++            let iris = kind == "irisBlur";
++            let (rx, ry) = (num(f, "radiusX", if iris { 0.35 } else { 0.3 }) * ss, num(f, "radiusY", if iris { 0.25 } else { 0.3 }) * ss);
++            let a = num(f, "angle", 0.0);
++            ellipse(painter, c, rx, ry, a, false);
++            if iris {
++                let fe = num(f, "feather", 0.5);
++                ellipse(painter, c, rx * fe, ry * fe, a, true);
++            }
++        }
++        _ => {}
++    }
++    for (k, p) in &hs {
++        let hot = held.as_deref() == Some(*k) || near == Some(*k);
++        if *k == "center" {
++            // Photoshop's pin: a ring with a dot.
++            painter.circle_stroke(to_screen(*p), 9.0, Stroke::new(3.0, Color32::from_black_alpha(150)));
++            painter.circle_stroke(to_screen(*p), 9.0, Stroke::new(1.5, if hot { Color32::from_rgb(234, 153, 63) } else { Color32::WHITE }));
++            dot(painter, to_screen(*p), 3.0, hot);
++        } else {
++            dot(painter, to_screen(*p), 5.0, hot);
++        }
++    }
++    let active = held.is_some() || near.is_some();
++    if active {
++        ctx.set_cursor_icon(if held.is_some() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab });
++    }
++    ctx.data_mut(|m| match &held {
++        Some(h) => {
++            m.insert_temp(id, h.clone());
++        }
++        None => m.remove::<String>(id),
++    });
++    active
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn fields(cmd: &str) -> Map<String, Value> {
++        let mut f = Map::new();
++        f.insert("__command".into(), json!(cmd));
++        f
++    }
++
++    #[test]
++    fn handles_round_trip_through_drags() {
++        let g = Geo { b: [0.0, 0.0, 400.0, 200.0] };
++        // Path Blur: dragging the end point moves endX / endY.
++        let mut f = fields("filter.blurGallery.pathBlur");
++        drag("pathBlur", "end", [300.0, 50.0], &mut f, &g);
++        assert_eq!((num(&f, "endX", 0.0), num(&f, "endY", 0.0)), (0.75, 0.25));
++        assert_eq!(handles("pathBlur", &f, &g)[1].1, [300.0, 50.0]);
++        // Tilt-Shift: the focus handle sits at the focus distance, and dragging it sets it.
++        let mut f = fields("filter.blurGallery.tiltShift");
++        drag("tiltShift", "focus", [200.0, 100.0 + 40.0], &mut f, &g);
++        assert!((num(&f, "focus", 0.0) - 0.2).abs() < 1e-3, "{f:?}");
++        let h = handles("tiltShift", &f, &g);
++        assert!((h[1].1[1] - 140.0).abs() < 0.5, "{h:?}");
++        // The rotate dot turns the band; a pointer straight up-right of the centre is 45°.
++        drag("tiltShift", "rotate", [250.0, 50.0], &mut f, &g);
++        assert_eq!(num(&f, "angle", 0.0), 45.0);
++        // Iris: the radius handles follow the rotated ellipse's axes.
++        let mut f = fields("filter.blurGallery.irisBlur");
++        drag("irisBlur", "radiusX", [200.0 + 100.0, 100.0], &mut f, &g);
++        assert!((num(&f, "radiusX", 0.0) - 0.5).abs() < 1e-3);
++        drag("irisBlur", "center", [100.0, 50.0], &mut f, &g);
++        assert_eq!((num(&f, "centerX", 0.0), num(&f, "centerY", 0.0)), (0.25, 0.25));
++    }
++}
 diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
-index 31eac83..5275696 100644
+index 31eac83..1564ff0 100644
 --- a/crates/ui-egui/src/canvas.rs
 +++ b/crates/ui-egui/src/canvas.rs
 @@ -747,17 +747,18 @@ fn ensure_filter_preview(app: &mut PhotocraftApp, idx: usize) -> Option<(u32, u6
@@ -2426,17 +2830,20 @@ index 31eac83..5275696 100644
          if let Some(r) = &result {
              let buf = photocraft_compose::flatten(r);
              let t1 = crate::gpu_canvas::now_ms();
-@@ -1546,6 +1547,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+@@ -1546,6 +1547,12 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
              ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
          } else if free_hover && (space_pan || app.ui.tool == Tool::Hand) {
              ctx.set_cursor_icon(egui::CursorIcon::Grab);
 +        } else {
 +            // Select and Mask's Refine Edge Brush paints on the canvas under its dialog.
-+            crate::refine_brush::canvas(app, &ctx, rect, &xf, &painter);
++            if !crate::refine_brush::canvas(app, &ctx, rect, &xf, &painter) {
++                // Blur Gallery's pins, lines and arrows on the image.
++                crate::blur_handles::canvas(app, &ctx, rect, &xf, &painter);
++            }
          }
      }
      if tool == Tool::Hand && response.dragged() {
-@@ -1679,6 +1683,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+@@ -1679,6 +1686,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
              painter.rect_stroke(img_rect, 0.0, Stroke::new(1.0, Color32::from_gray(20)), egui::StrokeKind::Outside);
          }
          crate::type_tool::draw_overlay(app, &painter, &xf);
@@ -2444,7 +2851,7 @@ index 31eac83..5275696 100644
          crate::transform_tool::draw_overlay(app, &painter, &xf);
          crate::distort_ui::draw_overlay(app, &painter, &xf);
          crate::retouch_ui::draw_source_marker(app, &painter, &xf);
-@@ -2359,11 +2364,10 @@ fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
+@@ -2359,11 +2367,10 @@ fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
          Tool::Gradient => {
              if (end[0] - d.start[0]).abs() + (end[1] - d.start[1]).abs() >= 2.0 {
                  let o = app.ui.tool_options.clone();
@@ -2458,7 +2865,7 @@ index 31eac83..5275696 100644
                  );
              }
          }
-@@ -2448,12 +2452,6 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
+@@ -2448,12 +2455,6 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
      json!(if (app.ui.mask_target || viewing) && has_mask { "mask" } else { "pixels" })
  }
  
@@ -2472,10 +2879,21 @@ index 31eac83..5275696 100644
  mod tests {
      use super::*;
 diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
-index 4e56932..0cb70bc 100644
+index 4e56932..c36f390 100644
 --- a/crates/ui-egui/src/dialogs.rs
 +++ b/crates/ui-egui/src/dialogs.rs
-@@ -84,6 +84,11 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+@@ -50,6 +50,10 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+         // dragging the title bar; view state only, so egui memory): a dialog whose body grows, like
+         // Layer Style switching effects, extends down and right instead of re-centring.
+         let pinned: Option<egui::Vec2> = ctx.data(|m| m.get_temp(id));
++        // Dialogs whose controls are on the image (Blur Gallery's pins, the Refine Edge Brush)
++        // open at the right edge, over the panels, like Photoshop's side panel, not over the image.
++        let side = d.fields.get("__command").and_then(Value::as_str).is_some_and(|c| c.starts_with("filter.blurGallery.") || c == "select.refineEdge");
++        let pinned = pinned.or_else(|| side.then(|| egui::vec2((ctx.content_rect().width() - 470.0).max(0.0), 84.0)));
+         let mut drag = egui::Vec2::ZERO;
+         let mut sizing = false;
+         let area = match pinned {
+@@ -84,8 +88,13 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
              ui.add_space(4.0);
              crate::widgets::hairline(ui);
              ui.add_space(8.0);
@@ -2485,8 +2903,11 @@ index 4e56932..0cb70bc 100644
 +                fields.insert("__preview".into(), json!(!on));
 +            }
              match d.kind {
-                 DialogKind::NewDocument => crate::new_doc_ui::body(ui, &mut fields),
+-                DialogKind::NewDocument => crate::new_doc_ui::body(ui, &mut fields),
++                DialogKind::NewDocument => crate::new_doc_ui::body(ui, &mut fields, &app.session.color),
                  DialogKind::About if fields.get("systemInfo").and_then(Value::as_bool) == Some(true) => {
+                     let lines = crate::gpu_status::system_info(app);
+                     for l in &lines {
 diff --git a/crates/ui-egui/src/dock.rs b/crates/ui-egui/src/dock.rs
 index 69530b1..2873537 100644
 --- a/crates/ui-egui/src/dock.rs
@@ -3190,7 +3611,7 @@ index 1974c9d..86929d4 100644
      fn percent_fields_round_trip_through_the_engine() {
          let mut s = photocraft_engine::Session::new();
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index e141502..e4eba31 100644
+index e141502..04f8854 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -16,6 +16,7 @@ macro_rules! tl {
@@ -3201,15 +3622,17 @@ index e141502..e4eba31 100644
  pub mod adjust_editors;
  pub mod adjust_preview;
  pub mod adjust_ui;
-@@ -50,6 +51,7 @@ pub mod file_open;
+@@ -50,6 +51,9 @@ pub mod file_open;
  pub mod file_ui;
  pub mod fill_ui;
  pub mod filter_dialog;
 +pub mod refine_brush;
++pub mod blur_handles;
++pub mod tool_reset;
  pub mod gallery_ui;
  pub mod gpu_canvas;
  pub mod gpu_status;
-@@ -236,6 +238,8 @@ pub struct Services {
+@@ -236,6 +240,8 @@ pub struct Services {
      /// `photocraft_engine::preset_store`). Attached to the session once it arrives; without
      /// one, brush presets are session-only (web, tests).
      pub preset_store: Option<std::sync::mpsc::Receiver<photocraft_engine::preset_store::Opened>>,
@@ -3218,7 +3641,7 @@ index e141502..e4eba31 100644
  }
  
  pub struct PhotocraftApp {
-@@ -249,6 +253,8 @@ pub struct PhotocraftApp {
+@@ -249,6 +255,8 @@ pub struct PhotocraftApp {
      live_stroke: Option<canvas::LiveStroke>,
      /// Footprint trail of a retouching drag (see `stroke_trail`).
      trail: Option<stroke_trail::Trail>,
@@ -3227,7 +3650,7 @@ index e141502..e4eba31 100644
      /// Move tool drag shown live (`move_ui`).
      pub(crate) move_preview: Option<move_ui::MovePreview>,
      /// The next tool `Down` is a right-button drag that erases (see `paint_mouse`).
-@@ -387,6 +393,7 @@ impl PhotocraftApp {
+@@ -387,6 +395,7 @@ impl PhotocraftApp {
              drag: None,
              live_stroke: None,
              trail: None,
@@ -3235,7 +3658,7 @@ index e141502..e4eba31 100644
              move_preview: None,
              secondary_erase: false,
              defer_live_stroke: false,
-@@ -542,6 +549,10 @@ impl PhotocraftApp {
+@@ -542,6 +551,10 @@ impl PhotocraftApp {
                  return Ok(serde_json::json!({"pasted": false}));
              }
          }
@@ -3246,7 +3669,7 @@ index e141502..e4eba31 100644
          // Long commands become background jobs when enabled (`jobs_ui`); the rest run inline.
          let r = jobs_ui::run(self, id, params);
          if r.is_ok() && matches!(id, "edit.copy" | "edit.cut" | "edit.copyMerged") {
-@@ -841,6 +852,7 @@ impl eframe::App for PhotocraftApp {
+@@ -841,6 +854,7 @@ impl eframe::App for PhotocraftApp {
              self.checker = None;
          }
          self.drain_control(ctx);
@@ -3254,7 +3677,7 @@ index e141502..e4eba31 100644
          if self.ui.text_edit.is_some() && self.ui.tool != state::Tool::Type {
              type_tool::commit(self);
          }
-@@ -939,7 +951,6 @@ impl eframe::App for PhotocraftApp {
+@@ -939,7 +953,6 @@ impl eframe::App for PhotocraftApp {
          });
          if hidden == 0 {
              panels::floating_dock_windows(self, &ctx);
@@ -3262,8 +3685,49 @@ index e141502..e4eba31 100644
              brush_panel::window(self, &ctx);
              preset_panels::windows(self, &ctx);
              type_panels_ui::windows(self, &ctx);
+diff --git a/crates/ui-egui/src/new_doc_ui.rs b/crates/ui-egui/src/new_doc_ui.rs
+index a2cf049..08cbda4 100644
+--- a/crates/ui-egui/src/new_doc_ui.rs
++++ b/crates/ui-egui/src/new_doc_ui.rs
+@@ -134,7 +134,7 @@ fn page_icon(ui: &egui::Ui, r: Rect, w: u32, h: u32, t: &Tokens) {
+     ui.painter().rect_stroke(page, 1.0, Stroke::new(1.2, t.text_dim), StrokeKind::Inside);
+ }
+ 
+-pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
++pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>, color: &photocraft_engine::color_cmds::ColorState) {
+     let t = Tokens::get(ui.ctx());
+     let cat = get_s(f, "__category", "Recent");
+     // Category tabs.
+@@ -296,6 +296,27 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+             if widgets::dropdown(ui, "nd-bg", &mut bg, &opts, 240.0) {
+                 f.insert("background".into(), json!(bg));
+             }
++            // Advanced Options › Color Profile (Photoshop): the working space or a profile of the mode.
++            ui.add_space(4.0);
++            small_label(ui, tl!("Color Profile"));
++            let mode = match get_s(f, "mode", "rgb").as_str() {
++                "gray" => photocraft_color::ColorMode::Grayscale,
++                "cmyk" => photocraft_color::ColorMode::Cmyk,
++                "lab" => photocraft_color::ColorMode::Lab,
++                _ => photocraft_color::ColorMode::Rgb,
++            };
++            let working = format!("{}: {}", tl!("Working"), color.working(mode).description);
++            let mut opts: Vec<(String, &str)> = vec![("working".to_string(), working.as_str())];
++            let list = photocraft_engine::color_cmds::profiles_for_mode(mode);
++            opts.extend(list.iter().map(|(id, d)| (id.to_string(), *d)));
++            let mut prof = get_s(f, "profile", "working");
++            if !opts.iter().any(|(id, _)| *id == prof) {
++                prof = "working".into();
++                f.insert("profile".into(), json!(prof));
++            }
++            if widgets::dropdown(ui, "nd-profile", &mut prof, &opts, 240.0) {
++                f.insert("profile".into(), json!(prof));
++            }
+         });
+     });
+ }
 diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
-index c2389b8..53eae36 100644
+index c2389b8..0249bc7 100644
 --- a/crates/ui-egui/src/panels.rs
 +++ b/crates/ui-egui/src/panels.rs
 @@ -189,12 +189,12 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
@@ -3281,7 +3745,7 @@ index c2389b8..53eae36 100644
                  ui.add_space(8.0);
                  let quick_mask = app.session.active().is_some_and(|s| s.doc.quick_mask.is_some());
                  if icons::button(
-@@ -400,10 +400,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -400,15 +400,19 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
              ui.painter().line_segment([r.left_top(), r.right_top()], Stroke::new(1.0, t.separator));
              ui.painter().line_segment([r.left_bottom(), r.right_bottom()], Stroke::new(1.0, t.separator));
              ui.horizontal_centered(|ui| {
@@ -3289,12 +3753,27 @@ index c2389b8..53eae36 100644
 -                    crate::chrome_ui::home_button(app, ui);
 -                    widgets::vline(ui, 22.0);
 -                }
+-                let _ = icons::button(ui, icons::tool_icon(app.ui.tool), if t.pro { 26.0 } else { 28.0 }, !t.pro, tl!(app.ui.tool.label()));
+-                if t.pro {
+-                    let (r, _) = ui.allocate_exact_size(vec2(10.0, 20.0), Sense::hover());
+-                    icons::paint(ui, r, "chevron-down", 10.0, t.text_faint);
 +                crate::chrome_ui::home_button(app, ui);
 +                widgets::vline(ui, 22.0);
-                 let _ = icons::button(ui, icons::tool_icon(app.ui.tool), if t.pro { 26.0 } else { 28.0 }, !t.pro, tl!(app.ui.tool.label()));
-                 if t.pro {
-                     let (r, _) = ui.allocate_exact_size(vec2(10.0, 20.0), Sense::hover());
-@@ -640,12 +638,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
++                // The tool icon and its arrow open Photoshop's tool preset menu (Reset Tool…).
++                let icon = icons::button(ui, icons::tool_icon(app.ui.tool), if t.pro { 26.0 } else { 28.0 }, !t.pro, tl!(app.ui.tool.label()));
++                let (r, arrow) = ui.allocate_exact_size(vec2(12.0, 20.0), Sense::click());
++                icons::paint(ui, r, "chevron-down", 10.0, if arrow.hovered() { t.text } else { t.text_faint });
++                let arrow = arrow.on_hover_text(tl!("Tool presets: Reset Tool, Reset All Tools"));
++                let open = icon.clicked() || arrow.clicked();
++                let pop = egui::Id::new("tool-preset-menu");
++                if open {
++                    egui::Popup::toggle_id(ui.ctx(), pop);
+                 }
++                egui::Popup::from_response(&icon).id(pop).open_memory(None).show(|ui| crate::tool_reset::menu(app, ui));
+                 widgets::vline(ui, 22.0);
+                 if app.ui.transform.is_some() {
+                     crate::transform_tool::options_bar(app, ui);
+@@ -640,12 +644,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                          if widgets::dropdown(ui, "gradient-mode", &mut classic, &[(false, "Gradient"), (true, "Classic gradient")], 118.0) {
                              app.ui.tool_options.gradient_classic = classic;
                          }
@@ -3309,7 +3788,7 @@ index c2389b8..53eae36 100644
                          widgets::vline(ui, 22.0);
                          ui.spacing_mut().item_spacing.x = 2.0;
                          let before = app.ui.tool_options.clone();
-@@ -922,8 +916,7 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -922,8 +922,7 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                  ("clock", tl!("History"), Group::History),
              ];
              for (icon, name, g) in entries {
@@ -3319,7 +3798,7 @@ index c2389b8..53eae36 100644
                  let on = g.shown(&p) && !(docked && app.ui.dock.is_collapsed(g));
                  if icons::rail_button(ui, icon, rb, on, name).clicked() {
                      crate::dock::rail_click(app, g, docked);
-@@ -952,10 +945,9 @@ pub fn request_dock_width(ctx: &egui::Context, w: f32) {
+@@ -952,10 +951,9 @@ pub fn request_dock_width(ctx: &egui::Context, w: f32) {
  
  fn dock_panels(app: &mut PhotocraftApp, ui: &mut egui::Ui, p: &crate::state::Panels, t: &Tokens) {
      use crate::dock::Group;
@@ -3331,7 +3810,7 @@ index c2389b8..53eae36 100644
          (Group::Character, p.character),
          (Group::Navigator, p.navigator),
          (Group::History, p.history),
-@@ -1310,36 +1302,44 @@ fn color_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -1310,36 +1308,44 @@ fn color_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
  
  // ----------------------------------------------------------------------------- layers
  
@@ -3399,7 +3878,7 @@ index c2389b8..53eae36 100644
      }
      let Some(st) = app.session.active() else {
          empty(ui, tl!("No document"));
-@@ -1353,7 +1353,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -1353,7 +1359,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
      let mut actions: Vec<(String, Value)> = Vec::new();
  
      let t = Tokens::get(ui.ctx());
@@ -3408,7 +3887,7 @@ index c2389b8..53eae36 100644
          ui.horizontal(|ui| {
              ui.spacing_mut().item_spacing.x = 2.0;
              let (r, _) = ui.allocate_exact_size(vec2(64.0, 22.0), Sense::hover());
-@@ -1412,12 +1412,12 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -1412,12 +1418,12 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
              // In a narrow panel with long translated labels, drop the "Lock:" text (the icons keep
              // their tooltips) rather than let the Fill label run over the lock icons.
              let gap = ui.spacing().item_spacing.x;
@@ -3423,7 +3902,7 @@ index c2389b8..53eae36 100644
                  ui.spacing_mut().item_spacing.x = 0.0;
                  let lk = l.locks;
                  for (key, icon, tip, on) in [
-@@ -1432,12 +1432,6 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -1432,12 +1438,6 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                      }
                  }
              }
@@ -3436,7 +3915,7 @@ index c2389b8..53eae36 100644
              ui.add_enabled_ui(!bg, |ui| {
                  ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                      let mut f = l.fill_opacity * 100.0;
-@@ -1978,92 +1972,6 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -1978,92 +1978,6 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
  
  // ----------------------------------------------------------------------------- properties
  
@@ -3529,7 +4008,7 @@ index c2389b8..53eae36 100644
  fn adjustment_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId, adj: &photocraft_doc::Adjustment) {
      crate::adjust_editors::layer_editor(app, ui, id, adj);
      ui.add_space(6.0);
-@@ -2087,34 +1995,8 @@ fn adjustment_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId,
+@@ -2087,34 +2001,8 @@ fn adjustment_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId,
      }
  }
  
@@ -3565,7 +4044,7 @@ index c2389b8..53eae36 100644
      let Some(st) = app.session.active() else {
          empty(ui, tl!("No properties"));
          return;
-@@ -2131,7 +2013,7 @@ fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -2131,7 +2019,7 @@ fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
      // Header: kind icon, layer name and kind (#155); sections below draw their own separators.
      crate::props_layout::header(ui, layer);
      let is_adjustment = matches!(layer.content, LayerContent::Adjustment(_));
@@ -3574,7 +4053,7 @@ index c2389b8..53eae36 100644
          ui.add_space(4.0);
          widgets::hairline(ui);
          ui.add_space(6.0);
-@@ -2140,21 +2022,9 @@ fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -2140,21 +2028,9 @@ fn properties_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
          adjustment_controls(app, ui, id, adj);
      } else if layer.artboard().is_some() {
          crate::artboard_ui::properties(app, ui, layer);
@@ -3597,7 +4076,7 @@ index c2389b8..53eae36 100644
      }
  }
  
-@@ -2444,6 +2314,25 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
+@@ -2444,6 +2320,25 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
          if resp.double_clicked() {
              crate::layer_style::open(app, kind);
          }
@@ -3623,7 +4102,7 @@ index c2389b8..53eae36 100644
      }
  }
  
-@@ -2466,22 +2355,6 @@ fn selection_mode_buttons(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -2466,22 +2361,6 @@ fn selection_mode_buttons(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
      ui.spacing_mut().item_spacing.x = 8.0;
  }
  
@@ -3646,7 +4125,7 @@ index c2389b8..53eae36 100644
  #[cfg(test)]
  mod color_tests {
      use super::*;
-@@ -2526,53 +2399,3 @@ mod color_tests {
+@@ -2526,53 +2405,3 @@ mod color_tests {
          assert_eq!(srgb_bytes(h.state().session.tools.foreground), [0, 255, 0]);
      }
  }
@@ -3700,6 +4179,19 @@ index c2389b8..53eae36 100644
 -        assert!(!app.session.active().unwrap().doc.layers[0].locks.transparency);
 -    }
 -}
+diff --git a/crates/ui-egui/src/prefs_ui.rs b/crates/ui-egui/src/prefs_ui.rs
+index 04463d7..2b8cd55 100644
+--- a/crates/ui-egui/src/prefs_ui.rs
++++ b/crates/ui-egui/src/prefs_ui.rs
+@@ -541,6 +541,8 @@ pub fn invoke(app: &mut PhotocraftApp, _ctx: &egui::Context, id: &str, params: &
+                         dm.fields.insert(k.clone(), v.clone());
+                     }
+                 }
++                // Saved under another key than the command's parameter (color_cmds.rs).
++                dm.fields.insert("askOnMismatch".into(), json!(app.session.color.settings.ask_on_mismatch));
+             }
+             dialog(d)
+         }
 diff --git a/crates/ui-egui/src/refine_brush.rs b/crates/ui-egui/src/refine_brush.rs
 new file mode 100644
 index 0000000..ed25c9b
@@ -3874,6 +4366,127 @@ index 8afb4bc..be60bbf 100644
  }
  
  /// ⌥-click with Clone Stamp / Healing Brush sets the source.
+diff --git a/crates/ui-egui/src/tool_reset.rs b/crates/ui-egui/src/tool_reset.rs
+new file mode 100644
+index 0000000..4866e2a
+--- /dev/null
++++ b/crates/ui-egui/src/tool_reset.rs
+@@ -0,0 +1,115 @@
++//! Photoshop's tool preset picker menu (the arrow beside the tool icon in the options bar):
++//! Reset Tool puts the current tool's options back to their defaults, Reset All Tools every tool's.
++
++use crate::PhotocraftApp;
++use crate::state::{Tool, ToolOptions};
++
++/// Tools that paint with the shared brush (size, hardness, opacity, flow, smoothing…).
++fn uses_brush(tool: Tool) -> bool {
++    matches!(
++        tool,
++        Tool::Brush
++            | Tool::Pencil
++            | Tool::Eraser
++            | Tool::BackgroundEraser
++            | Tool::SpotHealing
++            | Tool::Healing
++            | Tool::CloneStamp
++            | Tool::HistoryBrush
++            | Tool::Blur
++            | Tool::Sharpen
++            | Tool::Smudge
++            | Tool::Dodge
++            | Tool::Burn
++            | Tool::Sponge
++            | Tool::QuickSelection
++    )
++}
++
++/// Copy the listed option fields from the defaults.
++macro_rules! reset {
++    ($o:expr, $d:expr, $($f:ident),* $(,)?) => {{ $( $o.$f = $d.$f.clone(); )* }};
++}
++
++/// Reset `tool`'s options (and the brush, for painting tools) to their defaults.
++pub fn reset_tool(app: &mut PhotocraftApp, tool: Tool) {
++    let d = ToolOptions::default();
++    let o = &mut app.ui.tool_options;
++    match tool {
++        Tool::RectMarquee | Tool::EllipseMarquee => reset!(o, d, feather, anti_alias, marquee_style, marquee_width, marquee_height),
++        Tool::Lasso | Tool::PolygonLasso => reset!(o, d, feather, anti_alias),
++        Tool::MagneticLasso => reset!(o, d, feather, anti_alias, magnetic_width),
++        Tool::MagicWand => reset!(o, d, tolerance, anti_alias, contiguous, sample_all_layers),
++        Tool::QuickSelection => reset!(o, d, sample_all_layers, enhance_edge),
++        Tool::ObjectSelection => reset!(o, d, sample_all_layers),
++        Tool::Move => reset!(o, d, move_auto_select, move_target, move_show_transform),
++        Tool::Crop => reset!(o, d, crop_ratio, crop_delete),
++        Tool::Gradient => reset!(o, d, gradient_style, gradient_reverse, gradient_dither, gradient_classic, fill_opacity),
++        Tool::PaintBucket => reset!(o, d, tolerance, anti_alias, contiguous, sample_all_layers, fill_opacity, bucket_fill_pattern),
++        Tool::Type => reset!(o, d, type_font, type_style, type_size, type_aa, type_align),
++        Tool::CloneStamp | Tool::Healing => reset!(o, d, clone_aligned, clone_sample),
++        Tool::SpotHealing => reset!(o, d, spot_type, sample_all_layers),
++        Tool::Dodge | Tool::Burn => reset!(o, d, tone_range, exposure, protect_tones),
++        Tool::Sponge => reset!(o, d, sponge_mode, vibrance),
++        Tool::Blur | Tool::Sharpen => reset!(o, d, strength, protect_detail, sample_all_layers),
++        Tool::Smudge => reset!(o, d, strength, finger_painting, sample_all_layers),
++        Tool::MagicEraser => reset!(o, d, tolerance, anti_alias, contiguous, sample_all_layers, magic_eraser_opacity),
++        Tool::BackgroundEraser => reset!(o, d, bg_sampling, bg_limits, bg_tolerance, bg_protect_fg),
++        Tool::Pencil => reset!(o, d, pencil_auto_erase),
++        Tool::Zoom => reset!(o, d, zoom_scrubby),
++        Tool::Pen => reset!(o, d, vector_mode, pen_kind),
++        Tool::Rectangle | Tool::EllipseShape | Tool::Triangle | Tool::Polygon | Tool::Line | Tool::CustomShape => {
++            reset!(o, d, vector_mode, shape_fill, shape_fill_color, shape_stroke_color, stroke_width, corner_radius, polygon_sides, line_weight)
++        }
++        _ => {}
++    }
++    if uses_brush(tool) {
++        app.session.tools.brush = photocraft_engine::ToolState::default().brush;
++    }
++    app.ui.status = format!("Reset {}", tool.label());
++    app.ui.status_error = false;
++}
++
++/// Reset every tool's options and the brush.
++pub fn reset_all_tools(app: &mut PhotocraftApp) {
++    app.ui.tool_options = ToolOptions::default();
++    app.session.tools.brush = photocraft_engine::ToolState::default().brush;
++    app.ui.status = "Reset all tools".into();
++    app.ui.status_error = false;
++}
++
++/// The menu under the arrow beside the tool icon.
++pub fn menu(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
++    ui.set_min_width(180.0);
++    if ui.button(tl!("Reset Tool")).clicked() {
++        let tool = app.ui.tool;
++        reset_tool(app, tool);
++        ui.close();
++    }
++    if ui.button(tl!("Reset All Tools")).clicked() {
++        reset_all_tools(app);
++        ui.close();
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn reset_tool_touches_only_that_tool() {
++        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
++        app.ui.tool_options.tolerance = 90.0;
++        app.ui.tool_options.gradient_reverse = !ToolOptions::default().gradient_reverse;
++        app.session.tools.brush.size = 333.0;
++        reset_tool(&mut app, Tool::MagicWand);
++        assert_eq!(app.ui.tool_options.tolerance, ToolOptions::default().tolerance);
++        assert_ne!(app.ui.tool_options.gradient_reverse, ToolOptions::default().gradient_reverse, "other tools keep theirs");
++        assert_eq!(app.session.tools.brush.size, 333.0, "the wand has no brush");
++        reset_tool(&mut app, Tool::Brush);
++        assert_eq!(app.session.tools.brush.size, photocraft_engine::ToolState::default().brush.size);
++        app.ui.tool_options.tolerance = 5.0;
++        reset_all_tools(&mut app);
++        assert_eq!(app.ui.tool_options, ToolOptions::default());
++    }
++}
 diff --git a/crates/ui-egui/src/type_tool.rs b/crates/ui-egui/src/type_tool.rs
 index d0e1086..3e1d501 100644
 --- a/crates/ui-egui/src/type_tool.rs

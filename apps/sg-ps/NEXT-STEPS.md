@@ -42,6 +42,15 @@ Follow-ups worth doing: Path Selection click selects the shape layer; options-ba
 
 Files: apps/sg-ps/ai/fetch.py downloads and SHA-256-checks the model and onnxruntime 1.22.0 for build.sh (web: horix/models/) and desktop/package.sh (Windows: onnxruntime.dll + models/ beside HORIX.exe; macOS: Contents/Frameworks + Contents/Resources/models). Licences: ai/LICENSE-MobileSAM.txt, ai/LICENSE-SegmentAnything.txt, onnxruntime's own files.
 
+## Round 4 (team feedback)
+
+| # | Report | Status |
+|---|--------|--------|
+| 1 | "Embedded Profile Mismatch" message on every open | Off by default now: the file opens at once and keeps its own profile (Photoshop's Preserve Embedded Profiles). Edit › Color Settings › Ask When Opening still turns it on (stored under a new key, so the old saved default doesn't come back) |
+| 2 | No colour profile in New Document | New Document › Color Profile: Working (default) or any built-in profile of the colour mode (Display P3, Adobe RGB, ProPhoto, Rec. 2020…); `file.new {"profile"}` |
+| 3 | Blur Gallery has no on-canvas controls | Path Blur arrow and end points, Tilt-Shift focus / transition lines and rotate dot, Iris and Spin ellipses with size (and Iris feather) handles, centre pins; they edit the dialog's fields so the preview follows (blur_handles.rs). Blur Gallery and Select and Mask open at the right edge, off the image |
+| 4 | Tool preset arrow has no Reset Tool | The arrow (and the tool icon) open Reset Tool / Reset All Tools (tool_reset.rs) |
+
 ## Videos requested (after the fixes ship)
 
 Status: both rendered (promo.mp4 31 s, fixes.mp4 42 s, 1920x1080 with music). Sources: HTML scenes + render.mjs + music.py in the session scratchpad; a vertical 9:16 cut is a possible follow-up.
