@@ -1,0 +1,1326 @@
+diff --git a/crates/engine/src/edit_cmds.rs b/crates/engine/src/edit_cmds.rs
+index 4b5aff3..726f34b 100644
+--- a/crates/engine/src/edit_cmds.rs
++++ b/crates/engine/src/edit_cmds.rs
+@@ -1,13 +1,14 @@
+ //! Everyday Photoshop commands: clipboard (Cut/Copy/Copy Merged/Paste/Paste in Place), Layer via
+ //! Copy/Cut, Merge Visible, Auto Tone/Contrast/Color, Toggle Last State and Transform Again.
+ 
+-use photocraft_color::PixelFormat;
++use photocraft_color::{ColorMode, PixelFormat};
+ use photocraft_doc::adjust::LevelsChannel;
+ use photocraft_doc::{Adjustment, Document, Layer, LayerContent, LayerId};
+ use photocraft_geom::Rect;
+ use photocraft_raster::Surface;
+ use serde_json::{Value, json};
+ 
++use crate::channel_cmds::ChannelTarget;
+ use crate::commands::CommandSpec;
+ use crate::{EngineError, Result, Session};
+ 
+@@ -37,6 +38,9 @@ fn has_pixels(s: &Session) -> std::result::Result<(), String> {
+ /// shape, type or Smart Object layer (Photoshop copies those as pixels too).
+ fn has_copyable(s: &Session) -> std::result::Result<(), String> {
+     let d = s.active().ok_or("no document open")?;
++    if matches!(d.channel_view.target, ChannelTarget::Alpha(i) if i < d.doc.channels.len()) {
++        return Ok(());
++    }
+     let l = d.active_layer.and_then(|id| d.doc.layer(id)).ok_or("no active layer")?;
+     if l.surface().is_some() { Ok(()) } else { Err(format!("the active layer ({}) has no pixels", l.content.kind_name())) }
+ }
+@@ -83,7 +87,133 @@ fn merged_surface(doc: &Document) -> Surface {
+     photocraft_compose::flatten_to_surface(doc, PixelFormat::new(fmt.mode, fmt.sample, true), None)
+ }
+ 
++/// One channel targeted in the Channels panel: an alpha channel, or one colour channel of the
++/// active pixel layer. Copy and Paste then work on that channel alone, as a grayscale image
++/// (Photoshop).
++fn targeted_channel(s: &Session) -> Option<ChannelTarget> {
++    let d = s.active()?;
++    match d.channel_view.target {
++        ChannelTarget::Alpha(i) if i < d.doc.channels.len() => Some(ChannelTarget::Alpha(i)),
++        ChannelTarget::Color(k) => {
++            let surf = d.active_layer.and_then(|id| d.doc.layer(id)).and_then(Layer::surface)?;
++            (k < surf.channels() - usize::from(surf.format().alpha)).then_some(ChannelTarget::Color(k))
++        }
++        _ => None,
++    }
++}
++
++/// The targeted channel's values over `area`, one per pixel. Transparent parts of a layer read as
++/// white, as the Channels panel shows them.
++fn channel_values(doc: &Document, active: Option<LayerId>, t: ChannelTarget, area: Rect) -> Option<Vec<f32>> {
++    match t {
++        ChannelTarget::Alpha(i) => {
++            let c = doc.channels.get(i)?;
++            let n = c.surface.channels();
++            Some(c.surface.read_region(area).chunks_exact(n).map(|p| p[0]).collect())
++        }
++        ChannelTarget::Color(k) => {
++            let surf = active.and_then(|id| doc.layer(id)).and_then(Layer::surface)?;
++            let n = surf.channels();
++            let alpha = surf.format().alpha;
++            Some(
++                surf.read_region(area)
++                    .chunks_exact(n)
++                    .map(|p| {
++                        let a = if alpha { p[n - 1] } else { 1.0 };
++                        p[k] * a + (1.0 - a)
++                    })
++                    .collect(),
++            )
++        }
++        ChannelTarget::Composite => None,
++    }
++}
++
++/// Copy with one channel targeted: a grayscale image of the channel inside the selection (or the
++/// whole canvas).
++fn copy_channel(s: &Session, t: ChannelTarget) -> Option<Clip> {
++    let d = s.active()?;
++    let canvas = d.doc.bounds();
++    let sel = d.doc.selection.as_ref();
++    let area = sel.map_or(canvas, |m| m.content_bounds().intersect(&canvas));
++    let fmt = PixelFormat::new(ColorMode::Grayscale, d.doc.depth, true);
++    let mut out = Surface::new(fmt);
++    if area.is_empty() {
++        return Some(Clip { surface: out, bounds: Rect::EMPTY });
++    }
++    let vals = channel_values(&d.doc, d.active_layer, t, area)?;
++    let w = area.width() as usize;
++    let mut px = Vec::with_capacity(vals.len() * 2);
++    for (i, v) in vals.into_iter().enumerate() {
++        let a = sel.map_or(1.0, |m| m.sample_channel(area.x0 + (i % w) as i32, area.y0 + (i / w) as i32, 0));
++        px.extend([v, a]);
++    }
++    out.write_region(area, &px);
++    out.prune();
++    let bounds = out.content_bounds();
++    Some(Clip { surface: out, bounds })
++}
++
++/// Paste with one channel targeted: the clipboard (as gray) goes into that channel, at its place.
++fn paste_into_channel(s: &mut Session, t: ChannelTarget, clip: Clip) -> Result<Value> {
++    let d = s.active().ok_or(EngineError::NoDocument)?;
++    let area = clip.bounds.intersect(&d.doc.bounds());
++    if area.is_empty() {
++        return Err(EngineError::Other("the pasted pixels are outside the canvas".into()));
++    }
++    let src = clip.surface.read_region(area);
++    let n = clip.surface.channels();
++    let gray = clip.surface.format().mode == ColorMode::Grayscale;
++    // Gray value and coverage of each clipboard pixel.
++    let new: Vec<(f32, f32)> = src
++        .chunks_exact(n)
++        .map(|p| {
++            let a = if clip.surface.format().alpha { p[n - 1] } else { 1.0 };
++            let v = if gray || n < 3 { p[0] } else { 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2] };
++            (v, a)
++        })
++        .collect();
++    let active = d.active_layer;
++    s.edit("Paste", move |doc, _| {
++        match t {
++            ChannelTarget::Alpha(i) => {
++                let c = doc.channels.get_mut(i).ok_or(EngineError::Other("no such channel".into()))?;
++                let m = c.surface.channels();
++                let mut px = c.surface.read_region(area);
++                for (p, (v, a)) in px.chunks_exact_mut(m).zip(&new) {
++                    p[0] = p[0] * (1.0 - a) + v * a;
++                }
++                c.surface.write_region(area, &px);
++                c.surface.prune();
++            }
++            ChannelTarget::Color(k) => {
++                let id = active.ok_or(EngineError::Other("no active layer".into()))?;
++                let surf = doc.layer_mut(id).and_then(Layer::surface_mut).ok_or(EngineError::Other("the active layer has no pixels".into()))?;
++                let m = surf.channels();
++                let mut px = surf.read_region(area);
++                for (p, (v, a)) in px.chunks_exact_mut(m).zip(&new) {
++                    p[k] = p[k] * (1.0 - a) + v * a;
++                }
++                surf.write_region(area, &px);
++                surf.prune();
++            }
++            ChannelTarget::Composite => {}
++        }
++        Ok(())
++    })?;
++    Ok(json!({"channel": true, "bounds": [area.x0, area.y0, area.width(), area.height()]}))
++}
++
+ fn copy(s: &mut Session, merged: bool) -> Result<Value> {
++    if !merged && let Some(t) = targeted_channel(s) {
++        let clip = copy_channel(s, t).ok_or(EngineError::Other("the targeted channel has no pixels".into()))?;
++        if clip.bounds.is_empty() {
++            return Err(EngineError::Other("Could not copy: the selected area is empty".into()));
++        }
++        let b = clip.bounds;
++        s.clipboard = Some(clip);
++        return Ok(json!({"bounds": [b.x0, b.y0, b.width(), b.height()], "channel": true}));
++    }
+     let d = s.active().ok_or(EngineError::NoDocument)?;
+     let canvas = d.doc.bounds();
+     let clip = if merged {
+@@ -127,6 +257,9 @@ pub(crate) fn clear_area(doc: &mut Document, id: LayerId, area: Rect, sel: Optio
+ /// on `center` (the view centre from the UI) or the canvas, unless they already overlap the canvas.
+ fn paste(s: &mut Session, p: &Value, in_place: bool) -> Result<Value> {
+     let clip = s.clipboard.clone().ok_or(EngineError::Other("the clipboard is empty".into()))?;
++    if let Some(t) = targeted_channel(s) {
++        return paste_into_channel(s, t, clip);
++    }
+     let Some(d) = s.active() else {
+         // Nothing open to paste into: the clipboard becomes a document of its own (#368).
+         return new_from_clipboard(s);
+@@ -476,6 +609,18 @@ pub fn specs() -> Vec<CommandSpec> {
+     vec![
+         spec!("edit.cut", "Cut", &["Edit"], Some("Cmd+X"), "{}", has_pixels, |s, _| {
+             let r = copy(s, false)?;
++            if let Some(t) = targeted_channel(s) {
++                // In a channel, Cut leaves the background colour behind (Photoshop).
++                let mut blank = s.clipboard.clone().ok_or(EngineError::Other("the clipboard is empty".into()))?;
++                let bg = s.tools.background;
++                let v = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2];
++                let b = blank.bounds;
++                let mut px = blank.surface.read_region(b);
++                px.chunks_exact_mut(2).for_each(|p| p[0] = v);
++                blank.surface.write_region(b, &px);
++                paste_into_channel(s, t, blank)?;
++                return Ok(r);
++            }
+             let id = active_id(s)?;
+             let bg = s.tools.background;
+             s.edit("Cut Pixels", |doc, _| clear_selected(doc, id, bg))?;
+@@ -822,4 +967,32 @@ mod tests {
+         assert!(s.active().unwrap().doc.guides.vertical.is_empty());
+         assert!(s.execute("view.moveGuide", json!({"orientation": "vertical", "index": 3, "position": 1})).is_err());
+     }
++
++    #[test]
++    fn copy_and_paste_a_channel() {
++        let mut s = Session::new();
++        s.execute("file.new", json!({"width": 20, "height": 10})).unwrap();
++        s.execute("layer.new.layer", json!({})).unwrap();
++        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 10, "height": 10})).unwrap();
++        s.execute("edit.fill", json!({"contents": "black"})).unwrap();
++        s.execute("select.deselect", json!({})).unwrap();
++        // The red channel of the layer, copied as a grayscale image.
++        s.execute("channel.target", json!({"channel": "red"})).unwrap();
++        assert!(s.execute("edit.copy", json!({})).unwrap()["channel"].as_bool().unwrap());
++        let clip = s.clipboard.clone().unwrap();
++        assert_eq!(clip.surface.format().mode, ColorMode::Grayscale);
++        assert_eq!((clip.bounds.width(), clip.bounds.height()), (20, 10));
++        // Into a new alpha channel: Paste writes into the channel, no new layer.
++        s.execute("channel.new", json!({})).unwrap();
++        let layers = s.active().unwrap().doc.layer_count();
++        s.execute("edit.paste", json!({})).unwrap();
++        let st = s.active().unwrap();
++        assert_eq!(st.doc.layer_count(), layers);
++        let ch = &st.doc.channels.last().unwrap().surface;
++        assert!(ch.sample_channel(2, 5, 0) < 0.01 && ch.sample_channel(15, 5, 0) > 0.99);
++        // Back on the composite, Paste makes a layer.
++        s.execute("channel.target", json!({"channel": "composite"})).unwrap();
++        s.execute("edit.paste", json!({})).unwrap();
++        assert_eq!(s.active().unwrap().doc.layer_count(), layers + 1);
++    }
+ }
+diff --git a/crates/engine/src/extra_cmds.rs b/crates/engine/src/extra_cmds.rs
+index 3b70b49..1f9c9f0 100644
+--- a/crates/engine/src/extra_cmds.rs
++++ b/crates/engine/src/extra_cmds.rs
+@@ -425,11 +425,20 @@ fn ungroup(s: &mut Session, p: &Value) -> Result<Value> {
+     s.edit("Ungroup Layers", |doc, active| {
+         let path = doc.path_of(id).ok_or(EngineError::NoLayer(id))?;
+         let g = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
++        let (&idx, parent) = path.split_last().ok_or(EngineError::NoLayer(id))?;
+         let LayerContent::Group(group) = &g.content else {
+-            return Err(EngineError::Other("the active layer is not a group".into()));
++            // Photoshop: Ungroup on a layer inside a group takes that layer out of it, just above the group.
++            let Some((&gidx, gparent)) = parent.split_last() else {
++                return Err(EngineError::Other("the active layer is not a group".into()));
++            };
++            let (gidx, gparent) = (gidx, gparent.to_vec());
++            let layer = doc.layer_at_mut(parent).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(id))?.remove(idx);
++            let sib = if gparent.is_empty() { &mut doc.layers } else { doc.layer_at_mut(&gparent).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(id))? };
++            sib.insert(gidx + 1, layer);
++            *active = Some(id);
++            return Ok(());
+         };
+         let children = group.children.clone();
+-        let (&idx, parent) = path.split_last().ok_or(EngineError::NoLayer(id))?;
+         let sib = if parent.is_empty() { &mut doc.layers } else { doc.layer_at_mut(parent).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(id))? };
+         sib.remove(idx);
+         let top = children.last().map(|l| l.id);
+@@ -677,9 +686,13 @@ pub fn specs() -> Vec<CommandSpec> {
+             &["Layer"],
+             Some("Cmd+Shift+G"),
+             r##"{"layer":id?}"##,
+-            |s| match active_layer(s)?.is_group() {
+-                true => Ok(()),
+-                false => Err("the active layer is not a group".into()),
++            |s| {
++                let d = s.active().ok_or("no document open")?;
++                let id = d.active_layer.ok_or("no active layer")?;
++                match d.doc.layer(id).is_some_and(Layer::is_group) || d.doc.path_of(id).is_some_and(|p| p.len() > 1) {
++                    true => Ok(()),
++                    false => Err("the active layer is not a group or in one".into()),
++                }
+             },
+             ungroup
+         ),
+@@ -908,6 +921,20 @@ mod tests {
+         assert_eq!(doc(&s).layers.len(), 2);
+     }
+ 
++    #[test]
++    fn ungroup_on_a_child_takes_it_out() {
++        let mut s = session(8);
++        let a = active(&s).id;
++        s.execute("layer.groupLayers", json!({})).unwrap();
++        let g = active(&s).id;
++        s.execute("layer.select", json!({"layer": a.0})).unwrap();
++        s.execute("layer.ungroupLayers", json!({})).unwrap();
++        let d = doc(&s);
++        assert_eq!(d.path_of(a).unwrap().len(), 1);
++        assert!(d.layer(g).unwrap().children().unwrap().is_empty());
++        assert!(d.path_of(a).unwrap()[0] > d.path_of(g).unwrap()[0]);
++    }
++
+     #[test]
+     fn reveal_all_grows_the_canvas() {
+         let mut s = session(8);
+diff --git a/crates/engine/src/retouch_cmds.rs b/crates/engine/src/retouch_cmds.rs
+index f3aed4c..9270f1b 100644
+--- a/crates/engine/src/retouch_cmds.rs
++++ b/crates/engine/src/retouch_cmds.rs
+@@ -308,6 +308,7 @@ fn healing_brush(s: &mut Session, p: &Value) -> Result<Value> {
+         let dst = if which == SampleLayers::Current { Region::read(surf, g) } else { composite_region(pre, id, which, g, fmt) };
+         let mask: Vec<bool> = cov.iter().map(|c| *c > 0.0).collect();
+         let healed = heal_region(&fmt, &src, &dst, &mask);
++        let cov: Vec<f32> = cov.iter().map(|c| heal_coverage(*c)).collect();
+         Ok(apply_coverage(surf, g, &cov, stroke.brush.opacity, sel, lock, &healed, mode))
+     })?;
+     Ok(clone_result(dmg, off, aligned, p, &stroke))
+@@ -437,10 +438,20 @@ fn spot_heal_surface(surf: &mut Surface, area: Rect, stroke: &Stroke, kind: Spot
+     let src = Region { rect: region_rect, ch, data: filled };
+     let healed = heal_region(&fmt, &src, &img, &heal_mask);
+     let dmg = bounds.intersect(&region_rect);
+-    let dmg_cov: Vec<f32> = (dmg.y0..dmg.y1).flat_map(|y| (dmg.x0..dmg.x1).map(move |x| (x, y))).map(|(x, y)| stroke_cov[img.index(x, y)]).collect();
++    let dmg_cov: Vec<f32> =
++        (dmg.y0..dmg.y1).flat_map(|y| (dmg.x0..dmg.x1).map(move |x| (x, y))).map(|(x, y)| heal_coverage(stroke_cov[img.index(x, y)])).collect();
+     apply_coverage(surf, dmg, &dmg_cov, stroke.brush.opacity, sel, lock, &healed, BlendMode::Normal)
+ }
+ 
++/// How much of the healed result replaces a pixel the brush covers by `c`. A soft brush's falloff
++/// only feathers the outer rim: the inside is healed fully, as in Photoshop. Applying the raw
++/// coverage left a ghost of the blemish under the soft part of the tip.
++fn heal_coverage(c: f32) -> f32 {
++    // Tuned on photos with synthetic blemishes (apps/sg-ps/segeval/healeval.rs): with a soft tip the
++    // error left on the blemish fell from 25 to 14 (Spot Healing) and 28 to 20 (Healing Brush), of 255.
++    (c / 0.5).min(1.0)
++}
++
+ fn spot_healing(s: &mut Session, p: &Value) -> Result<Value> {
+     const CMD: &str = "paint.spotHealing";
+     let (stroke, id) = parse_brush(s, p, CMD)?;
+diff --git a/crates/engine/src/retouch_cmds/tests.rs b/crates/engine/src/retouch_cmds/tests.rs
+index d1cda7d..310341f 100644
+--- a/crates/engine/src/retouch_cmds/tests.rs
++++ b/crates/engine/src/retouch_cmds/tests.rs
+@@ -146,6 +146,30 @@ fn healing_brush_takes_destination_colour_and_source_texture() {
+     }
+ }
+ 
++#[test]
++fn soft_brush_heals_the_whole_blemish() {
++    // A soft tip used to apply its falloff to the healed result, leaving a ghost of the spot.
++    let mut s = session(160, 120, 8, "rgb");
++    paint_layer(&mut s, |x, y| {
++        let d = ((x - 80) as f32).hypot((y - 60) as f32);
++        if d < 6.0 { [0.05, 0.03, 0.02, 1.0] } else { texture(x, y) }
++    });
++    s.execute("paint.spotHealing", json!({"points": [[80, 60]], "size": 22, "hardness": 0})).unwrap();
++    // The spot is dark: what is left of it shows as the healed pixels being darker than the texture.
++    let (mut dark, mut n) = (0.0f32, 0);
++    for y in 54..=66 {
++        for x in 74..=86 {
++            if ((x - 80) as f32).hypot((y - 60) as f32) < 6.0 {
++                let (p, t) = (rgba(&s, x, y), texture(x, y));
++                dark += (0..3).map(|c| t[c] - p[c]).sum::<f32>() / 3.0;
++                n += 1;
++            }
++        }
++    }
++    let dark = dark / n as f32;
++    assert!(dark < 0.05, "blemish left under the soft tip: {dark}");
++}
++
+ #[test]
+ fn spot_healing_removes_blemish_all_types() {
+     for (depth, kind) in [(8u64, "contentAware"), (16, "contentAware"), (32, "contentAware"), (8, "proximityMatch"), (16, "createTexture")] {
+diff --git a/crates/text/src/layout.rs b/crates/text/src/layout.rs
+index 37710f7..fb40b64 100644
+--- a/crates/text/src/layout.rs
++++ b/crates/text/src/layout.rs
+@@ -172,6 +172,9 @@ pub struct TextLayout {
+     pub px_per_pt: f32,
+     /// Vertical type: line space is turned 90° clockwise into text space.
+     pub vertical: bool,
++    /// Paragraph (box) text: some text did not fit in the box and is hidden (Photoshop marks it
++    /// with a "+" on the box's corner handle).
++    pub overflow: bool,
+ }
+ 
+ impl TextLayout {
+@@ -785,6 +788,7 @@ impl Layouter {
+             }
+             pending_space += ps.space_after_pt * k;
+         }
++        out.overflow = stop;
+         out
+     }
+ }
+diff --git a/crates/text/src/tests.rs b/crates/text/src/tests.rs
+index 0cbd3eb..e7256d5 100644
+--- a/crates/text/src/tests.rs
++++ b/crates/text/src/tests.rs
+@@ -94,6 +94,7 @@ fn box_text_wraps_inside_width() {
+     t.shape = TextShape::Box { x: 0.0, y: 0.0, width: 100.0, height: 30.0 };
+     let l2 = e.layout(&t, 72.0);
+     assert_eq!(l2.lines.len(), 2);
++    assert!(l2.overflow && !l.overflow, "hidden lines are reported");
+ }
+ 
+ #[test]
+diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
+index 31eac83..8f0234f 100644
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -747,17 +747,18 @@ fn ensure_filter_preview(app: &mut PhotocraftApp, idx: usize) -> Option<(u32, u6
+     }
+     let cmd = d.fields.get("__command")?.as_str()?.to_string();
+     let params = crate::filter_dialog::params_of(&d.fields);
++    let view = d.fields.get("__view").and_then(serde_json::Value::as_str).map(str::to_string);
+     let (doc_id, revision, doc, active) = {
+         let st = app.session.documents().get(idx)?;
+         (st.doc.id, st.revision, st.doc.clone(), st.active_layer)
+     };
+     let k = crate::proxy::factor(&doc);
+-    let hash = format!("{cmd}{params}").bytes().fold(k as u64 ^ revision.wrapping_mul(0x9e37), |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
++    let hash = format!("{cmd}{params}{view:?}").bytes().fold(k as u64 ^ revision.wrapping_mul(0x9e37), |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
+     let key = doc_id.0 ^ (1u64 << 61);
+     let fresh = matches!(&app.filter_preview, Some(p) if p.doc == doc_id && p.hash == hash);
+     if !fresh {
+         let t0 = crate::gpu_canvas::now_ms();
+-        let result = crate::filter_dialog::preview_document(&doc, active, &cmd, &params, k).map(std::sync::Arc::new);
++        let result = crate::filter_dialog::preview_document_view(&doc, active, &cmd, &params, k, view.as_deref()).map(std::sync::Arc::new);
+         if let Some(r) = &result {
+             let buf = photocraft_compose::flatten(r);
+             let t1 = crate::gpu_canvas::now_ms();
+@@ -1679,6 +1680,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+             painter.rect_stroke(img_rect, 0.0, Stroke::new(1.0, Color32::from_gray(20)), egui::StrokeKind::Outside);
+         }
+         crate::type_tool::draw_overlay(app, &painter, &xf);
++        crate::type_tool::draw_overflow_hint(app, &painter, &xf);
+         crate::transform_tool::draw_overlay(app, &painter, &xf);
+         crate::distort_ui::draw_overlay(app, &painter, &xf);
+         crate::retouch_ui::draw_source_marker(app, &painter, &xf);
+@@ -2359,11 +2361,10 @@ fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
+         Tool::Gradient => {
+             if (end[0] - d.start[0]).abs() + (end[1] - d.start[1]).abs() >= 2.0 {
+                 let o = app.ui.tool_options.clone();
+-                let fg = app.session.tools.foreground;
+-                let bg = app.session.tools.background;
++                // No colours given: the engine paints the current gradient (the options-bar picker).
+                 let _ = app.run(
+                     "paint.gradient",
+-                    json!({"from": [d.start[0], d.start[1]], "to": [end[0], end[1]], "style": o.gradient_style, "reverse": o.gradient_reverse, "dither": o.gradient_dither, "colors": [hex(fg), hex(bg)], "opacity": o.fill_opacity, "target": paint_target(app)}),
++                    json!({"from": [d.start[0], d.start[1]], "to": [end[0], end[1]], "style": o.gradient_style, "reverse": o.gradient_reverse, "dither": o.gradient_dither, "opacity": o.fill_opacity, "target": paint_target(app)}),
+                 );
+             }
+         }
+@@ -2448,12 +2449,6 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
+     json!(if (app.ui.mask_target || viewing) && has_mask { "mask" } else { "pixels" })
+ }
+ 
+-/// `#rrggbb` for an sRGB colour (the engine's colour parameter notation).
+-fn hex(c: [f32; 4]) -> String {
+-    let b = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+-    format!("#{:02x}{:02x}{:02x}", b(c[0]), b(c[1]), b(c[2]))
+-}
+-
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index 4e56932..0cb70bc 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -84,6 +84,11 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+             ui.add_space(4.0);
+             crate::widgets::hairline(ui);
+             ui.add_space(8.0);
++            // Photoshop: P flips a previewing dialog between the result and the original.
++            if fields.contains_key("__preview") && ui.memory(|m| m.focused().is_none()) && ui.input(|i| i.key_pressed(egui::Key::P) && i.modifiers.is_none()) {
++                let on = fields.get("__preview").and_then(Value::as_bool).unwrap_or(true);
++                fields.insert("__preview".into(), json!(!on));
++            }
+             match d.kind {
+                 DialogKind::NewDocument => crate::new_doc_ui::body(ui, &mut fields),
+                 DialogKind::About if fields.get("systemInfo").and_then(Value::as_bool) == Some(true) => {
+diff --git a/crates/ui-egui/src/filter_dialog.rs b/crates/ui-egui/src/filter_dialog.rs
+index 5389ea5..08dadad 100644
+--- a/crates/ui-egui/src/filter_dialog.rs
++++ b/crates/ui-egui/src/filter_dialog.rs
+@@ -144,6 +144,52 @@ pub const PREVIEWED: &[&str] = &[
+     "layer.layerStyle.scaleEffects",
+ ];
+ 
++/// Selection commands whose dialog previews the selection they make, with Select and Mask's view
++/// modes (Photoshop: Select and Mask, Select › Modify).
++pub fn selection_preview(command: &str) -> bool {
++    command == "select.refineEdge" || command.starts_with("select.modify.")
++}
++
++/// Select and Mask view modes: (value, label).
++pub const VIEWS: &[(&str, &str)] = &[("overlay", "Overlay"), ("onBlack", "On Black"), ("onWhite", "On White"), ("blackWhite", "Black & White")];
++
++/// Paint the document's selection over it as view mode `view` shows it: a top layer that tints,
++/// blacks or whites out what is not selected, or the mask itself in black and white.
++fn show_selection(doc: &mut Document, view: &str) {
++    if doc.mode != photocraft_color::ColorMode::Rgb {
++        return;
++    }
++    let area = doc.bounds();
++    if area.is_empty() {
++        return;
++    }
++    let n = (area.width() as usize) * (area.height() as usize);
++    let vals: Vec<f32> = match &doc.selection {
++        Some(s) => {
++            let c = s.channels();
++            s.read_region(area).chunks_exact(c).map(|p| p[0].clamp(0.0, 1.0)).collect()
++        }
++        None => vec![1.0; n],
++    };
++    let mut px = Vec::with_capacity(n * 4);
++    for v in vals {
++        let o = 1.0 - v;
++        px.extend(match view {
++            "onBlack" => [0.0, 0.0, 0.0, o],
++            "onWhite" => [1.0, 1.0, 1.0, o],
++            "blackWhite" => [v, v, v, 1.0],
++            // Overlay: Photoshop's red at 50% over what is not selected.
++            _ => [1.0, 0.0, 0.0, 0.5 * o],
++        });
++    }
++    let fmt = photocraft_color::PixelFormat::new(photocraft_color::ColorMode::Rgb, doc.depth, true);
++    let mut l = photocraft_doc::Layer::raster("Select and Mask view", fmt);
++    if let Some(s) = l.surface_mut() {
++        s.write_region(area, &px);
++        doc.layers.push(l);
++    }
++}
++
+ pub fn has_dialog(command: &str) -> bool {
+     // The Filter Gallery has its own full-window dialog (gallery_ui).
+     if command == "filter.filterGallery" {
+@@ -172,9 +218,12 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
+     fields.insert("__command".into(), json!(command));
+     fields.insert("__label".into(), json!(spec.label));
+     fields.insert("__filter".into(), json!(true));
+-    if command.starts_with("filter.") || PREVIEWED.contains(&command) {
++    if command.starts_with("filter.") || PREVIEWED.contains(&command) || selection_preview(command) {
+         fields.insert("__preview".into(), json!(true));
+     }
++    if selection_preview(command) {
++        fields.insert("__view".into(), json!("overlay"));
++    }
+     for p in parse_spec(spec.params) {
+         let v = match &p.kind {
+             Kind::Range { default, .. } => json!(default),
+@@ -361,6 +410,16 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+             }
+         }
+     }
++    if let Some(mut view) = f.get("__view").and_then(Value::as_str).map(str::to_string) {
++        ui.add_space(4.0);
++        ui.horizontal(|ui| {
++            ui.label(egui::RichText::new(tl!("View")).color(t.text_dim));
++            let opts: Vec<(String, &str)> = VIEWS.iter().map(|(v, l)| (v.to_string(), *l)).collect();
++            if crate::widgets::dropdown(ui, "select-mask-view", &mut view, &opts, 140.0) {
++                f.insert("__view".into(), json!(view));
++            }
++        });
++    }
+     if let Some(mut preview) = f.get("__preview").and_then(Value::as_bool) {
+         ui.add_space(4.0);
+         crate::widgets::checkbox(ui, &mut preview, tl!("Preview"));
+@@ -377,6 +436,19 @@ pub fn params_of(f: &Map<String, Value>) -> Value {
+ 
+ /// Compute a preview document: run `command` with `params` on the proxy (scaled) copy of `doc`.
+ pub fn preview_document(doc: &Document, active: Option<photocraft_doc::LayerId>, command: &str, params: &Value, k: u32) -> Option<Document> {
++    preview_document_view(doc, active, command, params, k, None)
++}
++
++/// [`preview_document`]; a selection command (see [`selection_preview`]) shows the selection it
++/// makes as view mode `view`.
++pub fn preview_document_view(
++    doc: &Document,
++    active: Option<photocraft_doc::LayerId>,
++    command: &str,
++    params: &Value,
++    k: u32,
++    view: Option<&str>,
++) -> Option<Document> {
+     let proxy = crate::proxy::proxy_document(doc, k);
+     let mut s = photocraft_engine::Session::new();
+     s.add_document(proxy, None);
+@@ -395,8 +467,21 @@ pub fn preview_document(doc: &Document, active: Option<photocraft_doc::LayerId>,
+             }
+         }
+     }
++    let selection = selection_preview(command);
++    if selection
++        && command == "select.refineEdge"
++        && let Some(o) = p.as_object_mut()
++    {
++        // Preview the refined selection itself; Output To applies on OK.
++        o.insert("output".into(), json!("selection"));
++        o.insert("decontaminate".into(), json!(false));
++    }
+     s.execute(command, p).ok()?;
+-    s.active().map(|d| (*d.doc).clone())
++    let mut out = s.active().map(|d| (*d.doc).clone())?;
++    if selection {
++        show_selection(&mut out, view.unwrap_or("overlay"));
++    }
++    Some(out)
+ }
+ 
+ /// Cached preview state on the app.
+@@ -429,6 +514,20 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn select_and_mask_previews_the_selection() {
++        let mut s = photocraft_engine::Session::new();
++        s.execute("file.new", json!({"width": 40, "height": 20})).unwrap();
++        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 20, "height": 20})).unwrap();
++        let st = s.active().unwrap();
++        let n = st.doc.layers.len();
++        let out = preview_document_view(&st.doc, st.active_layer, "select.refineEdge", &json!({"feather": 1}), 1, Some("blackWhite")).unwrap();
++        assert_eq!(out.layers.len(), n + 1, "a view layer on top");
++        let flat = photocraft_compose::flatten_to_surface(&out, photocraft_color::PixelFormat::RGBA8, None);
++        assert!(flat.sample_channel(5, 10, 0) > 0.9 && flat.sample_channel(35, 10, 0) < 0.1, "white inside, black outside");
++        assert!(selection_preview("select.modify.feather") && !selection_preview("filter.blur.gaussianBlur"));
++    }
++
+     #[test]
+     fn wide_positive_ranges_use_the_logarithmic_slider_path() {
+         assert!(uses_logarithmic_slider(0.1, 1000.0), "Gaussian Blur radius");
+diff --git a/crates/ui-egui/src/gradient_ui.rs b/crates/ui-egui/src/gradient_ui.rs
+index bdaa62a..cc80d36 100644
+--- a/crates/ui-egui/src/gradient_ui.rs
++++ b/crates/ui-egui/src/gradient_ui.rs
+@@ -563,12 +563,28 @@ pub fn paint_thumbnail(ui: &egui::Ui, layer: LayerId, f: &Fill, rect: Rect) -> b
+ }
+ 
+ /// Options-bar swatch of the current gradient (live mode uses the Gradients panel selection).
+-pub fn preset_swatch(ui: &mut egui::Ui, stops: &[(f32, [f32; 4])]) {
++/// A click opens the Gradient picker below it, as in Photoshop's options bar.
++pub fn preset_swatch(ui: &mut egui::Ui, stops: &[(f32, [f32; 4])]) -> egui::Response {
+     let t = Tokens::get(ui.ctx());
+-    let (r, resp) = ui.allocate_exact_size(vec2(96.0, 20.0), Sense::hover());
++    let (whole, resp) = ui.allocate_exact_size(vec2(114.0, 20.0), Sense::click());
++    let r = Rect::from_min_size(whole.min, vec2(96.0, 20.0));
+     paint_ramp(ui.painter(), r, |u| photocraft_algo::paint::sample_stops(stops, u));
+-    ui.painter().rect_stroke(r, 0.0, Stroke::new(1.0, t.field_border), StrokeKind::Outside);
+-    let _ = resp.on_hover_text(tl!("The current gradient (pick one in Window › Gradients)"));
++    ui.painter().rect_stroke(r, 0.0, Stroke::new(1.0, if resp.hovered() { t.accent } else { t.field_border }), StrokeKind::Outside);
++    // The picker arrow.
++    let c = pos2(whole.right() - 7.0, whole.center().y);
++    ui.painter().add(egui::Shape::convex_polygon(vec![pos2(c.x - 4.0, c.y - 2.0), pos2(c.x + 4.0, c.y - 2.0), pos2(c.x, c.y + 3.0)], t.text, Stroke::NONE));
++    resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(tl!("Click to pick a gradient"))
++}
++
++/// The options-bar gradient swatch and its picker popup (the Gradients panel's presets).
++pub fn options_picker(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
++    let (fg, bg) = (app.session.tools.foreground, app.session.tools.background);
++    let resp = preset_swatch(ui, &app.session.presets.gradient.resolve(fg, bg));
++    crate::widgets::swatch_popup(&resp).show(|ui| {
++        ui.set_width(300.0);
++        ui.set_max_height(340.0);
++        crate::preset_panels::gradients_panel(app, ui);
++    });
+ }
+ 
+ /// Live mode: style, reverse and dither changes in the options bar also edit the selected
+diff --git a/crates/ui-egui/src/layer_menu_ui.rs b/crates/ui-egui/src/layer_menu_ui.rs
+index 140b3be..b4b1d05 100644
+--- a/crates/ui-egui/src/layer_menu_ui.rs
++++ b/crates/ui-egui/src/layer_menu_ui.rs
+@@ -28,6 +28,9 @@ pub fn entries(l: &Layer, multi: bool, has_selection: bool) -> Vec<Entry> {
+     if !multi {
+         v.push(Some((tl!("Group from Layers…"), "layer.groupLayers")));
+     }
++    if !multi && l.is_group() {
++        v.push(Some((tl!("Ungroup Layers"), "layer.ungroupLayers")));
++    }
+     v.push(None);
+     v.push(Some((tl!("Quick Export As PNG"), "layer.quickExportAsPng")));
+     v.push(Some((tl!("Export As…"), "layer.exportAs")));
+@@ -62,6 +65,9 @@ pub fn entries(l: &Layer, multi: bool, has_selection: bool) -> Vec<Entry> {
+     v.push(Some((tl!("Copy Layer Style"), "layer.layerStyle.copyLayerStyle")));
+     v.push(Some((tl!("Paste Layer Style"), "layer.layerStyle.pasteLayerStyle")));
+     v.push(Some((tl!("Clear Layer Style"), "layer.layerStyle.clear")));
++    if !multi && !l.effects.items.is_empty() {
++        v.push(Some((tl!("Create Layers"), "layer.layerStyle.createLayer")));
++    }
+     v.push(None);
+     if multi {
+         v.push(Some((tl!("Merge Layers"), "layer.mergeLayers")));
+diff --git a/crates/ui-egui/src/layer_style.rs b/crates/ui-egui/src/layer_style.rs
+index 1974c9d..86929d4 100644
+--- a/crates/ui-egui/src/layer_style.rs
++++ b/crates/ui-egui/src/layer_style.rs
+@@ -1,9 +1,10 @@
+ //! Photoshop-style Layer Style dialog: effect list with checkboxes on the left, parameters on the right.
+ //! State lives in the dialog's `fields` (JSON), so automation can drive it like any other dialog.
+ 
+-use egui::{Color32, RichText, Sense, Stroke, StrokeKind, vec2};
++use egui::{Color32, Rect, RichText, Sense, Stroke, StrokeKind, pos2, vec2};
+ use photocraft_doc::effects::{FxPaint, StrokePosition};
+ use photocraft_doc::{Effect, Layer};
++use photocraft_color::ColorMode;
+ use serde_json::{Map, Value, json};
+ 
+ use crate::theme::Tokens;
+@@ -37,6 +38,66 @@ pub const KINDS: &[(&str, &str)] = &[
+     ("dropShadow", "Drop Shadow"),
+ ];
+ 
++/// Effects Photoshop lets a style hold several of (the "+" next to them), up to [`MAX_INSTANCES`].
++pub const MULTI: &[&str] = &["stroke", "innerShadow", "colorOverlay", "gradientOverlay", "dropShadow"];
++pub const MAX_INSTANCES: usize = 10;
++
++/// Dialog key of an effect instance: the first is `kind`, the next `kind#2`, `kind#3`…
++pub fn inst_key(kind: &str, i: usize) -> String {
++    if i <= 1 { kind.to_string() } else { format!("{kind}#{i}") }
++}
++
++/// `"stroke#2"` → (`"stroke"`, 2); a plain kind is instance 1.
++pub fn split_key(key: &str) -> (&str, usize) {
++    match key.split_once('#') {
++        Some((k, n)) => (k, n.parse().unwrap_or(1).max(1)),
++        None => (key, 1),
++    }
++}
++
++/// Number of instances of `kind` in the dialog (at least 1: the unchecked list entry).
++fn count(f: &Map<String, Value>, kind: &str) -> usize {
++    f.get(&format!("n:{kind}")).and_then(Value::as_u64).map_or(1, |n| n as usize).max(1)
++}
++
++/// "+": a copy of instance `i` right after it, checked and selected.
++fn add_instance(f: &mut Map<String, Value>, kind: &str, i: usize) {
++    let n = count(f, kind);
++    if n >= MAX_INSTANCES {
++        return;
++    }
++    for j in (i + 1..=n).rev() {
++        for pre in ["on:", "p:"] {
++            if let Some(v) = f.remove(&format!("{pre}{}", inst_key(kind, j))) {
++                f.insert(format!("{pre}{}", inst_key(kind, j + 1)), v);
++            }
++        }
++    }
++    let p = f.get(&format!("p:{}", inst_key(kind, i))).cloned().unwrap_or_else(|| defaults(kind));
++    f.insert(format!("p:{}", inst_key(kind, i + 1)), p);
++    f.insert(format!("on:{}", inst_key(kind, i + 1)), json!(true));
++    f.insert(format!("n:{kind}"), json!(n + 1));
++    f.insert("selected".into(), json!(inst_key(kind, i + 1)));
++}
++
++/// Delete instance `i` (only while there is more than one).
++fn remove_instance(f: &mut Map<String, Value>, kind: &str, i: usize) {
++    let n = count(f, kind);
++    if n <= 1 {
++        return;
++    }
++    for j in i..n {
++        for pre in ["on:", "p:"] {
++            match f.remove(&format!("{pre}{}", inst_key(kind, j + 1))) {
++                Some(v) => f.insert(format!("{pre}{}", inst_key(kind, j)), v),
++                None => f.remove(&format!("{pre}{}", inst_key(kind, j))),
++            };
++        }
++    }
++    f.insert(format!("n:{kind}"), json!(n - 1));
++    f.insert("selected".into(), json!(inst_key(kind, i.saturating_sub(1).max(1))));
++}
++
+ fn spec(kind: &str) -> &'static [(&'static str, &'static str, P)] {
+     const POS: &[(&str, &str)] = &[("outside", "Outside"), ("inside", "Inside"), ("center", "Center")];
+     const GSTYLE: &[(&str, &str)] = &[("linear", "Linear"), ("radial", "Radial"), ("angle", "Angle"), ("reflected", "Reflected"), ("diamond", "Diamond")];
+@@ -263,12 +324,17 @@ pub fn initial_fields(layer: &Layer, select: Option<&str>) -> Map<String, Value>
+     );
+     let mut first = None;
+     for &(kind, _) in KINDS {
+-        let existing = layer.effects.items.iter().find(|e| kind_of(e) == kind);
+-        if existing.is_some() && first.is_none() {
++        let existing: Vec<&Effect> = layer.effects.items.iter().filter(|e| kind_of(e) == kind).collect();
++        if !existing.is_empty() && first.is_none() {
+             first = Some(kind);
+         }
+-        f.insert(format!("on:{kind}"), json!(existing.is_some_and(|e| e.enabled())));
+-        f.insert(format!("p:{kind}"), existing.map(values_of).unwrap_or_else(|| defaults(kind)));
++        let n = existing.len().max(1);
++        f.insert(format!("n:{kind}"), json!(n));
++        for i in 1..=n {
++            let e = existing.get(i - 1);
++            f.insert(format!("on:{}", inst_key(kind, i)), json!(e.is_some_and(|e| e.enabled())));
++            f.insert(format!("p:{}", inst_key(kind, i)), e.map(|e| values_of(e)).unwrap_or_else(|| defaults(kind)));
++        }
+     }
+     let sel = select.or(first).unwrap_or("dropShadow");
+     f.insert("selected".into(), json!(sel));
+@@ -281,11 +347,42 @@ pub fn initial_fields(layer: &Layer, select: Option<&str>) -> Map<String, Value>
+ pub fn open(app: &mut PhotocraftApp, select: Option<&str>) -> Option<u64> {
+     let st = app.session.active()?;
+     let layer = st.doc.layer(st.active_layer?)?.clone();
++    let mode = st.doc.mode;
+     let mut f = initial_fields(&layer, select);
+     f.insert("patternList".into(), pattern_list(app));
++    add_blend_if(&mut f, &layer, mode);
+     Some(app.ui.open_dialog(crate::state::DialogKind::LayerStyle, f))
+ }
+ 
++/// Blend If channels of a document mode: (engine range index, label). Gray (index 0) is the
++/// composite; a grayscale document's one channel is index 1.
++pub fn blend_if_channels(mode: ColorMode) -> Vec<(u64, &'static str)> {
++    match mode {
++        ColorMode::Rgb | ColorMode::Indexed => vec![(0, "Gray"), (1, "Red"), (2, "Green"), (3, "Blue")],
++        ColorMode::Cmyk => vec![(0, "Gray"), (1, "Cyan"), (2, "Magenta"), (3, "Yellow"), (4, "Black")],
++        ColorMode::Lab => vec![(0, "Gray"), (1, "Lightness"), (2, "a"), (3, "b")],
++        ColorMode::Grayscale | ColorMode::Duotone => vec![(1, "Gray")],
++        _ => vec![(0, "Gray")],
++    }
++}
++
++/// The layer's Blend If ranges for every channel of the mode, as the blending options command
++/// takes them, and the channel list for the dialog's menu.
++fn add_blend_if(f: &mut Map<String, Value>, layer: &Layer, mode: ColorMode) {
++    let chans = blend_if_channels(mode);
++    let entries: Vec<Value> = chans
++        .iter()
++        .map(|(i, _)| {
++            let [this, under] = layer.blend_if.get(*i as usize);
++            json!({"channel": i, "thisLayer": this.to_bytes(), "underlying": under.to_bytes()})
++        })
++        .collect();
++    if let Some(Value::Object(bo)) = f.get_mut(&format!("p:{BLENDING}")) {
++        bo.insert("blendIf".into(), Value::Array(entries));
++    }
++    f.insert("blendIfChannels".into(), json!(chans.iter().map(|(i, l)| json!([i, l])).collect::<Vec<_>>()));
++}
++
+ /// `[[id, name], …]` of the patterns a style can use (document's, then the library's).
+ pub fn pattern_list(app: &PhotocraftApp) -> Value {
+     let mut out: Vec<Value> = Vec::new();
+@@ -314,10 +411,19 @@ fn apply(f: &Map<String, Value>, mut run: impl FnMut(&str, Value) -> Result<Valu
+     }
+     let _ = run("layer.layerStyle.clear", json!({"layer": layer}));
+     for &(kind, _) in KINDS {
+-        if f.get(&format!("on:{kind}")).and_then(Value::as_bool) == Some(true) {
+-            let mut p = f.get(&format!("p:{kind}")).cloned().unwrap_or_else(|| json!({}));
+-            p["layer"] = layer.clone();
+-            run(&format!("layer.layerStyle.{kind}"), p)?;
++        let mut added = false;
++        for i in 1..=count(f, kind) {
++            let key = inst_key(kind, i);
++            if f.get(&format!("on:{key}")).and_then(Value::as_bool) == Some(true) {
++                let mut p = f.get(&format!("p:{key}")).cloned().unwrap_or_else(|| json!({}));
++                p["layer"] = layer.clone();
++                // Later instances of the same effect are added next to the first, not over it.
++                if added {
++                    p["add"] = json!(true);
++                }
++                run(&format!("layer.layerStyle.{kind}"), p)?;
++                added = true;
++            }
+         }
+     }
+     Ok(Value::Null)
+@@ -326,7 +432,7 @@ fn apply(f: &Map<String, Value>, mut run: impl FnMut(&str, Value) -> Result<Valu
+ /// Hash of the fields that change the rendered style (not the selected page).
+ pub fn preview_hash(f: &Map<String, Value>) -> u64 {
+     f.iter()
+-        .filter(|(k, _)| k.as_str() == "layer" || k.starts_with("on:") || k.starts_with("p:"))
++        .filter(|(k, _)| k.as_str() == "layer" || k.starts_with("on:") || k.starts_with("p:") || k.starts_with("n:"))
+         .flat_map(|(k, v)| k.bytes().chain(v.to_string().into_bytes()))
+         .fold(0xcbf2_9ce4_8422_2325, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3))
+ }
+@@ -361,18 +467,51 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+                 f.insert("selected".into(), json!(BLENDING));
+             }
+             ui.add_space(4.0);
+-            for &(kind, label) in KINDS {
++            let mut op: Option<(bool, &str, usize)> = None;
++            for (kind, label, i) in KINDS.iter().flat_map(|&(kind, label)| (1..=count(f, kind)).map(move |i| (kind, label, i))).collect::<Vec<_>>() {
++                let n = count(f, kind);
++                let key_name = inst_key(kind, i);
+                 let (rect, resp) = ui.allocate_exact_size(vec2(190.0, 26.0), Sense::click());
+-                let is_sel = kind == selected;
++                let is_sel = key_name == selected;
+                 if is_sel {
+                     ui.painter().rect_filled(rect, t.radius_sm, t.row_selected.gamma_multiply(if t.pro { 1.0 } else { 0.0 }).max_alpha(t.hover));
+                 } else if resp.hovered() {
+                     ui.painter().rect_filled(rect, t.radius_sm, t.hover.gamma_multiply(0.5));
+                 }
+-                let key = format!("on:{kind}");
++                let key = format!("on:{key_name}");
+                 let mut on = f.get(&key).and_then(Value::as_bool).unwrap_or(false);
+                 let cb = egui::Rect::from_min_size(rect.min + vec2(6.0, 6.0), vec2(14.0, 14.0));
+-                let cresp = ui.interact(cb, ui.id().with(("fxcb", kind)), Sense::click());
++                let cresp = ui.interact(cb, ui.id().with(("fxcb", &key_name)), Sense::click());
++                // "+" (another one, Photoshop CC 2015+) and "−" (delete this one) at the row's end.
++                let mut hit_button = false;
++                if MULTI.contains(&kind) {
++                    let plus = Rect::from_center_size(pos2(rect.right() - 12.0, rect.center().y), vec2(18.0, 18.0));
++                    let minus = Rect::from_center_size(pos2(rect.right() - 32.0, rect.center().y), vec2(18.0, 18.0));
++                    let show = resp.hovered() || is_sel || ui.rect_contains_pointer(rect);
++                    if n < MAX_INSTANCES {
++                        let pr = ui.interact(plus, ui.id().with(("fxplus", &key_name)), Sense::click()).on_hover_text(tl!("Add another instance of this effect"));
++                        if show || pr.hovered() {
++                            let c = if pr.hovered() { t.accent } else { t.text_dim };
++                            ui.painter().line_segment([plus.center() - vec2(4.5, 0.0), plus.center() + vec2(4.5, 0.0)], Stroke::new(1.6, c));
++                            ui.painter().line_segment([plus.center() - vec2(0.0, 4.5), plus.center() + vec2(0.0, 4.5)], Stroke::new(1.6, c));
++                        }
++                        if pr.clicked() {
++                            op = Some((true, kind, i));
++                            hit_button = true;
++                        }
++                    }
++                    if n > 1 {
++                        let mr = ui.interact(minus, ui.id().with(("fxminus", &key_name)), Sense::click()).on_hover_text(tl!("Delete this effect"));
++                        if show || mr.hovered() {
++                            let c = if mr.hovered() { t.accent } else { t.text_dim };
++                            ui.painter().line_segment([minus.center() - vec2(4.5, 0.0), minus.center() + vec2(4.5, 0.0)], Stroke::new(1.6, c));
++                        }
++                        if mr.clicked() {
++                            op = Some((false, kind, i));
++                            hit_button = true;
++                        }
++                    }
++                }
+                 if on {
+                     ui.painter().rect_filled(cb, 2.0, t.accent);
+                     ui.painter().line_segment([cb.left_center() + vec2(3.0, 0.5), cb.center_bottom() + vec2(-1.0, -3.5)], Stroke::new(1.8, Color32::WHITE));
+@@ -383,30 +522,39 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+                 ui.painter().text(
+                     rect.left_center() + vec2(28.0, 0.0),
+                     egui::Align2::LEFT_CENTER,
+-                    tl!(label),
++                    if n > 1 { format!("{} {i}", tl!(label)) } else { tl!(label).to_string() },
+                     egui::FontId::proportional(12.5),
+                     if on || is_sel { t.text } else { t.text_dim },
+                 );
+-                if cresp.clicked() {
++                if hit_button {
++                    // The row's own click is the "+" / "−" one.
++                } else if cresp.clicked() {
+                     on = !on;
+                     f.insert(key, json!(on));
+-                    f.insert("selected".into(), json!(kind));
++                    f.insert("selected".into(), json!(key_name));
+                 } else if resp.clicked() {
+-                    f.insert("selected".into(), json!(kind));
++                    f.insert("selected".into(), json!(key_name));
+                     f.insert(key, json!(true));
+                 }
+             }
++            match op {
++                Some((true, kind, i)) => add_instance(f, kind, i),
++                Some((false, kind, i)) => remove_instance(f, kind, i),
++                None => {}
++            }
+         });
+         widgets::vline(ui, 330.0);
+         // Right: parameters of the selected effect.
+         ui.vertical(|ui| {
+             ui.set_width(330.0);
+-            let label = KINDS.iter().find(|k| k.0 == selected).map(|k| k.1).unwrap_or(if selected == BLENDING { "Blending Options" } else { "" });
++            let (sel_kind, _) = split_key(&selected);
++            let sel_kind = sel_kind.to_string();
++            let label = KINDS.iter().find(|k| k.0 == sel_kind).map(|k| k.1).unwrap_or(if selected == BLENDING { "Blending Options" } else { "" });
+             ui.label(RichText::new(tl!(&label)).font(crate::theme::semibold(14.0)).color(t.text));
+             ui.add_space(6.0);
+             let pkey = format!("p:{selected}");
+-            let mut p = f.get(&pkey).cloned().unwrap_or_else(|| defaults(&selected));
+-            for &(key, label, kind) in spec(&selected) {
++            let mut p = f.get(&pkey).cloned().unwrap_or_else(|| defaults(&sel_kind));
++            for &(key, label, kind) in spec(&sel_kind) {
+                 match kind {
+                     P::Slider(min, max, unit) => {
+                         let mut v = p.get(key).and_then(Value::as_f64).unwrap_or(min as f64) as f32;
+@@ -477,11 +625,133 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+                 }
+                 ui.add_space(2.0);
+             }
++            if selected == BLENDING {
++                blend_if_ui(ui, f, &mut p);
++            }
+             f.insert(pkey, p);
+         });
+     });
+ }
+ 
++/// Blending Options › Blend If: channel menu and the This Layer / Underlying Layer sliders.
++fn blend_if_ui(ui: &mut egui::Ui, f: &mut Map<String, Value>, p: &mut Value) {
++    let t = Tokens::get(ui.ctx());
++    let chans: Vec<(u64, String)> = f
++        .get("blendIfChannels")
++        .and_then(Value::as_array)
++        .map(|a| a.iter().filter_map(|e| Some((e.get(0)?.as_u64()?, e.get(1)?.as_str()?.to_string()))).collect())
++        .unwrap_or_default();
++    let Some(entries) = p.get_mut("blendIf").and_then(Value::as_array_mut) else { return };
++    if chans.is_empty() {
++        return;
++    }
++    ui.add_space(10.0);
++    ui.separator();
++    ui.add_space(4.0);
++    let mut cur = f.get("blendIfChannel").and_then(Value::as_u64).filter(|c| chans.iter().any(|(i, _)| i == c)).unwrap_or(chans[0].0);
++    ui.horizontal(|ui| {
++        ui.label(RichText::new(tl!("Blend If")).color(t.text_dim));
++        let opts: Vec<(u64, &str)> = chans.iter().map(|(i, l)| (*i, l.as_str())).collect();
++        widgets::dropdown(ui, "fx-blendif-channel", &mut cur, &opts, 120.0);
++    });
++    f.insert("blendIfChannel".into(), json!(cur));
++    let Some(entry) = entries.iter_mut().find(|e| e.get("channel").and_then(Value::as_u64) == Some(cur)) else { return };
++    for (key, label) in [("thisLayer", "This Layer:"), ("underlying", "Underlying Layer:")] {
++        let mut r = [0u8, 0, 255, 255];
++        if let Some(a) = entry.get(key).and_then(Value::as_array) {
++            for (k, v) in a.iter().take(4).enumerate() {
++                r[k] = v.as_u64().unwrap_or(0).min(255) as u8;
++            }
++        }
++        ui.add_space(4.0);
++        ui.label(RichText::new(tl!(label)).color(t.text_dim));
++        if range_slider(ui, ui.id().with(("blendif", key)), &mut r) {
++            entry[key] = json!(r);
++        }
++    }
++    ui.label(RichText::new(tl!("Alt-drag a slider to split it")).size(11.0).color(t.text_faint));
++}
++
++/// One Blend If slider: black and white points under a black-to-white ramp, each split in two
++/// halves when Alt-dragged (Photoshop). `r` = [black low, black high, white low, white high].
++fn range_slider(ui: &mut egui::Ui, id: egui::Id, r: &mut [u8; 4]) -> bool {
++    let t = Tokens::get(ui.ctx());
++    let w = ui.available_width().min(300.0);
++    let (rect, _) = ui.allocate_exact_size(vec2(w, 38.0), Sense::hover());
++    let bar = Rect::from_min_size(rect.min + vec2(7.0, 2.0), vec2(w - 14.0, 11.0));
++    let mut mesh = egui::Mesh::default();
++    mesh.colored_vertex(bar.left_top(), Color32::BLACK);
++    mesh.colored_vertex(bar.right_top(), Color32::WHITE);
++    mesh.colored_vertex(bar.right_bottom(), Color32::WHITE);
++    mesh.colored_vertex(bar.left_bottom(), Color32::BLACK);
++    mesh.add_triangle(0, 1, 2);
++    mesh.add_triangle(0, 2, 3);
++    ui.painter().add(mesh);
++    ui.painter().rect_stroke(bar, 0.0, Stroke::new(1.0, t.field_border), StrokeKind::Outside);
++    let x_of = |v: u8| bar.left() + bar.width() * f32::from(v) / 255.0;
++    let v_of = |x: f32| (((x - bar.left()) / bar.width()).clamp(0.0, 1.0) * 255.0).round() as u8;
++    let track = Rect::from_min_max(pos2(bar.left() - 7.0, bar.bottom()), pos2(bar.right() + 7.0, bar.bottom() + 12.0));
++    let resp = ui.interact(track, id, Sense::drag());
++    // Which handle a drag moves: 0..=3 one half, 4 the whole black point, 5 the whole white point.
++    let grab = id.with("grab");
++    if resp.drag_started()
++        && let Some(pos) = resp.interact_pointer_pos()
++    {
++        let alt = ui.input(|i| i.modifiers.alt);
++        let mut cands: Vec<(u8, f32)> = Vec::new();
++        for (point, (lo, hi)) in [(4u8, (0usize, 1usize)), (5, (2, 3))] {
++            if r[lo] == r[hi] {
++                // Unsplit: a plain drag moves the point, Alt-drag pulls its inner half away.
++                cands.push((if alt { if point == 4 { 1 } else { 2 } } else { point }, x_of(r[lo])));
++            } else {
++                cands.push((lo as u8, x_of(r[lo])));
++                cands.push((hi as u8, x_of(r[hi])));
++            }
++        }
++        let best = cands.iter().min_by(|a, b| (a.1 - pos.x).abs().total_cmp(&(b.1 - pos.x).abs())).map(|c| c.0).unwrap_or(4);
++        ui.ctx().data_mut(|d| d.insert_temp(grab, best));
++    }
++    let mut changed = false;
++    if resp.dragged()
++        && let (Some(pos), Some(h)) = (resp.interact_pointer_pos(), ui.ctx().data(|d| d.get_temp::<u8>(grab)))
++    {
++        let v = v_of(pos.x);
++        let before = *r;
++        match h {
++            0 => r[0] = v.min(r[1]),
++            1 => r[1] = v.clamp(r[0], r[2]),
++            2 => r[2] = v.clamp(r[1], r[3]),
++            3 => r[3] = v.max(r[2]),
++            4 => {
++                let d = r[1] - r[0];
++                let lo = v.min(r[2] - d);
++                r[0] = lo;
++                r[1] = lo + d;
++            }
++            _ => {
++                let d = r[3] - r[2];
++                let lo = v.clamp(r[1], 255 - d);
++                r[2] = lo;
++                r[3] = lo + d;
++            }
++        }
++        changed = *r != before;
++    }
++    // Triangles: black halves dark, white halves light.
++    for (k, v) in r.iter().enumerate() {
++        let x = x_of(*v);
++        let y = bar.bottom() + 1.0;
++        let fill = if k < 2 { Color32::from_gray(10) } else { Color32::from_gray(245) };
++        let tri = vec![pos2(x, y), pos2(x + 5.5, y + 9.0), pos2(x - 5.5, y + 9.0)];
++        ui.painter().add(egui::Shape::convex_polygon(tri, fill, Stroke::new(1.0, Color32::from_gray(120))));
++    }
++    let fmt = |a: u8, b: u8| if a == b { a.to_string() } else { format!("{a} / {b}") };
++    let font = egui::FontId::proportional(11.0);
++    ui.painter().text(pos2(bar.left(), rect.bottom()), egui::Align2::LEFT_BOTTOM, fmt(r[0], r[1]), font.clone(), t.text_dim);
++    ui.painter().text(pos2(bar.right(), rect.bottom()), egui::Align2::RIGHT_BOTTOM, fmt(r[2], r[3]), font, t.text_dim);
++    changed
++}
++
+ fn parse_hex(s: &str) -> Color32 {
+     let s = s.trim_start_matches('#');
+     let b = |i: usize| u8::from_str_radix(s.get(i..i + 2).unwrap_or("00"), 16).unwrap_or(0);
+@@ -540,6 +810,48 @@ mod tests {
+         assert_eq!((fx(&shown), fx(&st.doc)), (2, 0));
+     }
+ 
++    #[test]
++    fn several_strokes_and_blend_if_reach_the_layer() {
++        let mut s = photocraft_engine::Session::new();
++        s.execute("file.new", json!({"width": 32, "height": 32})).unwrap();
++        s.execute("layer.new.layer", json!({})).unwrap();
++        s.execute("layer.layerStyle.stroke", json!({"size": 2})).unwrap();
++        let st = s.active().unwrap();
++        let id = st.active_layer.unwrap();
++        let mut f = initial_fields(st.doc.layer(id).unwrap(), Some("stroke"));
++        add_blend_if(&mut f, st.doc.layer(id).unwrap(), st.doc.mode);
++        assert_eq!(f["n:stroke"], json!(1));
++        // "+" twice: three strokes; the middle one deleted again: two.
++        add_instance(&mut f, "stroke", 1);
++        assert_eq!(f["selected"], "stroke#2");
++        f.get_mut("p:stroke#2").unwrap()["size"] = json!(9);
++        add_instance(&mut f, "stroke", 2);
++        assert_eq!(count(&f, "stroke"), 3);
++        remove_instance(&mut f, "stroke", 2);
++        assert_eq!(count(&f, "stroke"), 2);
++        assert_eq!(f["p:stroke#2"]["size"], json!(9), "the third took the second's place");
++        // Blend If: underlying gray black point split 10/40.
++        f.get_mut(&format!("p:{BLENDING}")).unwrap()["blendIf"][0]["underlying"] = json!([10, 40, 255, 255]);
++        apply(&f, |id, p| s.execute(id, p).map(|_| Value::Null).map_err(|e| e.to_string())).unwrap();
++        let st = s.active().unwrap();
++        let l = st.doc.layer(id).unwrap();
++        assert_eq!(l.effects.items.iter().filter(|e| kind_of(e) == "stroke").count(), 2);
++        assert_eq!(l.blend_if.get(0)[1].to_bytes(), [10, 40, 255, 255]);
++        // Reopening shows both strokes and the split.
++        let mut g = initial_fields(l, None);
++        add_blend_if(&mut g, l, st.doc.mode);
++        assert_eq!(count(&g, "stroke"), 2);
++        assert_eq!(g[&format!("p:{BLENDING}")]["blendIf"][0]["underlying"], json!([10, 40, 255, 255]));
++    }
++
++    #[test]
++    fn instance_keys() {
++        assert_eq!(inst_key("stroke", 1), "stroke");
++        assert_eq!(inst_key("stroke", 3), "stroke#3");
++        assert_eq!(split_key("stroke#3"), ("stroke", 3));
++        assert_eq!(split_key("dropShadow"), ("dropShadow", 1));
++    }
++
+     #[test]
+     fn percent_fields_round_trip_through_the_engine() {
+         let mut s = photocraft_engine::Session::new();
+diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
+index c2389b8..445e62d 100644
+--- a/crates/ui-egui/src/panels.rs
++++ b/crates/ui-egui/src/panels.rs
+@@ -640,12 +640,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+                         if widgets::dropdown(ui, "gradient-mode", &mut classic, &[(false, "Gradient"), (true, "Classic gradient")], 118.0) {
+                             app.ui.tool_options.gradient_classic = classic;
+                         }
+-                        let (fg, bg) = (app.session.tools.foreground, app.session.tools.background);
+-                        if classic {
+-                            gradient_swatch(ui, fg, bg);
+-                        } else {
+-                            crate::gradient_ui::preset_swatch(ui, &app.session.presets.gradient.resolve(fg, bg));
+-                        }
++                        // Both modes paint the gradient picked here (Photoshop's options-bar picker).
++                        crate::gradient_ui::options_picker(app, ui);
+                         widgets::vline(ui, 22.0);
+                         ui.spacing_mut().item_spacing.x = 2.0;
+                         let before = app.ui.tool_options.clone();
+@@ -1329,17 +1325,40 @@ fn blend_options(groups: bool) -> Vec<(BlendMode, &'static str)> {
+     std::iter::once(BlendMode::PassThrough).filter(|_| groups).chain(BlendMode::LAYER_MODES).map(|m| (m, m.label())).collect()
+ }
+ 
++/// Tools whose options live in the Properties panel too.
++fn properties_tool(tool: Tool) -> bool {
++    matches!(
++        tool,
++        Tool::Rectangle | Tool::EllipseShape | Tool::Triangle | Tool::Polygon | Tool::Line | Tool::CustomShape | Tool::Pen | Tool::Type
++    )
++}
++
++/// Show the Properties panel on its Properties tab, opened.
++pub(crate) fn bring_properties(app: &mut PhotocraftApp) {
++    app.ui.panels.properties = true;
++    app.ui.dock_tabs.properties = 0;
++    app.ui.dock.set_collapsed(crate::dock::Group::Properties, false);
++}
++
+ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+     // A new active layer opens its parent groups and is scrolled into view (#152).
+     let reveal = crate::layer_reveal::track(app, ui.ctx());
+-    // SG - PS: selecting a shape or type layer brings its Properties (Fill/Stroke, Character)
+-    // to the front, even when the group was left on the Adjustments tab or collapsed.
+-    if let Some(id) = reveal
+-        && app.session.active().and_then(|s| s.doc.layer(id)).is_some_and(|l| matches!(l.content, LayerContent::Shape(_) | LayerContent::Text(_)))
+-        && Tokens::get(ui.ctx()).pro
+-    {
+-        app.ui.dock_tabs.properties = 0;
+-        app.ui.dock.set_collapsed(crate::dock::Group::Properties, false);
++    // HORIX: selecting a shape, type or gradient fill layer brings its Properties (Fill/Stroke,
++    // Character, gradient) to the front, in every theme, even when the group was closed, left on
++    // the Adjustments tab or collapsed. So does picking a shape, type or pen tool (Photoshop shows
++    // the tool's live shape / type properties there); it happens once per tool change, so closing
++    // the panel afterwards sticks.
++    let tool_key = egui::Id::new("horix-properties-tool");
++    let last_tool = ui.ctx().data(|d| d.get_temp::<Tool>(tool_key));
++    ui.ctx().data_mut(|d| d.insert_temp(tool_key, app.ui.tool));
++    let tool_wants = last_tool.is_some_and(|t| t != app.ui.tool) && properties_tool(app.ui.tool);
++    let layer_wants = reveal.is_some_and(|id| {
++        app.session.active().and_then(|s| s.doc.layer(id)).is_some_and(|l| {
++            matches!(l.content, LayerContent::Shape(_) | LayerContent::Text(_) | LayerContent::Fill(photocraft_doc::Fill::Gradient { .. }))
++        })
++    });
++    if tool_wants || layer_wants {
++        bring_properties(app);
+     }
+     let Some(st) = app.session.active() else {
+         empty(ui, tl!("No document"));
+@@ -2444,6 +2463,25 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
+         if resp.double_clicked() {
+             crate::layer_style::open(app, kind);
+         }
++        // Photoshop's right-click on the effects: Create Layers turns them into pixel layers.
++        let id = l.id.0;
++        resp.context_menu(|ui| {
++            for (label, cmd) in [
++                (tl!("Blending Options…"), "layer.layerStyle.blendingOptions"),
++                (tl!("Create Layers"), "layer.layerStyle.createLayer"),
++                (tl!("Clear Layer Style"), "layer.layerStyle.clear"),
++            ] {
++                if ui.button(label).clicked() {
++                    let _ = app.run("layer.select", json!({"layer": id}));
++                    let _ = if cmd == "layer.layerStyle.blendingOptions" {
++                        crate::layer_style::open(app, Some(crate::layer_style::BLENDING)).map(|_| Value::Null).ok_or_else(String::new)
++                    } else {
++                        app.run(cmd, json!({"layer": id}))
++                    };
++                    ui.close();
++                }
++            }
++        });
+     }
+ }
+ 
+@@ -2466,22 +2504,6 @@ fn selection_mode_buttons(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+     ui.spacing_mut().item_spacing.x = 8.0;
+ }
+ 
+-/// Gradient picker swatch (foreground → background), Photoshop options-bar style.
+-fn gradient_swatch(ui: &mut egui::Ui, a: [f32; 4], b: [f32; 4]) {
+-    let t = Tokens::get(ui.ctx());
+-    let (r, resp) = ui.allocate_exact_size(vec2(96.0, 20.0), Sense::click());
+-    let mut mesh = egui::Mesh::default();
+-    mesh.colored_vertex(r.left_top(), c32(a));
+-    mesh.colored_vertex(r.right_top(), c32(b));
+-    mesh.colored_vertex(r.right_bottom(), c32(b));
+-    mesh.colored_vertex(r.left_bottom(), c32(a));
+-    mesh.add_triangle(0, 1, 2);
+-    mesh.add_triangle(0, 2, 3);
+-    ui.painter().add(mesh);
+-    ui.painter().rect_stroke(r, 0.0, Stroke::new(1.0, t.field_border), StrokeKind::Outside);
+-    let _ = resp.on_hover_text(tl!("Click to edit the gradient"));
+-}
+-
+ #[cfg(test)]
+ mod color_tests {
+     use super::*;
+diff --git a/crates/ui-egui/src/type_tool.rs b/crates/ui-egui/src/type_tool.rs
+index d0e1086..3e1d501 100644
+--- a/crates/ui-egui/src/type_tool.rs
++++ b/crates/ui-egui/src/type_tool.rs
+@@ -6,7 +6,7 @@
+ 
+ use std::sync::Arc;
+ 
+-use egui::{Color32, Pos2, Stroke};
++use egui::{Color32, Pos2, Stroke, pos2};
+ use photocraft_doc::{Document, LayerContent, LayerId, TextLayer};
+ use photocraft_geom::{Affine, Point};
+ use photocraft_text::TextLayout;
+@@ -559,6 +559,35 @@ pub fn commit(app: &mut PhotocraftApp) {
+ }
+ 
+ /// Selection highlight, caret and text frame over the canvas.
++/// Photoshop's overset-text mark: a "+" in a square on the box's bottom-right handle, in red, for
++/// text that does not fit in the box.
++fn overflow_mark(painter: &egui::Painter, at: Pos2) {
++    let red = Color32::from_rgb(214, 60, 50);
++    let r = egui::Rect::from_center_size(at, egui::vec2(13.0, 13.0));
++    painter.rect_filled(r, 0.0, Color32::WHITE);
++    painter.rect_stroke(r, 0.0, Stroke::new(1.5, red), egui::StrokeKind::Inside);
++    let s = Stroke::new(1.8, red);
++    painter.line_segment([pos2(r.left() + 3.5, r.center().y), pos2(r.right() - 3.5, r.center().y)], s);
++    painter.line_segment([pos2(r.center().x, r.top() + 3.5), pos2(r.center().x, r.bottom() - 3.5)], s);
++}
++
++/// The overset-text mark for the active paragraph type layer while it is not being edited (the
++/// editing frame draws its own), with the Type or Move tool, as Photoshop shows it.
++pub fn draw_overflow_hint(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewXform) {
++    if app.ui.text_edit.is_some() || !matches!(app.ui.tool, crate::state::Tool::Type | crate::state::Tool::Move) {
++        return;
++    }
++    let Some(id) = app.session.active().and_then(|s| s.active_layer) else { return };
++    let Some(photocraft_doc::text::TextShape::Box { x, y, width, height }) = app.session.active().and_then(|s| text_layer(&s.doc, id).map(|t| t.shape)) else {
++        return;
++    };
++    let Some((l, aff, _)) = layout(app, id) else { return };
++    if l.overflow {
++        let p = aff.apply(Point::new((x + width) as f64, (y + height) as f64));
++        overflow_mark(painter, xf.to_screen(p.x as f32, p.y as f32));
++    }
++}
++
+ pub fn draw_overlay(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewXform) {
+     let Some(ed) = app.ui.text_edit.clone() else { return };
+     let id = LayerId(ed.layer);
+@@ -596,6 +625,9 @@ pub fn draw_overlay(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewX
+                 painter.rect_filled(r, 0.0, Color32::WHITE);
+                 painter.rect_stroke(r, 0.0, frame, egui::StrokeKind::Inside);
+             }
++            if l.overflow {
++                overflow_mark(painter, c[2]);
++            }
+         }
+         _ => {
+             for ln in &l.lines {

@@ -20,6 +20,24 @@ Kept up to date so a new session can continue where the last one stopped.
 
 Follow-ups worth doing: Path Selection click selects the shape layer; options-bar Fill edits the selected shape; Studio themes show shape Fill/Stroke; web autosave to IndexedDB.
 
+## Windows user's report (Oct 2026): patches/60-photoshop-parity.diff
+
+| # | Report | Status |
+|---|--------|--------|
+| 1 | Quick Selection results | Not changed. Tried a selection-aware Alt-stroke (stroke = hard background, cut against the selection): worse on a 60-case composite test (IoU after the correcting stroke 0.465 vs 0.541 today), so not shipped. Real step up: an on-device model (MobileSAM / BiRefNet-lite via ONNX) for Select Subject / Object Selection |
+| 2 | Select and Mask has no preview | Live preview with view modes (Overlay, On Black, On White, Black & White); also Select › Modify. Refine Edge brush not done |
+| 3 | Preview in dialogs | P toggles before / after in every previewing dialog (Photoshop) |
+| 4 | Brush lags on Windows | Not reproduced here. The surface already runs low-latency (1 frame queued) and the live stroke recomposites only its damage. Needs Help › System Info from the user's PC (GPU backend, adapter) |
+| 5 | Can't ungroup | Ungroup Layers in the layer context menu; Ungroup on a layer inside a group takes it out (Photoshop) |
+| 6 | Can't copy a channel | Copy / Cut / Paste with an alpha or colour channel targeted work on that channel as grayscale |
+| 7 | Healing results | Soft tips no longer leave a ghost (Spot Healing blemish error 25 -> 14, Healing Brush 28 -> 20, of 255; segeval/healeval.rs) |
+| 8 | Gradient controlled from the side panel | Options-bar swatch opens the gradient picker; Classic gradient paints the picked gradient too |
+| 9 | No Blend If | Blending Options: Blend If channel, This Layer / Underlying Layer sliders, Alt-drag splits |
+| 10 | One stroke only | "+" / "−" on Stroke, Inner Shadow, Colour / Gradient Overlay, Drop Shadow, up to 10 each |
+| 11 | Properties doesn't open with tools | Opens on picking a shape, type or pen tool, and on selecting shape / type / gradient layers, in every theme (was Pro themes only) |
+| 12 | No overset-text mark | Red "+" on the paragraph box corner while editing and with Type / Move on the layer |
+| 13 | Can't Create Layers from effects | In the layer context menu and the effects rows' context menu |
+
 ## Videos requested (after the fixes ship)
 
 Status: both rendered (promo.mp4 31 s, fixes.mp4 42 s, 1920x1080 with music). Sources: HTML scenes + render.mjs + music.py in the session scratchpad; a vertical 9:16 cut is a possible follow-up.
