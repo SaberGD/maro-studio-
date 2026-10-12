@@ -259,16 +259,16 @@ index 0353811..0cab42b 100644
   "thiserror 2.0.21",
   "wasm-bindgen",
 diff --git a/apps/photocraft-web/index.html b/apps/photocraft-web/index.html
-index 91efe82..35b0cae 100644
+index 91efe82..a064242 100644
 --- a/apps/photocraft-web/index.html
 +++ b/apps/photocraft-web/index.html
-@@ -404,6 +404,101 @@
+@@ -404,6 +404,100 @@
      #sgps_wl .go:disabled { opacity: .6; cursor: wait; }
      #sgps_wl .x { position: absolute; top: 8px; left: 10px; background: none; border: 0; color: #EA993F; font-size: 22px; cursor: pointer; }
    </style>
 +  <script>
 +    // HORIX AI selection: MobileSAM in the browser (onnxruntime-web, loaded on the first Quick /
-+    // Object Selection), and U²-Netp for Select Subject (loaded on its first use). The models come from ./models/; the runtime from jsDelivr. The app asks
++    // Object Selection), and IS-Net (half precision) for Select Subject (loaded on its first use). The models come from ./models/; the runtime from jsDelivr. The app asks
 +    // through window.horixAi (see web.rs WebSegmenter) and polls for results.
 +    (function () {
 +      var ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
@@ -342,11 +342,10 @@ index 91efe82..35b0cae 100644
 +        subject: function (req, rgb, side) {
 +          queue = queue.then(async function () {
 +            await runtime();
-+            if (!subj) subj = await session(MODELS + 'u2netp.onnx', false);
-+            var n = side * side, x = new Float32Array(3 * n), max = 1e-6;
-+            var mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
-+            for (var i = 0; i < rgb.length; i++) if (rgb[i] > max) max = rgb[i];
-+            for (var i = 0; i < n; i++) for (var c = 0; c < 3; c++) x[c * n + i] = (rgb[i * 3 + c] / max - mean[c]) / std[c];
++            // The GPU when the browser has WebGPU (seconds faster), else WebAssembly.
++            if (!subj) subj = await session(MODELS + 'isnet_fp16.onnx', true);
++            var n = side * side, x = new Float32Array(3 * n);
++            for (var i = 0; i < n; i++) for (var c = 0; c < 3; c++) x[c * n + i] = rgb[i * 3 + c] / 255 - 0.5;
 +            var r = await subj.run({ [subj.inputNames[0]]: new ort.Tensor('float32', x, [1, 3, side, side]) });
 +            var y = await r[subj.outputNames[0]].getData(), lo = Infinity, hi = -Infinity;
 +            for (var i = 0; i < n; i++) { if (y[i] < lo) lo = y[i]; if (y[i] > hi) hi = y[i]; }
@@ -365,7 +364,7 @@ index 91efe82..35b0cae 100644
      // SG - PS: if the app stops (an internal error or the browser running out of memory), say so
      // instead of leaving a frozen canvas, and show the technical details to send to the team.
 diff --git a/apps/photocraft-web/src/web.rs b/apps/photocraft-web/src/web.rs
-index 65937d3..0c12543 100644
+index 65937d3..12be6e0 100644
 --- a/apps/photocraft-web/src/web.rs
 +++ b/apps/photocraft-web/src/web.rs
 @@ -211,12 +211,73 @@ fn services(inbox: Inbox, ctx: egui::Context) -> Services {
@@ -380,7 +379,7 @@ index 65937d3..0c12543 100644
  const PREFS_KEY: &str = "horix.preferences";
  
 +/// HORIX AI selection in the browser: the page's `window.horixAi` (index.html) runs MobileSAM and
-+/// U²-Netp with onnxruntime-web; results are polled every frame.
++/// IS-Net with onnxruntime-web; results are polled every frame.
 +struct WebSegmenter;
 +
 +impl WebSegmenter {
@@ -436,8 +435,8 @@ index 65937d3..0c12543 100644
 +    }
 +}
 +
-+/// U²-Netp's input side (Select Subject in the browser; 4.6 MB against the desktop's IS-Net).
-+const SUBJECT_SIDE: u32 = 320;
++/// IS-Net's input side (Select Subject; the browser runs the half-precision export).
++const SUBJECT_SIDE: u32 = 1024;
 +
  fn local_storage() -> Option<web_sys::Storage> {
      web_sys::window()?.local_storage().ok().flatten()
@@ -1064,10 +1063,10 @@ index c41a41d..7d11268 100644
  pub mod content_aware;
  mod denoise;
 diff --git a/crates/algo/src/matting.rs b/crates/algo/src/matting.rs
-index f55fe2f..8fab06a 100644
+index f55fe2f..6d3f725 100644
 --- a/crates/algo/src/matting.rs
 +++ b/crates/algo/src/matting.rs
-@@ -427,6 +427,127 @@ pub fn refine_mask(sampler: &dyn Sampler, mask: &(dyn Fn(Rect) -> Vec<f32> + Syn
+@@ -427,6 +427,171 @@ pub fn refine_mask(sampler: &dyn Sampler, mask: &(dyn Fn(Rect) -> Vec<f32> + Syn
      crate::segment::trim_region(Region { bbox, mask: out })
  }
  
@@ -1088,9 +1087,42 @@ index f55fe2f..8fab06a 100644
 +}
 +
 +/// The strokes' coverage (0–1, soft 1 px rim) over their bounding box, in order: painting raises
-+/// it to the brush, erasing lowers it.
++/// it to the brush, erasing lowers it. `init` is coverage already there (Refine Hair's band).
 +pub fn brush_coverage(strokes: &[BrushStroke], canvas: Rect) -> Option<(Rect, Vec<f32>)> {
-+    let mut bbox: Option<Rect> = None;
++    coverage_over(strokes, canvas, None)
++}
++
++/// Refine Hair's band: within `r` pixels of the selection's edge (soft 1 px rim), over `content`.
++pub fn edge_band(mask: &(dyn Fn(Rect) -> Vec<f32> + Sync), content: Rect, canvas: Rect, r: f32) -> Option<(Rect, Vec<f32>)> {
++    let area = content.inflate(r.ceil() as i32 + 2).intersect(&canvas);
++    if area.is_empty() {
++        return None;
++    }
++    let (w, h) = (area.width() as usize, area.height() as usize);
++    let m = mask(area);
++    let bin: Vec<bool> = m.iter().map(|v| *v >= 0.5).collect();
++    let edge: Vec<bool> = (0..w * h)
++        .map(|i| {
++            let (x, y) = (i % w, i / w);
++            let v = bin[i];
++            (x > 0 && bin[i - 1] != v) || (x + 1 < w && bin[i + 1] != v) || (y > 0 && bin[i - w] != v) || (y + 1 < h && bin[i + w] != v)
++        })
++        .collect();
++    if !edge.iter().any(|e| *e) {
++        return None;
++    }
++    let d = edt(&edge, w, h);
++    Some((area, d.iter().map(|d| (r - d + 0.5).clamp(0.0, 1.0)).collect()))
++}
++
++/// Refine Hair's band radius on a `canvas`-sized image: 2.5% of the long side (20 px at 800 px,
++/// the width that measured best on AIM-500).
++pub fn hair_band(canvas: Rect) -> f32 {
++    (canvas.width().max(canvas.height()) as f32 * 0.025).clamp(4.0, 200.0)
++}
++
++fn coverage_over(strokes: &[BrushStroke], canvas: Rect, init: Option<(Rect, Vec<f32>)>) -> Option<(Rect, Vec<f32>)> {
++    let mut bbox: Option<Rect> = init.as_ref().map(|i| i.0);
 +    for s in strokes {
 +        let r = s.radius.max(0.5).ceil() as i32 + 1;
 +        for p in &s.points {
@@ -1104,6 +1136,14 @@ index f55fe2f..8fab06a 100644
 +    }
 +    let (w, h) = (bbox.width() as usize, bbox.height() as usize);
 +    let mut cov = vec![0.0f32; w * h];
++    if let Some((ir, iv)) = &init {
++        let iw = ir.width() as usize;
++        for y in ir.y0.max(bbox.y0)..ir.y1.min(bbox.y1) {
++            for x in ir.x0.max(bbox.x0)..ir.x1.min(bbox.x1) {
++                cov[(y - bbox.y0) as usize * w + (x - bbox.x0) as usize] = iv[(y - ir.y0) as usize * iw + (x - ir.x0) as usize];
++            }
++        }
++    }
 +    for s in strokes {
 +        let r = s.radius.max(0.5);
 +        let mut stroke = vec![0.0f32; w * h];
@@ -1141,15 +1181,18 @@ index f55fe2f..8fab06a 100644
 +
 +/// Refine Edge Brush: under the strokes, the selection `mask` is refined from the image with a
 +/// guided filter (radius [`brush_filter_radius`]); elsewhere `base` (the dialog's refined edge,
-+/// or the selection itself) is kept. Returns the combined region.
++/// or the selection itself) is kept. `hair` (Refine Hair) first covers a band along the whole
++/// edge of the selection, whose content is `content`. Returns the combined region.
 +pub fn brush_refine(
 +    sampler: &dyn Sampler,
 +    mask: &(dyn Fn(Rect) -> Vec<f32> + Sync),
 +    base: Option<&Region>,
 +    strokes: &[BrushStroke],
++    hair: Option<Rect>,
 +    canvas: Rect,
 +) -> Option<Region> {
-+    let Some((cb, cov)) = brush_coverage(strokes, canvas) else { return base.cloned() };
++    let band = hair.and_then(|content| edge_band(mask, content, canvas, hair_band(canvas)));
++    let Some((cb, cov)) = coverage_over(strokes, canvas, band) else { return base.cloned() };
 +    let r = brush_filter_radius(canvas);
 +    // The filter reads `r` pixels around every painted pixel.
 +    let area = cb.inflate(r as i32 * 2).intersect(&canvas);
@@ -1992,7 +2035,7 @@ index d1cda7d..310341f 100644
  fn spot_healing_removes_blemish_all_types() {
      for (depth, kind) in [(8u64, "contentAware"), (16, "contentAware"), (32, "contentAware"), (8, "proximityMatch"), (16, "createTexture")] {
 diff --git a/crates/engine/src/smartselect_cmds.rs b/crates/engine/src/smartselect_cmds.rs
-index d3c2024..50787b8 100644
+index d3c2024..2cba2ce 100644
 --- a/crates/engine/src/smartselect_cmds.rs
 +++ b/crates/engine/src/smartselect_cmds.rs
 @@ -130,6 +130,22 @@ fn focus_area(s: &mut Session, p: &Value) -> Result<Value> {
@@ -2018,27 +2061,30 @@ index d3c2024..50787b8 100644
  fn refine_params(p: &Value) -> RefineParams {
      RefineParams {
          radius: f(p, "radius", 0.0).clamp(0.0, 250.0),
-@@ -156,9 +172,15 @@ fn refine_edge(s: &mut Session, p: &Value) -> Result<Value> {
+@@ -156,9 +172,18 @@ fn refine_edge(s: &mut Session, p: &Value) -> Result<Value> {
      if decontaminate && matches!(output.as_str(), "selection" | "layerMask") {
          output = "newLayerWithMask".into();
      }
 +    let strokes = brush_strokes(p);
++    let hair = b(p, "refineHair", false);
      let region = with_sampler(s, b(p, "sampleAllLayers", false), |smp, doc| {
          let sel = doc.selection.as_ref()?;
 -        matting::refine_mask(smp, &matting::surface_reader(sel), sel.content_bounds(), doc.bounds(), &params)
 +        let reader = matting::surface_reader(sel);
 +        let region = matting::refine_mask(smp, &reader, sel.content_bounds(), doc.bounds(), &params);
-+        if strokes.is_empty() {
++        // Refine Hair: the brush's refinement along the selection's whole edge.
++        let hair = hair.then(|| sel.content_bounds());
++        if strokes.is_empty() && hair.is_none() {
 +            return region;
 +        }
-+        matting::brush_refine(smp, &reader, region.as_ref(), &strokes, doc.bounds())
++        matting::brush_refine(smp, &reader, region.as_ref(), &strokes, hair, doc.bounds())
      })?;
      let d = s.active().ok_or(EngineError::NoDocument)?;
      let active = d.active_layer.filter(|id| d.doc.layer(*id).is_some());
-@@ -220,6 +242,45 @@ macro_rules! spec {
+@@ -219,6 +244,45 @@ macro_rules! spec {
+     };
  }
  
- /// Smart selection command specs.
 +// ---------------------------------------------------------------------------------------------
 +// HORIX AI selection support: the model runs in the app (ui-egui `ai_segment`); these give it the
 +// pixels to analyse and store what it found.
@@ -2078,19 +2124,19 @@ index d3c2024..50787b8 100644
 +    })
 +}
 +
+ /// Smart selection command specs.
  pub fn specs() -> Vec<CommandSpec> {
      vec![
-         spec!(
-@@ -250,7 +311,7 @@ pub fn specs() -> Vec<CommandSpec> {
+@@ -250,7 +314,7 @@ pub fn specs() -> Vec<CommandSpec> {
              "select.refineEdge",
              "Refine Edge",
              [],
 -            r##"{"radius":px=0,"smartRadius":bool=false,"smooth":0..100=0,"feather":px=0,"contrast":0..100=0,"shiftEdge":-100..100=0,"decontaminate":bool=false,"amount":0..100=100,"output":"selection|layerMask|newLayer|newLayerWithMask"="selection","sampleAllLayers":bool=false}"##,
-+            r##"{"radius":px=0,"smartRadius":bool=false,"smooth":0..100=0,"feather":px=0,"contrast":0..100=0,"shiftEdge":-100..100=0,"decontaminate":bool=false,"amount":0..100=100,"output":"selection|layerMask|newLayer|newLayerWithMask"="selection","sampleAllLayers":bool=false,"brush":json}"##,
++            r##"{"radius":px=0,"smartRadius":bool=false,"smooth":0..100=0,"feather":px=0,"contrast":0..100=0,"shiftEdge":-100..100=0,"decontaminate":bool=false,"amount":0..100=100,"output":"selection|layerMask|newLayer|newLayerWithMask"="selection","sampleAllLayers":bool=false,"refineHair":bool=false,"brush":json}"##,
              has_selection,
              refine_edge
          ),
-@@ -429,6 +490,23 @@ mod tests {
+@@ -429,6 +493,34 @@ mod tests {
              .count()
      }
  
@@ -2109,6 +2155,17 @@ index d3c2024..50787b8 100644
 +        let sel = s.active().unwrap().doc.selection.clone().unwrap();
 +        assert_eq!(soft_count(&sel, 1), 0, "erased");
 +        assert!(soft_count(&sel, 16) >= 2);
++    }
++
++    #[test]
++    fn refine_hair_softens_the_whole_edge() {
++        let mut s = blurred_edge_selected();
++        s.execute("select.refineEdge", json!({"refineHair": true})).unwrap();
++        let sel = s.active().unwrap().doc.selection.clone().unwrap();
++        for y in [2, 20, 37] {
++            assert!(soft_count(&sel, y) >= 2, "row {y}");
++        }
++        assert!(sel.sample_channel(5, 20, 0) > 0.99 && sel.sample_channel(75, 20, 0) < 0.01);
 +    }
 +
      #[test]
@@ -2150,10 +2207,10 @@ index 0cbd3eb..e7256d5 100644
  #[test]
 diff --git a/crates/ui-egui/src/ai_segment.rs b/crates/ui-egui/src/ai_segment.rs
 new file mode 100644
-index 0000000..353dc27
+index 0000000..f9a7ef4
 --- /dev/null
 +++ b/crates/ui-egui/src/ai_segment.rs
-@@ -0,0 +1,776 @@
+@@ -0,0 +1,901 @@
 +//! HORIX AI selection: Quick Selection and Object Selection driven by MobileSAM (a lightweight
 +//! Segment Anything; weights Apache-2.0, ONNX export MIT), as Photoshop's selection tools are
 +//! driven by a trained model.
@@ -2166,8 +2223,8 @@ index 0000000..353dc27
 +//! correcting stroke fixes the leak instead of cutting a hole. The result is snapped to the image
 +//! edges at full resolution and combined with the selection the run started from.
 +//!
-+//! Select Subject runs a second, salient-object model (IS-Net on the desktop, U²-Netp in the
-+//! browser; Apache-2.0) on the whole image, stretched to the model's square input; its soft mask
++//! Select Subject runs a second, salient-object model (IS-Net, Apache-2.0; half precision in
++//! the browser) on the whole image, stretched to the model's square input; its soft mask
 +//! becomes the selection.
 +//!
 +//! Without the service, or when a model can't load, the classic tools run instead.
@@ -2277,6 +2334,11 @@ index 0000000..353dc27
 +    checked: Option<(DocId, u64, bool)>,
 +    subject: Option<SubjectRun>,
 +    subject_failed: Option<String>,
++    /// Object Finder: the decode in flight for the pointer, the point it was for (image pixels),
++    /// and the highlight of the object under the pointer.
++    hover_req: Option<u64>,
++    hover_pt: Option<[f32; 2]>,
++    hover_tex: Option<(egui::TextureHandle, f32)>,
 +}
 +
 +/// The AI tools can run (a model service is attached and hasn't failed).
@@ -2613,6 +2675,88 @@ index 0000000..353dc27
 +    app.ai.run.as_ref().is_some_and(|r| r.kind == Kind::Quick && r.doc == st.doc.id && r.key == key && r.revision == st.revision && r.all_layers == composite)
 +}
 +
++/// Object Selection click with Object Finder (document point): the object under it.
++pub fn object_point(app: &mut PhotocraftApp, pt: [f64; 2], mode: SelectionMode, all_layers: bool) -> bool {
++    if !begin(app, Kind::Object, all_layers, mode, false) {
++        return false;
++    }
++    let Some(r) = app.ai.run.as_mut() else { return false };
++    let s = r.step as f64;
++    let (iw, ih) = (r.img.0 as f64, r.img.1 as f64);
++    r.points.push([(pt[0] / s).clamp(0.0, iw - 1.0) as f32, (pt[1] / s).clamp(0.0, ih - 1.0) as f32]);
++    r.labels.push(1.0);
++    r.wanted = true;
++    r.fallback = None;
++    send(app);
++    true
++}
++
++/// Object Finder: highlight the object under the pointer (document point; `None` clears it).
++/// Runs only on an image already analysed for Object Selection, one decode at a time.
++pub fn hover(app: &mut PhotocraftApp, pt: Option<[f64; 2]>, zoom: f32) {
++    let Some(pt) = pt else {
++        app.ai.hover_tex = None;
++        app.ai.hover_pt = None;
++        return;
++    };
++    if !available(app) || app.ai.hover_req.is_some() || app.ai.run.as_ref().is_some_and(|r| r.wanted) || app.ai.in_flight.is_some() {
++        return;
++    }
++    let Some((key, step, w, h)) = app.ai.frame else { return };
++    if app.ai.embedded != Some(key) || app.session.active().is_none_or(|s| Some((s.doc.id, s.revision, app.ui.tool_options.sample_all_layers)) != app.ai.checked) {
++        return;
++    }
++    let p = [(pt[0] / step as f64).clamp(0.0, w as f64 - 1.0) as f32, (pt[1] / step as f64).clamp(0.0, h as f64 - 1.0) as f32];
++    // A new decode once the pointer has moved a few screen pixels.
++    let near = 4.0 / (zoom.max(0.01) * step as f32);
++    if app.ai.hover_pt.is_some_and(|q| (q[0] - p[0]).hypot(q[1] - p[1]) < near) {
++        return;
++    }
++    app.ai.next_req += 1;
++    let req = app.ai.next_req;
++    app.ai.hover_req = Some(req);
++    app.ai.hover_pt = Some(p);
++    if let Some(seg) = app.services.segmenter.as_mut() {
++        seg.decode(key, req, vec![p, [0.0, 0.0]], vec![1.0, -1.0], None);
++    }
++}
++
++/// The Object Finder highlight: a texture over the analysed square (document pixels 0 …
++/// `EMBED_SIDE × step`), drawn by the canvas.
++pub fn hover_overlay(app: &PhotocraftApp) -> Option<(egui::TextureId, f32)> {
++    app.ai.hover_tex.as_ref().map(|(t, side)| (t.id(), *side))
++}
++
++fn set_hover(app: &mut PhotocraftApp, ctx: &egui::Context, logits: &[f32], ious: &[f32]) {
++    let n = LOW * LOW;
++    let k = ious.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map_or(0, |(i, _)| i);
++    let k = if logits.len() >= (k + 1) * n { k } else { 0 };
++    let Some(low) = logits.get(k * n..(k + 1) * n) else { return };
++    let Some((_, step, w, h)) = app.ai.frame else { return };
++    let cell = EMBED_SIDE as f32 / LOW as f32;
++    let (lw, lh) = (((w as f32 / cell).ceil() as usize).min(LOW), ((h as f32 / cell).ceil() as usize).min(LOW));
++    let mut px = vec![egui::Color32::TRANSPARENT; n];
++    for y in 0..lh {
++        for x in 0..lw {
++            let v = low[y * LOW + x];
++            if v > 0.0 {
++                // Photoshop's Object Finder blue, a little transparent.
++                let a = (1.0 / (1.0 + (-v).exp()) * 120.0) as u8;
++                px[y * LOW + x] = egui::Color32::from_rgba_unmultiplied(40, 120, 255, a);
++            }
++        }
++    }
++    let img = egui::ColorImage::new([LOW, LOW], px);
++    let side = EMBED_SIDE as f32 * step as f32;
++    match app.ai.hover_tex.as_mut() {
++        Some((t, s)) => {
++            t.set(img, egui::TextureOptions::LINEAR);
++            *s = side;
++        }
++        None => app.ai.hover_tex = Some((ctx.load_texture("object-finder", img, egui::TextureOptions::LINEAR), side)),
++    }
++}
++
 +/// Object Selection box (document pixels `[x, y, w, h]`), combined with the selection by `mode`.
 +pub fn object_box(app: &mut PhotocraftApp, rect: [f64; 4], mode: SelectionMode, all_layers: bool, fallback: serde_json::Value) -> bool {
 +    if !begin(app, Kind::Object, all_layers, mode, false) {
@@ -2678,6 +2822,13 @@ index 0000000..353dc27
 +                send(app);
 +            }
 +            SegEvent::Decoded { req, logits, ious } => {
++                if app.ai.hover_req == Some(req) {
++                    app.ai.hover_req = None;
++                    if app.ai.hover_pt.is_some() {
++                        set_hover(app, ctx, &logits, &ious);
++                    }
++                    continue;
++                }
 +                if app.ai.in_flight != Some(req) {
 +                    continue;
 +                }
@@ -2694,6 +2845,8 @@ index 0000000..353dc27
 +                app.ai.failed = Some(msg.clone());
 +                app.ai.encoding = None;
 +                app.ai.in_flight = None;
++                app.ai.hover_req = None;
++                app.ai.hover_tex = None;
 +                let fallback = app.ai.run.take().and_then(|r| r.fallback);
 +                app.ui.status = format!("HORIX AI unavailable ({msg}): using the classic tool");
 +                app.ui.status_error = true;
@@ -2717,6 +2870,9 @@ index 0000000..353dc27
 +        }
 +    }
 +    prefetch(app);
++    if app.ai.hover_req.is_some() {
++        ctx.request_repaint_after(std::time::Duration::from_millis(30));
++    }
 +    if busy(app) {
 +        app.ui.status = if app.ai.subject.is_some() {
 +            "HORIX AI: finding the subject…".into()
@@ -2875,6 +3031,32 @@ index 0000000..353dc27
 +        fn subject_side(&self) -> Option<u32> {
 +            Some(16)
 +        }
++    }
++
++    #[test]
++    fn object_finder_highlights_then_a_click_selects() {
++        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services { segmenter: Some(Box::new(Mock::default())), ..Default::default() });
++        app.run("file.new", serde_json::json!({"width": 256, "height": 256})).unwrap();
++        app.ui.tool = crate::state::Tool::ObjectSelection;
++        let ctx = egui::Context::default();
++        // Picking the tool analyses the image; then the pointer gets a highlight.
++        poll(&mut app, &ctx);
++        poll(&mut app, &ctx);
++        hover(&mut app, Some([64.0, 64.0]), 1.0);
++        assert!(app.ai.hover_req.is_some());
++        poll(&mut app, &ctx);
++        assert!(hover_overlay(&app).is_some_and(|(_, side)| side == EMBED_SIDE as f32));
++        // A tiny move doesn't ask again; leaving the canvas clears it.
++        hover(&mut app, Some([65.0, 64.0]), 1.0);
++        assert!(app.ai.hover_req.is_none());
++        hover(&mut app, None, 1.0);
++        assert!(hover_overlay(&app).is_none());
++        // A click selects the object under it (the mock's square, pixels 32..96).
++        assert!(object_point(&mut app, [64.0, 64.0], SelectionMode::Replace, false));
++        poll(&mut app, &ctx);
++        poll(&mut app, &ctx);
++        let sel = app.session.active().unwrap().doc.selection.clone().unwrap();
++        assert!(sel.sample_channel(64, 64, 0) > 0.9 && sel.sample_channel(150, 150, 0) < 0.1);
 +    }
 +
 +    #[test]
@@ -3551,7 +3733,7 @@ index 0000000..356b924
 +    }
 +}
 diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
-index 31eac83..2715cee 100644
+index 31eac83..aa11640 100644
 --- a/crates/ui-egui/src/canvas.rs
 +++ b/crates/ui-egui/src/canvas.rs
 @@ -747,17 +747,18 @@ fn ensure_filter_preview(app: &mut PhotocraftApp, idx: usize) -> Option<(u32, u6
@@ -3588,10 +3770,26 @@ index 31eac83..2715cee 100644
          }
      }
      if tool == Tool::Hand && response.dragged() {
-@@ -1574,6 +1581,12 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+@@ -1574,6 +1581,28 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
          if tool == Tool::Zoom && crate::zoom_tool::drag(app, &ctx, &mut view, &xf, &buttons, response.interact_pointer_pos()) {
              (buttons.started, buttons.dragged, buttons.stopped) = (false, false, false);
          }
++        // Object Finder: the object under the pointer lights up (ai_segment.rs).
++        if tool == Tool::ObjectSelection && app.ui.tool_options.object_finder && app.drag.is_none() {
++            // Only over the image itself, as Photoshop.
++            let bounds = app.session.active().map(|s| s.doc.bounds());
++            let at = response.hover_pos().map(|p| xf.to_doc(p)).filter(|d| bounds.is_some_and(|b| b.contains(d[0].floor() as i32, d[1].floor() as i32)));
++            crate::ai_segment::hover(app, at, xf.zoom);
++            if at.is_some()
++                && let Some((tex, side)) = crate::ai_segment::hover_overlay(app)
++            {
++                let r = Rect::from_two_pos(xf.to_screen(0.0, 0.0), xf.to_screen(side, side));
++                let uv = if flip { Rect::from_min_max(pos2(1.0, 0.0), pos2(0.0, 1.0)) } else { Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)) };
++                painter.image(tex, r, uv, Color32::WHITE);
++            }
++        } else if tool != Tool::ObjectSelection {
++            crate::ai_segment::hover(app, None, xf.zoom);
++        }
 +        // The Magnetic Lasso works with clicks and plain pointer moves (magnetic_ui.rs).
 +        if tool == Tool::MagneticLasso {
 +            let mode = selection_mode(app, mods);
@@ -3601,7 +3799,7 @@ index 31eac83..2715cee 100644
          // A drag is only recognised once the pointer has moved past egui's click distance: the
          // gesture starts where the button went down, not where it is now (#123).
          let gesture_active_before = app.drag.is_some();
-@@ -1679,6 +1692,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+@@ -1679,6 +1708,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
              painter.rect_stroke(img_rect, 0.0, Stroke::new(1.0, Color32::from_gray(20)), egui::StrokeKind::Outside);
          }
          crate::type_tool::draw_overlay(app, &painter, &xf);
@@ -3609,7 +3807,7 @@ index 31eac83..2715cee 100644
          crate::transform_tool::draw_overlay(app, &painter, &xf);
          crate::distort_ui::draw_overlay(app, &painter, &xf);
          crate::retouch_ui::draw_source_marker(app, &painter, &xf);
-@@ -2359,11 +2373,10 @@ fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
+@@ -2359,11 +2389,10 @@ fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
          Tool::Gradient => {
              if (end[0] - d.start[0]).abs() + (end[1] - d.start[1]).abs() >= 2.0 {
                  let o = app.ui.tool_options.clone();
@@ -3623,7 +3821,7 @@ index 31eac83..2715cee 100644
                  );
              }
          }
-@@ -2448,12 +2461,6 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
+@@ -2448,12 +2477,6 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
      json!(if (app.ui.mask_target || viewing) && has_mask { "mask" } else { "pixels" })
  }
  
@@ -5372,7 +5570,7 @@ index 0000000..ed25c9b
 +    }
 +}
 diff --git a/crates/ui-egui/src/retouch_ui.rs b/crates/ui-egui/src/retouch_ui.rs
-index 8afb4bc..be60bbf 100644
+index 8afb4bc..4712718 100644
 --- a/crates/ui-egui/src/retouch_ui.rs
 +++ b/crates/ui-egui/src/retouch_ui.rs
 @@ -52,8 +52,11 @@ pub fn finish_stroke(app: &mut PhotocraftApp, tool: Tool, points: &[[f64; 3]], m
@@ -5389,7 +5587,17 @@ index 8afb4bc..be60bbf 100644
              return true;
          }
          _ => return false,
-@@ -89,10 +92,12 @@ pub fn finish_object_selection(app: &mut PhotocraftApp, start: [f64; 2], end: [f
+@@ -79,9 +82,6 @@ pub fn finish_stroke(app: &mut PhotocraftApp, tool: Tool, points: &[[f64; 3]], m
+ pub fn finish_object_selection(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2], mods: egui::Modifiers) {
+     let (x, y) = (start[0].min(end[0]), start[1].min(end[1]));
+     let (w, h) = ((end[0] - start[0]).abs(), (end[1] - start[1]).abs());
+-    if w < 2.0 || h < 2.0 {
+-        return;
+-    }
+     let mode = if mods.alt {
+         "subtract"
+     } else if mods.shift {
+@@ -89,10 +89,19 @@ pub fn finish_object_selection(app: &mut PhotocraftApp, start: [f64; 2], end: [f
      } else {
          "replace"
      };
@@ -5398,6 +5606,13 @@ index 8afb4bc..be60bbf 100644
 -        json!({"rect": [x.round(), y.round(), w.round(), h.round()], "mode": mode, "sampleAllLayers": app.ui.tool_options.sample_all_layers}),
 -    );
 +    let all = app.ui.tool_options.sample_all_layers;
++    if w < 2.0 || h < 2.0 {
++        // A click with Object Finder: the object under the pointer.
++        if app.ui.tool_options.object_finder {
++            crate::ai_segment::object_point(app, start, photocraft_algo::selection::SelectionMode::parse(mode), all);
++        }
++        return;
++    }
 +    let p = json!({"rect": [x.round(), y.round(), w.round(), h.round()], "mode": mode, "sampleAllLayers": all});
 +    let m = photocraft_algo::selection::SelectionMode::parse(mode);
 +    if !crate::ai_segment::object_box(app, [x, y, w, h], m, all, p.clone()) {
@@ -5406,6 +5621,24 @@ index 8afb4bc..be60bbf 100644
  }
  
  /// ⌥-click with Clone Stamp / Healing Brush sets the source.
+@@ -140,6 +149,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
+     if !tool.is_brushlike() && !matches!(tool, Tool::QuickSelection | Tool::ObjectSelection) || matches!(tool, Tool::Brush | Tool::Pencil | Tool::Eraser) {
+         return false;
+     }
++    let ai = crate::ai_segment::available(app);
+     let o = &mut app.ui.tool_options;
+     match tool {
+         Tool::SpotHealing => {
+@@ -201,6 +211,9 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
+             }
+         }
+         Tool::ObjectSelection => {
++            if ai {
++                crate::widgets::checkbox(ui, &mut o.object_finder, tl!("Object Finder"));
++            }
+             crate::widgets::checkbox(ui, &mut o.sample_all_layers, tl!("Sample All Layers"));
+             opt(ui, tl!("Drag a rectangle around the object"));
+             crate::widgets::vline(ui, 22.0);
 diff --git a/crates/ui-egui/src/shortcuts.rs b/crates/ui-egui/src/shortcuts.rs
 index 0e6863d..f4b0c39 100644
 --- a/crates/ui-egui/src/shortcuts.rs
@@ -5422,7 +5655,7 @@ index 0e6863d..f4b0c39 100644
      let editing = crate::type_tool::handle_keys(app, ctx);
      // Registry, UI and menu-catalogue shortcuts (see [`crate::shortcut_dispatch::bindings`]).
 diff --git a/crates/ui-egui/src/state.rs b/crates/ui-egui/src/state.rs
-index b33e2db..2ebbc9d 100644
+index b33e2db..6ce9e13 100644
 --- a/crates/ui-egui/src/state.rs
 +++ b/crates/ui-egui/src/state.rs
 @@ -316,6 +316,10 @@ pub struct ToolOptions {
@@ -5436,7 +5669,16 @@ index b33e2db..2ebbc9d 100644
      /// linear | radial | angle | reflected | diamond
      pub gradient_style: String,
      pub gradient_reverse: bool,
-@@ -428,6 +432,8 @@ impl Default for ToolOptions {
+@@ -352,6 +356,8 @@ pub struct ToolOptions {
+     pub finger_painting: bool,
+     /// Quick Selection enhance edge.
+     pub enhance_edge: bool,
++    /// Object Selection: highlight the object under the pointer; a click selects it.
++    pub object_finder: bool,
+     /// Pen output: "path" (work path) or "shape" (shape layer).
+     pub vector_mode: String,
+     /// Pen construction: "standard" or "curvature".
+@@ -428,6 +434,8 @@ impl Default for ToolOptions {
              sample_all_layers: false,
              feather: 0.0,
              magnetic_width: 10.0,
@@ -5445,9 +5687,17 @@ index b33e2db..2ebbc9d 100644
              gradient_style: "linear".into(),
              gradient_reverse: false,
              gradient_dither: true,
+@@ -451,6 +459,7 @@ impl Default for ToolOptions {
+             protect_detail: true,
+             finger_painting: false,
+             enhance_edge: true,
++            object_finder: true,
+             vector_mode: "path".into(),
+             pen_kind: "standard".into(),
+             shape_fill: true,
 diff --git a/crates/ui-egui/src/tool_reset.rs b/crates/ui-egui/src/tool_reset.rs
 new file mode 100644
-index 0000000..3393b91
+index 0000000..8c8f1dc
 --- /dev/null
 +++ b/crates/ui-egui/src/tool_reset.rs
 @@ -0,0 +1,115 @@
@@ -5494,7 +5744,7 @@ index 0000000..3393b91
 +        Tool::MagneticLasso => reset!(o, d, feather, anti_alias, magnetic_width, magnetic_contrast, magnetic_frequency),
 +        Tool::MagicWand => reset!(o, d, tolerance, anti_alias, contiguous, sample_all_layers),
 +        Tool::QuickSelection => reset!(o, d, sample_all_layers, enhance_edge),
-+        Tool::ObjectSelection => reset!(o, d, sample_all_layers),
++        Tool::ObjectSelection => reset!(o, d, sample_all_layers, object_finder),
 +        Tool::Move => reset!(o, d, move_auto_select, move_target, move_show_transform),
 +        Tool::Crop => reset!(o, d, crop_ratio, crop_delete),
 +        Tool::Gradient => reset!(o, d, gradient_style, gradient_reverse, gradient_dither, gradient_classic, fill_opacity),

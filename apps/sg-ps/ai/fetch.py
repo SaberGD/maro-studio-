@@ -5,7 +5,9 @@ Usage: python3 -I apps/sg-ps/ai/fetch.py <dest dir> models|web|windows|macos|lin
 
   models   the desktop apps' models: MobileSAM image encoder + mask decoder (Quick / Object
            Selection) and IS-Net general use (Select Subject, 179 MB)
-  web      the web build's models: MobileSAM, and U²-Netp for Select Subject (4.6 MB)
+  web      the web build's models: MobileSAM, and IS-Net for Select Subject converted to half
+           precision (89 MB, same accuracy: IoU 0.930 on 80 DUTS-TE photos; needs the onnx and
+           onnxruntime Python packages)
   windows  onnxruntime.dll                       (Microsoft onnxruntime 1.22.0, MIT)
   macos    libonnxruntime.dylib (universal2)
   linux    libonnxruntime.so
@@ -30,9 +32,8 @@ REMBG = "https://github.com/danielgatis/rembg/releases/download/v0.0.0/"
 FILES = {
     "mobile_sam_image_encoder.onnx": (SAM + "mobile_sam_image_encoder.onnx", "580f5fb648ea1062c0aabc26217aed56921985f03f0cbbd852bba81d760cc749"),
     "sam_mask_decoder_multi.onnx": (SAM + "sam_mask_decoder_multi.onnx", "8976b90a87ba50a6a72217a5ff994f7d25ce16f2229fcc1ed259e1294c622ffe"),
-    # IS-Net (xuebinqin/DIS) and U²-Netp (xuebinqin/U-2-Net), Apache-2.0, as exported by rembg.
+    # IS-Net (xuebinqin/DIS), Apache-2.0, as exported by rembg.
     "isnet-general-use.onnx": (REMBG + "isnet-general-use.onnx", "60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a"),
-    "u2netp.onnx": (REMBG + "u2netp.onnx", "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8"),
     "onnxruntime-win-x64-1.22.0.zip": (ORT + "onnxruntime-win-x64-1.22.0.zip", "174c616efc0271194488642a72f1a514e01487da4dfe84c49296d66e40ebe0da"),
     "onnxruntime-osx-universal2-1.22.0.tgz": (ORT + "onnxruntime-osx-universal2-1.22.0.tgz", "cfa6f6584d87555ed9f6e7e8a000d3947554d589efe3723b8bfa358cd263d03c"),
     "onnxruntime-linux-x64-1.22.0.tgz": (ORT + "onnxruntime-linux-x64-1.22.0.tgz", None),
@@ -59,6 +60,23 @@ def get(name: str) -> bytes:
     return data
 
 
+def half(name: str) -> bytes:
+    """`name` (checked by get) converted to float16 with float32 input and output, cached."""
+    src = get(name)
+    cache = Path(os.environ.get("HORIX_AI_CACHE") or ROOT / ".sgps-build" / "ai-cache")
+    out = cache / (hashlib.sha256(src).hexdigest()[:16] + "-fp16.onnx")
+    if not out.is_file():
+        import onnx  # noqa: PLC0415 (only the web build needs these)
+        from onnxruntime.transformers.float16 import convert_float_to_float16  # noqa: PLC0415
+
+        print(f"fetch: converting {name} to float16", file=sys.stderr)
+        model = convert_float_to_float16(onnx.load_from_string(src), keep_io_types=True)
+        tmp = out.with_suffix(".part")
+        onnx.save(model, str(tmp))
+        tmp.replace(out)
+    return out.read_bytes()
+
+
 def member(archive: bytes, kind: str, suffix: str) -> bytes:
     if kind == "zip":
         with zipfile.ZipFile(io.BytesIO(archive)) as z:
@@ -78,8 +96,10 @@ def main() -> None:
     dest.mkdir(parents=True, exist_ok=True)
     if what in ("models", "web"):
         sam = ("mobile_sam_image_encoder.onnx", "sam_mask_decoder_multi.onnx")
-        for n in sam + (("isnet-general-use.onnx",) if what == "models" else ("u2netp.onnx",)):
+        for n in sam + (("isnet-general-use.onnx",) if what == "models" else ()):
             (dest / n).write_bytes(get(n))
+        if what == "web":
+            (dest / "isnet_fp16.onnx").write_bytes(half("isnet-general-use.onnx"))
     elif what in ("windows", "macos", "linux"):
         name, kind, lib, out = {
             "windows": ("onnxruntime-win-x64-1.22.0.zip", "zip", "lib/onnxruntime.dll", "onnxruntime.dll"),
