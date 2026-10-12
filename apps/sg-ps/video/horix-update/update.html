@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>HORIX Update Ad</title>
+<style>
+@font-face { font-family: Cairo; font-weight: 400; src: url(a/cairo-arabic-400-normal.woff2); unicode-range: U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF; }
+@font-face { font-family: Cairo; font-weight: 600; src: url(a/cairo-arabic-600-normal.woff2); unicode-range: U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF; }
+@font-face { font-family: Cairo; font-weight: 700; src: url(a/cairo-arabic-700-normal.woff2); unicode-range: U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF; }
+@font-face { font-family: Cairo; font-weight: 800; src: url(a/cairo-arabic-800-normal.woff2); unicode-range: U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF; }
+@font-face { font-family: Cairo; font-weight: 900; src: url(a/cairo-arabic-900-normal.woff2); unicode-range: U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF; }
+@font-face { font-family: Inter; font-weight: 400; src: url(a/inter-latin-400-normal.woff2); }
+@font-face { font-family: Inter; font-weight: 500; src: url(a/inter-latin-500-normal.woff2); }
+@font-face { font-family: Inter; font-weight: 600; src: url(a/inter-latin-600-normal.woff2); }
+:root { --bg: #0E0E0F; --panel: #141415; --line: #26262A; --ivory: #F3EFE8; --mute: #96969E; --amber: #EA993F; --red: #D63C32; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+body { font-family: Inter, Cairo, sans-serif; color: var(--ivory); }
+#stage { position: absolute; inset: 0; overflow: hidden; }
+#bg { position: absolute; inset: -10%; background: radial-gradient(ellipse 60% 55% at 50% 45%, #1A1A1C 0%, #0E0E0F 60%, #09090A 100%); }
+#grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(243,239,232,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(243,239,232,.035) 1px, transparent 1px); background-size: 96px 96px; background-position: 0 12px; }
+#glow { position: absolute; width: 1400px; height: 1400px; left: 260px; top: -160px; border-radius: 50%; background: radial-gradient(circle, rgba(234,153,63,.10) 0%, rgba(234,153,63,0) 60%); }
+.sc { position: absolute; inset: 0; display: none; }
+.lat { font-family: Inter, sans-serif; direction: ltr; unicode-bidi: isolate; }
+.w { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 .04em; }
+.w > span { display: inline-block; }
+/* loader logo */
+.hx-dim path, .hx-dim polygon, .hx-dim rect { fill: rgba(243,239,232,.07); }
+.hx-dim .x { fill: rgba(214,60,50,.12); }
+.hx-lit path, .hx-lit polygon, .hx-lit rect { fill: #F3EFE8; }
+.hx-lit .x { fill: #D63C32; }
+.hx-eye { fill: #EA993F; transform-box: fill-box; transform-origin: 50% 40%; }
+#logo { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; display: none; }
+#logo .mk { position: absolute; left: 640px; top: 170px; width: 640px; }
+#lDesc { position: absolute; left: 0; right: 0; top: 740px; text-align: center; font: 500 26px Inter; letter-spacing: .42em; color: var(--mute); direction: ltr; padding-left: .42em; }
+#lTrack { position: absolute; left: 760px; width: 400px; top: 812px; height: 3px; background: rgba(243,239,232,.08); border-radius: 2px; overflow: hidden; }
+#lBar { height: 100%; width: 0; background: var(--amber); }
+#lStatus { position: absolute; left: 0; right: 0; top: 836px; text-align: center; font: 600 22px Cairo, Inter; color: var(--mute); }
+/* hud */
+#hud { position: absolute; inset: 0; pointer-events: none; }
+#hudL { position: absolute; left: 64px; top: 52px; font: 600 20px Inter; letter-spacing: .3em; direction: ltr; color: var(--ivory); }
+#hudL b { color: var(--red); font-weight: 600; }
+#hudR { position: absolute; right: 64px; top: 52px; font: 500 18px Inter; letter-spacing: .32em; direction: ltr; color: var(--mute); }
+#hudR i { font-style: normal; color: var(--amber); }
+#prog { position: absolute; left: 64px; right: 64px; bottom: 44px; height: 2px; background: rgba(243,239,232,.07); }
+#progBar { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--amber); }
+#scan { position: absolute; top: 0; bottom: 0; width: 3px; background: var(--amber); box-shadow: 0 0 40px 8px rgba(234,153,63,.45); left: -40px; }
+#flash { position: absolute; inset: 0; background: var(--ivory); opacity: 0; }
+/* intro headline */
+#s1 .kick { position: absolute; right: 0; left: 0; top: 300px; text-align: center; font: 600 24px Inter; letter-spacing: .42em; color: var(--amber); direction: ltr; padding-left: .42em; }
+#s1 h1 { position: absolute; right: 0; left: 0; top: 360px; text-align: center; font: 900 128px/1.25 Cairo, Inter; }
+#s1 h2 { position: absolute; right: 0; left: 0; top: 540px; text-align: center; font: 800 128px/1.25 Cairo, Inter; color: var(--amber); }
+#s1 .row { position: absolute; left: 0; right: 0; top: 790px; height: 40px; overflow: hidden; }
+#s1 .row div { position: absolute; white-space: nowrap; font: 500 26px Inter; letter-spacing: .28em; color: var(--mute); direction: ltr; }
+#s1 .row b { color: var(--amber); font-weight: 500; padding: 0 .9em; }
+/* feature scenes */
+.media { position: absolute; left: 80px; top: 150px; width: 1000px; height: 760px; }
+.card { position: absolute; border-radius: 14px; overflow: hidden; background: var(--panel); box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(243,239,232,.08); }
+.card img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.card.on { box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 2px var(--amber), 0 0 60px rgba(234,153,63,.18); }
+.chip { position: absolute; top: 18px; right: 18px; padding: 4px 18px 6px; border-radius: 999px; font: 700 24px Cairo, Inter; background: rgba(14,14,15,.82); color: var(--ivory); border: 1px solid rgba(243,239,232,.18); }
+.card.on .chip { background: var(--amber); color: #141415; border-color: var(--amber); }
+.cmp { position: absolute; border-radius: 14px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(243,239,232,.08); }
+.cmp img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cmp .aft { clip-path: inset(0 0 0 100%); }
+.cmp .div { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--amber); box-shadow: 0 0 24px rgba(234,153,63,.7); }
+.cmp .cl { right: auto; left: 18px; }
+.zoom { position: absolute; width: 230px; height: 230px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 3px var(--ivory), 0 20px 50px rgba(0,0,0,.6); }
+.zoom img { width: 100%; height: 133%; object-fit: cover; margin-top: -10%; }
+.txt { position: absolute; right: 80px; top: 168px; width: 640px; text-align: right; }
+.idx { font: 600 22px Inter; letter-spacing: .3em; color: var(--amber); direction: ltr; text-align: right; }
+.idx span { color: var(--mute); }
+.nm { margin-top: 18px; font: 600 74px/1.05 Inter; letter-spacing: -.02em; direction: ltr; text-align: right; }
+.ar { margin-top: 18px; font: 700 40px/1.5 Cairo, Inter; color: var(--ivory); }
+.tag { display: inline-block; margin-top: 22px; padding: 6px 18px 8px; border: 1px solid rgba(234,153,63,.5); color: var(--amber); border-radius: 999px; font: 500 20px Inter; letter-spacing: .14em; direction: ltr; }
+.stat { margin-top: 44px; }
+.big { white-space: nowrap; font: 600 132px/1 Inter; letter-spacing: -.04em; color: var(--amber); direction: ltr; text-align: right; }
+.big small { font-size: .3em; color: var(--mute); letter-spacing: 0; margin-left: 18px; }
+.bars { margin-top: 26px; }
+.brow { display: flex; align-items: center; gap: 18px; margin-top: 12px; flex-direction: row; }
+.brow .lb { width: 70px; font: 700 22px Cairo, Inter; color: var(--mute); }
+.brow .tr { flex: 1; height: 14px; background: rgba(243,239,232,.06); border-radius: 7px; overflow: hidden; direction: ltr; }
+.brow .fl { height: 100%; width: 0; border-radius: 7px; background: #4A4A50; }
+.brow.a .fl { background: var(--amber); }
+.brow .v { width: 110px; font: 600 24px Inter; direction: ltr; text-align: left; color: var(--mute); }
+.brow.a .v { color: var(--ivory); }
+.note { margin-top: 26px; font: 600 26px/1.6 Cairo, Inter; color: var(--mute); }
+.pts { margin-top: 44px; }
+.pt { display: flex; gap: 18px; align-items: baseline; font: 700 34px/1.5 Cairo, Inter; margin-top: 14px; }
+.pt i { flex: none; width: 14px; height: 14px; border-radius: 3px; background: var(--amber); transform: rotate(45deg); margin-top: 14px; }
+/* climax */
+#cx .coll { position: absolute; inset: -60px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 18px; opacity: .16; filter: grayscale(.4); }
+#cx .coll img { width: 100%; height: 400px; object-fit: cover; border-radius: 10px; }
+#cx .shade { position: absolute; inset: 0; background: radial-gradient(ellipse 55% 60% at 50% 50%, rgba(14,14,15,.92) 0%, rgba(14,14,15,.7) 60%, rgba(14,14,15,.95) 100%); }
+.st { position: absolute; inset: 0; display: none; }
+.st .n { position: absolute; left: 0; right: 0; top: 250px; text-align: center; font: 600 300px/1 Inter; letter-spacing: -.05em; color: var(--ivory); direction: ltr; }
+.st .n b { color: var(--amber); font-weight: 600; }
+.st .u { position: absolute; left: 0; right: 0; top: 580px; text-align: center; font: 600 54px Inter; direction: ltr; letter-spacing: -.01em; }
+.st .r { position: absolute; left: 0; right: 0; top: 740px; text-align: center; font: 500 28px Inter; letter-spacing: .12em; color: var(--amber); direction: ltr; }
+.st .d { position: absolute; left: 0; right: 0; top: 670px; text-align: center; font: 700 40px Cairo, Inter; color: var(--mute); }
+#dots { position: absolute; left: 0; right: 0; top: 850px; display: flex; justify-content: center; gap: 16px; direction: ltr; }
+#dots i { width: 46px; height: 4px; border-radius: 2px; background: rgba(243,239,232,.14); }
+#dots i.on { background: var(--amber); }
+/* end */
+#end .line1 { position: absolute; left: 0; right: 0; top: 770px; text-align: center; font: 600 40px Inter; letter-spacing: .32em; direction: ltr; padding-left: .32em; }
+#end .line1 b { color: var(--amber); font-weight: 600; }
+#end .ar { position: absolute; left: 0; right: 0; top: 840px; margin: 0; text-align: center; font: 700 34px Cairo, Inter; color: var(--mute); }
+#end .url { position: absolute; left: 0; right: 0; top: 918px; text-align: center; font: 500 30px Inter; direction: ltr; color: var(--ivory); letter-spacing: .04em; }
+#end .url b { color: var(--amber); font-weight: 500; }
+#end .pl { position: absolute; left: 0; right: 0; top: 972px; display: flex; justify-content: center; gap: 14px; direction: ltr; }
+#end .pl span { padding: 5px 20px 7px; border-radius: 999px; border: 1px solid rgba(243,239,232,.2); font: 500 20px Inter; letter-spacing: .18em; color: var(--mute); }
+#end .by { position: absolute; right: 64px; bottom: 74px; font: 500 18px Inter; letter-spacing: .34em; color: var(--mute); direction: ltr; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="bg"></div><div id="grid"></div><div id="glow"></div>
+
+  <div id="logo"><svg id="hxMark" viewBox="227 316 1334 1107" class="mk" style="overflow:visible" data-vx="227" data-vw="1334"><defs><clipPath id="hx_reveal"><rect id="hx_wipe" x="227" y="296" width="0" height="1147"/></clipPath></defs><g class="hx-dim"><path d="M755.48,1421.52l-168.19.57c-31.35.11-58.09-27.32-58.05-58.36l.2-149.38c.04-30.63,27.94-59.86,59.13-59.81l163.9.25c30.66.05,56.66,29.4,57.22,59.73.95,51.26,1.73,99.61-.65,150.39-1.29,27.66-25.24,56.51-53.57,56.6ZM716.18,1227.71l-96.8.05.07,122.02,96.8-.05-.07-122.02Z"/><path d="M1110.25,1422.02l-97.93.25-64.19-80.3-26.13-.93.04,81h-86.44s-.02-267.6-.02-267.6l199.81-.75c38.01-.14,69.42,21.3,73.76,60.92l-1.03,74.75c-.44,31.94-28.47,52.59-60.07,54.29l62.2,78.37ZM1018.18,1278.85l.63-52.72-95.29-.79v53.83s94.66-.31,94.66-.31Z"/><polygon points="504.46 1421.71 417.15 1421.58 417.22 1324.12 315.25 1324.24 315.16 1421.32 227.41 1421.29 227.43 1155.5 315.17 1155.51 315.22 1251.94 417.13 1251.92 417.25 1155.54 504.25 1155.43 504.46 1421.71"/><polygon points="1336.11 1422.27 1238.47 1421.82 1343.11 1288.4 1238.4 1154.46 1343.19 1154.23 1439.49 1287.53 1336.11 1422.27"/><rect x="1133.67" y="1154.4" width="86.33" height="267.58"/><polygon class="x" points="1461.57 1422.58 1405.37 1352.23 1453.39 1288.29 1408.48 1223.13 1463.97 1155.59 1560.52 1155.18 1454.2 1288.23 1558.78 1422.18 1461.57 1422.58"/><path d="M785.39,811.09c-138.61,74.24-254.27,160.38-378.31,257.86,15.29-40.89,34.87-77,56.31-113.9,13.16-22.65,26.25-43.65,41.37-64.78l53.59-74.89c58.82-74.04,123.27-142.16,197.13-201.36,33.88-27.16,67.55-50.68,105.73-69.76,12.96,57.31,54.37,97.89,110.5,110.6,83.31,18.37,157.09-24.73,225.19-70.51-94.59-67.85-209.91-117.49-318.5-152.06-87.38-27.82-173.6-50.77-263.28-69.21l-90.46-18.59c150.47-26.47,339.3-40.76,486.79-12.86,47.04,8.9,90.36,23.55,130.84,49.18,69,43.68,119.17,110.75,143.75,188,61.66,34.26,108.32,84.91,108.9,157.4-1.01,55.85-28.44,107.27-76.16,136.99,11.09-29.29,14.31-57.34.05-82.72-12.27-21.83-33.74-32.98-57.05-42.12-50.41-14.24-101.64-19.19-154.74-19.53-119.05-.75-218.12,36.8-321.63,92.24Z"/><path d="M549.15,684.7l-203.92,172.27c19.09-81.69,54.04-157.54,105.4-222.5,67.15-84.94,136.26-140.69,231.05-193.57l177.11,50.14c-45.08,19.76-84.39,41.62-125.67,65.94-64.13,39.21-122.5,82-183.97,127.73Z"/></g><g class="hx-lit" clip-path="url(#hx_reveal)"><path d="M755.48,1421.52l-168.19.57c-31.35.11-58.09-27.32-58.05-58.36l.2-149.38c.04-30.63,27.94-59.86,59.13-59.81l163.9.25c30.66.05,56.66,29.4,57.22,59.73.95,51.26,1.73,99.61-.65,150.39-1.29,27.66-25.24,56.51-53.57,56.6ZM716.18,1227.71l-96.8.05.07,122.02,96.8-.05-.07-122.02Z"/><path d="M1110.25,1422.02l-97.93.25-64.19-80.3-26.13-.93.04,81h-86.44s-.02-267.6-.02-267.6l199.81-.75c38.01-.14,69.42,21.3,73.76,60.92l-1.03,74.75c-.44,31.94-28.47,52.59-60.07,54.29l62.2,78.37ZM1018.18,1278.85l.63-52.72-95.29-.79v53.83s94.66-.31,94.66-.31Z"/><polygon points="504.46 1421.71 417.15 1421.58 417.22 1324.12 315.25 1324.24 315.16 1421.32 227.41 1421.29 227.43 1155.5 315.17 1155.51 315.22 1251.94 417.13 1251.92 417.25 1155.54 504.25 1155.43 504.46 1421.71"/><polygon points="1336.11 1422.27 1238.47 1421.82 1343.11 1288.4 1238.4 1154.46 1343.19 1154.23 1439.49 1287.53 1336.11 1422.27"/><rect x="1133.67" y="1154.4" width="86.33" height="267.58"/><polygon class="x" points="1461.57 1422.58 1405.37 1352.23 1453.39 1288.29 1408.48 1223.13 1463.97 1155.59 1560.52 1155.18 1454.2 1288.23 1558.78 1422.18 1461.57 1422.58"/><path d="M785.39,811.09c-138.61,74.24-254.27,160.38-378.31,257.86,15.29-40.89,34.87-77,56.31-113.9,13.16-22.65,26.25-43.65,41.37-64.78l53.59-74.89c58.82-74.04,123.27-142.16,197.13-201.36,33.88-27.16,67.55-50.68,105.73-69.76,12.96,57.31,54.37,97.89,110.5,110.6,83.31,18.37,157.09-24.73,225.19-70.51-94.59-67.85-209.91-117.49-318.5-152.06-87.38-27.82-173.6-50.77-263.28-69.21l-90.46-18.59c150.47-26.47,339.3-40.76,486.79-12.86,47.04,8.9,90.36,23.55,130.84,49.18,69,43.68,119.17,110.75,143.75,188,61.66,34.26,108.32,84.91,108.9,157.4-1.01,55.85-28.44,107.27-76.16,136.99,11.09-29.29,14.31-57.34.05-82.72-12.27-21.83-33.74-32.98-57.05-42.12-50.41-14.24-101.64-19.19-154.74-19.53-119.05-.75-218.12,36.8-321.63,92.24Z"/><path d="M549.15,684.7l-203.92,172.27c19.09-81.69,54.04-157.54,105.4-222.5,67.15-84.94,136.26-140.69,231.05-193.57l177.11,50.14c-45.08,19.76-84.39,41.62-125.67,65.94-64.13,39.21-122.5,82-183.97,127.73Z"/></g><path class="hx-eye" id="hxEye" d="M1103.45,574.23c-18.65,22.63-47.82,34.43-77.8,30.98-44.3-5.11-75.8-44.23-74.13-88.57,51.97,18,100.72,35.36,151.93,57.6Z"/></svg><div id="lDesc">THE VISIONARY AI EDITOR</div><div id="lTrack"><div id="lBar"></div></div><div id="lStatus"></div></div>
+
+  <div class="sc" id="s1">
+    <div class="kick">HORIX · NEW UPDATE</div>
+    <h1 id="h1">أدوات التحديد اتطوّرت</h1>
+    <h2 id="h2">والفرق بالأرقام</h2>
+    <div class="row"><div id="mq"></div></div>
+  </div>
+
+  <div id="feats"></div>
+
+  <div class="sc" id="cx">
+    <div class="coll" id="coll"></div><div class="shade"></div>
+    <div id="stats"></div>
+    <div id="dots"></div>
+  </div>
+
+  <div class="sc" id="end">
+    <div class="line1">CREATE. EDIT. <b>SEE FURTHER.</b></div>
+    <div class="ar">جرّبه دلوقتي على المتصفح أو نزّله على جهازك</div>
+    <div class="url">sabergroupacademy.com<b>/horix</b></div>
+    <div class="pl"><span>WEB</span><span>WINDOWS</span><span>macOS</span></div>
+    <div class="by">BY SABER GROUP</div>
+  </div>
+
+  <div id="hud"><div id="hudL">HORI<b>X</b></div><div id="hudR">UPDATE <i>·</i> 2026</div><div id="prog"><div id="progBar"></div></div></div>
+  <div id="scan"></div>
+  <div id="flash"></div>
+</div>
+<script src="lib.js"></script>
+<script>
+window.DURATION = 59.636;
+const B = [0.21, 2.13, 4.05, 5.97, 7.89, 9.81, 11.73, 13.65, 15.57, 17.49, 19.41, 21.33, 23.25, 25.17, 27.09, 29.01, 30.93, 32.85, 34.77, 36.69, 38.61, 40.53, 42.438, 44.358, 46.278, 48.198, 50.118, 52.038, 53.958, 55.878, 57.798];
+const BEAT = 0.48, HIT = 57.798;
+// Time since the last beat (beats lie on 0.21 + 0.48n up to the climax seam, then shift by the edit).
+function sinceBeat(t) { const o = t >= 42.438 ? 42.438 : 0.21; return t < o ? 9 : (t - o) % BEAT; }
+function punch(t, amt) { return amt * Math.exp(-sinceBeat(t) * 9); }
+
+const FEATS = [
+  { n: 1, name: 'Quick Selection', ar: 'ضربة واحدة… والذكاء الاصطناعي يفهم حدود العنصر', tag: 'AI · MobileSAM', kind: 'pair', w: 467, imgs: ['qs-before-a', 'qs-after-a'], from: 44.7, to: 72.7, delta: '+28', note: 'دقة أول ضربة على 79 صورة حقيقية، وبتوصل <bdi>86.3%</bdi> بعد 3 تصحيحات' },
+  { n: 2, name: 'Select Subject', ar: 'ضغطة واحدة تحدد الموضوع كله، بالشعر والتفاصيل', tag: 'AI · IS-NET', kind: 'pair', w: 437, imgs: ['subj-before-a', 'subj-after-a'], from: 41.6, to: 93.0, delta: '+51.4', note: 'أكتر من الضعف، على الديسكتوب والويب' },
+  { n: 3, name: 'Object Selection', ar: 'ارسم مستطيل حوالين العنصر… أو عدّي عليه بالـ Object Finder', tag: 'AI · OBJECT FINDER', kind: 'cmp', w: 934, h: 700, imgs: ['obj-before-a', 'obj-after-a'], inset: 'of-hover2', from: 63.0, to: 80.0, delta: '+17', note: 'دقة التحديد على صور حقيقية' },
+  { n: 4, name: 'Magnetic Lasso', ar: 'الخط بيلزق في الحافة وأنت ماشي، زي فوتوشوب بالظبط', tag: 'LIVE WIRE', kind: 'pair', w: 437, imgs: ['mag-live', 'mag-done'], labels: ['وأنت بترسم', 'النتيجة'], pts: ['نقط تثبيت أوتوماتيك حسب Frequency', 'Width و Contrast زي الأصلية', 'Backspace يرجع نقطة، ودبل كليك يقفل'] },
+  { n: 5, name: 'Workspace', ar: 'كل الأدوات والنوافذ ظاهرة في كل الواجهات', tag: 'ALL THEMES', kind: 'cmp', w: 1100, h: 619, imgs: ['ws-before-a', 'ws-after-a'], pts: ['Adjustments و Properties و Layers في مكانها', 'نفس الترتيب في كل Theme', 'من غير ما تدوّر على أي نافذة'] },
+  { n: 6, name: 'Refine Edge', ar: 'فرشة على الشعر والفرو، و Refine Hair بضغطة', tag: 'SELECT AND MASK', kind: 'pair', w: 467, imgs: ['rb-pre', 'rb-post'], zooms: ['rbz-pre', 'rbz-post'], from: 4.06, to: 2.59, inv: true, delta: '−36%', unitless: true, note: 'غلط حواف الشعر قل <bdi>36%</bdi> (الأقل أحسن)' },
+  { n: 7, name: 'Blur Gallery', ar: 'كذا دبوس وتحكم على الصورة نفسها', tag: 'FIELD · IRIS · TILT-SHIFT · PATH', kind: 'stack', w: 1100, h: 619, imgs: ['pins-a', 'ring-a', 't-iris', 't-tilt'], pts: ['دبابيس متعددة زي فوتوشوب', 'حلقة لقوة الـ Blur على الصورة', 'Iris و Tilt-Shift و Path Blur'] },
+  { n: 8, name: 'Color & Tools', ar: 'الصورة بتفتح على طول، من غير رسايل', tag: 'COLOR PROFILE · RESET TOOL', kind: 'stack', w: 1100, h: 619, imgs: ['t-p3', 't-new'], extra: 't-menu', pts: ['Color Profile في New Document', 'مفيش رسالة Profile Mismatch', 'Reset Tool و Reset All Tools'] },
+  { n: 9, name: 'HORIX Web', ar: 'نفس الدقة على المتصفح، ومن غير تنزيل', tag: 'WEBGPU · IS-NET', kind: 'single', w: 460, imgs: ['wsubj'], from: 74.8, to: 93.0, delta: '+18.2', note: 'Select Subject على الويب بقى بنفس موديل الديسكتوب' },
+];
+FEATS.forEach((f, i) => { f.t0 = B[4 + 2 * i]; f.t1 = B[6 + 2 * i]; });
+
+const STATS = [
+  { v: 51.4, pre: '+', unit: '', name: 'Select Subject', d: 'نقطة دقة زيادة', r: '41.6% → 93%' },
+  { v: 28, pre: '+', unit: '', name: 'Quick Selection', d: 'نقطة دقة من أول ضربة', r: '44.7% → 72.7%' },
+  { v: 17, pre: '+', unit: '', name: 'Object Selection', d: 'نقطة دقة بالذكاء الاصطناعي', r: '63% → 80%' },
+  { v: 36, pre: '−', unit: '%', name: 'Refine Hair', d: 'غلط أقل في حواف الشعر', r: '4.06 → 2.59' },
+  { v: 44, pre: '−', unit: '%', name: 'Spot Healing', d: 'أثر أقل بعد الإصلاح', r: '25 → 14' },
+  { v: 93, pre: '', unit: '%', name: 'Web + Desktop', d: 'نفس الدقة على المتصفح وويندوز وماك', r: 'SELECT SUBJECT · IS-NET' },
+];
+STATS.forEach((s, i) => { s.t0 = B[22 + i]; s.t1 = B[23 + i]; });
+
+function el(html) { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; }
+const fmt = (v, f) => (Math.abs(f.to - f.from) < 10 && !Number.isInteger(f.to) ? v.toFixed(2) : v.toFixed(1));
+
+// Build feature scenes.
+const feats = $('#feats');
+FEATS.forEach((f) => {
+  const s = el(`<div class="sc"></div>`);
+  const m = el(`<div class="media"></div>`);
+  const W = 1000, H = 760;
+  if (f.kind === 'pair') {
+    const h = 700, gap = 30, x0 = (W - (2 * f.w + gap)) / 2;
+    const lab = f.labels || ['قبل', 'بعد'];
+    f.imgs.forEach((im, j) => {
+      const c = el(`<div class="card${j ? ' on' : ''}" style="left:${x0 + j * (f.w + gap)}px;top:${(H - h) / 2}px;width:${f.w}px;height:${h}px"><img src="a/${im}.jpg"><div class="chip">${lab[j]}</div></div>`);
+      m.appendChild(c);
+    });
+    if (f.zooms) f.zooms.forEach((z, j) => m.appendChild(el(`<div class="zoom" style="left:${x0 + j * (f.w + gap) + f.w / 2 - 115}px;top:${(H + 700) / 2 - 200}px"><img src="a/${z}.jpg"></div>`)));
+  } else if (f.kind === 'cmp') {
+    m.appendChild(el(`<div class="cmp" style="left:${(W - f.w) / 2}px;top:${(H - f.h) / 2}px;width:${f.w}px;height:${f.h}px"><img src="a/${f.imgs[0]}.jpg"><img class="aft" src="a/${f.imgs[1]}.jpg"><div class="div"></div><div class="chip cl">قبل</div><div class="chip ca" style="background:var(--amber);color:#141415;border-color:var(--amber)">بعد</div></div>`));
+    if (f.inset) m.appendChild(el(`<div class="card on ins" style="left:-30px;top:${H - 430}px;width:262px;height:420px"><img src="a/${f.inset}.jpg"><div class="chip">Object Finder</div></div>`));
+  } else if (f.kind === 'stack') {
+    f.imgs.forEach((im) => m.appendChild(el(`<div class="card stk" style="left:${(W - f.w) / 2}px;top:${(H - f.h) / 2}px;width:${f.w}px;height:${f.h}px"><img src="a/${im}.jpg"></div>`)));
+    if (f.extra) m.appendChild(el(`<div class="card on ext" style="left:-20px;top:${H - 250}px;width:520px;height:220px"><img src="a/${f.extra}.jpg"></div>`));
+  } else {
+    m.appendChild(el(`<div class="card on" style="left:${(W - f.w) / 2}px;top:${(H - 700) / 2}px;width:${f.w}px;height:700px"><img src="a/${f.imgs[0]}.jpg" style="object-position:50% 50%"><div class="chip">Web</div></div>`));
+  }
+  s.appendChild(m);
+  let right = '';
+  if (f.from != null) {
+    const max = Math.max(f.from, f.to);
+    right = `<div class="stat"><div class="big"><span class="cnt"></span><small>${f.delta}${f.unitless ? '' : ' pts'}</small></div>
+      <div class="bars"><div class="brow"><div class="lb">قبل</div><div class="tr"><div class="fl" data-w="${(f.from / max) * 100}"></div></div><div class="v">${f.from}${f.unitless ? '' : '%'}</div></div>
+      <div class="brow a"><div class="lb">بعد</div><div class="tr"><div class="fl" data-w="${(f.to / max) * 100}"></div></div><div class="v">${f.to}${f.unitless ? '' : '%'}</div></div></div>
+      <div class="note">${f.note}</div></div>`;
+  } else {
+    right = `<div class="pts">${f.pts.map((p) => `<div class="pt"><i></i><span>${p}</span></div>`).join('')}</div>`;
+  }
+  s.appendChild(el(`<div class="txt"><div class="idx">${String(f.n).padStart(2, '0')} <span>/ 09</span></div><div class="nm">${f.name}</div><div class="ar">${f.ar}</div><div class="tag">${f.tag}</div>${right}</div>`));
+  feats.appendChild(s);
+  f.el = s;
+  f.words = splitWords(s.querySelector('.ar'));
+});
+
+// Climax.
+const coll = $('#coll');
+['qs-after-a', 'subj-after-a', 'obj-after-a', 'rb-post', 'wsubj', 'mag-done', 'of-hover', 'subj-before-a', 'qs-before-a', 'rb-pre', 'of-click', 'mag-live', 'obj-before-a', 'of-hover2', 'subj-after-a', 'qs-after-a', 'rb-post', 'wsubj']
+  .forEach((im) => coll.appendChild(el(`<img src="a/${im}.jpg">`)));
+STATS.forEach((s) => {
+  const d = el(`<div class="st"><div class="n"><b>${s.pre}</b><span class="cnt"></span>${s.unit}</div><div class="u">${s.name}</div><div class="d">${s.d}</div><div class="r">${s.r}</div></div>`);
+  $('#stats').appendChild(d); s.el = d; s.words = splitWords(d.querySelector('.d'));
+  $('#dots').appendChild(el('<i></i>'));
+});
+
+const mq = $('#mq');
+mq.innerHTML = Array(3).fill(['QUICK SELECTION', 'SELECT SUBJECT', 'OBJECT FINDER', 'MAGNETIC LASSO', 'REFINE EDGE', 'REFINE HAIR', 'BLUR GALLERY', 'COLOR PROFILES', 'RESET TOOL'].join('<b>·</b>')).join('<b>·</b>');
+const h1w = splitWords($('#h1')), h2w = splitWords($('#h2'));
+const endw = splitWords($('#end .ar'));
+
+function show(e, on) { e.style.display = on ? 'block' : 'none'; }
+
+function logo(t) {
+  // Intro: the HORIX loading screen (default-theme neutral, amber bar), stepping on the beats; eye opens on 3.57.
+  // End: the same lockup, already lit.
+  const L = $('#logo');
+  const intro = t < 4.2, end = t >= 53.9;
+  show(L, intro || end);
+  if (!intro && !end) return;
+  const mk = L.querySelector('.mk'), vw = 1334;
+  if (intro) {
+    const steps = [[0.69, 0.14], [1.17, 0.3], [1.65, 0.46], [2.13, 0.62], [2.61, 0.78], [3.09, 1]];
+    let p = 0, prev = 0;
+    for (const [ts, v] of steps) { if (t < ts) break; p = mix(prev, v, k(t, ts, ts + 0.14)); prev = v; }
+    $('#hx_wipe').setAttribute('width', String(vw * p + 2));
+    $('#lBar').style.width = (p * 100).toFixed(1) + '%';
+    $('#lStatus').innerHTML = t < 3.57 ? (p < 1 ? `بنحمّل HORIX… <span dir="ltr">${Math.floor(p * 100)}%</span>` : 'بنجهّز الأدوات…') : 'جاهز';
+    const eo = k(t, 3.57, 3.95, E.outBack);
+    $('#hxEye').style.transform = `scaleY(${mix(0.12, 1, eo)})`;
+    $('#hxEye').style.opacity = mix(0.5, 1, k(t, 3.57, 3.7));
+    const inn = k(t, 0, 0.5);
+    const out = k(t, 3.85, 4.15, E.inCubic);
+    L.style.opacity = inn * (1 - out);
+    mk.style.transform = `scale(${mix(0.94, 1, inn) * (1 + 0.05 * k(t, 3.57, 3.8, E.outExpo)) * (1 + 0.25 * out)})`;
+    for (const id of ['#lTrack', '#lStatus']) $(id).style.opacity = 1 - k(t, 3.6, 3.8);
+    $('#lDesc').style.opacity = 1;
+    $('#lDesc').style.top = '740px';
+  } else {
+    const t0 = 53.958;
+    $('#hx_wipe').setAttribute('width', String(vw * k(t, t0, t0 + 0.9, E.inOutCubic) + 2));
+    const eo = k(t, t0 + 0.96, t0 + 1.3, E.outBack);
+    $('#hxEye').style.transform = `scaleY(${mix(0.12, 1, eo)})`;
+    $('#hxEye').style.opacity = 1;
+    L.style.opacity = k(t, t0, t0 + 0.3) * (1 - k(t, 59.2, 59.636));
+    mk.style.transform = `translateY(-70px) scale(${0.82 * (1 + 0.05 * Math.exp(-Math.max(0, t - HIT) * 6) * (t > HIT ? 1 : 0))})`;
+    for (const id of ['#lTrack', '#lStatus']) $(id).style.opacity = 0;
+    $('#lDesc').style.top = '640px';
+    $('#lDesc').style.opacity = k(t, t0 + 1.0, t0 + 1.5) * (1 - k(t, 59.2, 59.636));
+  }
+}
+
+function intro2(t) {
+  const s = $('#s1'), t0 = 4.05, t1 = 7.89;
+  show(s, t >= t0 - 0.05 && t < t1 + 0.1);
+  if (s.style.display === 'none') return;
+  s.style.opacity = k(t, t0 - 0.05, t0 + 0.2) * (1 - k(t, t1 - 0.12, t1 + 0.05));
+  $('#s1 .kick').style.opacity = k(t, t0, t0 + 0.4);
+  $('#s1 .kick').style.letterSpacing = mix(0.8, 0.42, k(t, t0, t0 + 1.2, E.outExpo)) + 'em';
+  revealWords(h1w, t, t0 + 0.48, 0.24, 0.5);
+  revealWords(h2w, t, t0 + 1.92, 0.24, 0.5);
+  const sc = 1 + punch(t, 0.012);
+  $('#h1').style.transform = $('#h2').style.transform = `scale(${sc})`;
+  $('#s1 .row').style.opacity = k(t, t0 + 0.9, t0 + 1.4);
+  $('#mq').style.transform = `translateX(${-200 - (t - t0) * 160}px)`;
+}
+
+function feat(f, t) {
+  const on = t >= f.t0 - 0.05 && t < f.t1 + 0.1;
+  show(f.el, on);
+  if (!on) return;
+  const t0 = f.t0, d = f.t1 - f.t0, s = f.el;
+  s.style.opacity = k(t, t0 - 0.05, t0 + 0.15) * (1 - k(t, f.t1 - 0.12, f.t1 + 0.05));
+  const m = s.querySelector('.media'), x = k(t, t0, t0 + 0.6, E.outExpo);
+  m.style.transform = `translateX(${(1 - x) * -80}px) scale(${(1 + punch(t, 0.008)) * mix(1, 1.025, (t - t0) / d)})`;
+  m.style.opacity = x;
+  const txt = s.querySelector('.txt'), tx = k(t, t0 + 0.08, t0 + 0.7, E.outExpo);
+  txt.style.transform = `translateX(${(1 - tx) * 60}px)`;
+  txt.style.opacity = tx;
+  s.querySelector('.nm').style.letterSpacing = mix(0.06, -0.02, k(t, t0, t0 + 0.8, E.outExpo)) + 'em';
+  revealWords(f.words, t, t0 + 0.3, 0.06, 0.45);
+  s.querySelector('.tag').style.opacity = k(t, t0 + 0.5, t0 + 0.8);
+  const rev = t0 + 0.96; // second half-bar: the "after" lands on a beat
+  if (f.kind === 'pair') {
+    const cs = s.querySelectorAll('.card');
+    cs[0].style.opacity = k(t, t0 + 0.1, t0 + 0.4);
+    cs[0].style.transform = `translateY(${(1 - k(t, t0 + 0.1, t0 + 0.6, E.outExpo)) * 40}px)`;
+    const a = k(t, rev, rev + 0.45, E.outExpo);
+    cs[1].style.opacity = a;
+    cs[1].style.transform = `translateY(${(1 - a) * 60}px) scale(${1 + punch(t, 0.01) * (t > rev ? 1 : 0)})`;
+    s.querySelectorAll('.zoom').forEach((z, j) => {
+      const zz = k(t, t0 + 1.92 + j * 0.24, t0 + 2.3 + j * 0.24, E.outBack);
+      z.style.transform = `scale(${zz})`; z.style.opacity = zz > 0 ? 1 : 0;
+    });
+  } else if (f.kind === 'cmp') {
+    const p = k(t, rev, rev + 1.2, E.inOutCubic);
+    const c = s.querySelector('.cmp');
+    c.querySelector('.aft').style.clipPath = `inset(0 ${(p * 100).toFixed(2)}% 0 0)`;
+    // divider travels right-to-left (Arabic reading direction): after-image grows from the left
+    c.querySelector('.aft').style.clipPath = `inset(0 ${((1 - p) * 100).toFixed(2)}% 0 0)`;
+    const dv = c.querySelector('.div');
+    dv.style.left = (p * 100).toFixed(2) + '%';
+    dv.style.opacity = p > 0 && p < 1 ? 1 : 0;
+    c.querySelector('.ca').style.opacity = k(t, rev + 1.0, rev + 1.3);
+    c.querySelector('.cl').style.opacity = 1 - k(t, rev + 0.6, rev + 1.0);
+    const ins = s.querySelector('.ins');
+    if (ins) { const z = k(t, t0 + 2.4, t0 + 2.85, E.outBack); ins.style.transform = `scale(${z}) rotate(${mix(-6, -2, z)}deg)`; ins.style.opacity = z > 0 ? 1 : 0; }
+  } else if (f.kind === 'stack') {
+    const cs = Array.from(s.querySelectorAll('.stk')), n = cs.length;
+    const per = (d - 0.3) / n;
+    cs.forEach((c, j) => {
+      const a = k(t, t0 + j * per, t0 + j * per + 0.45, E.outExpo);
+      const gone = j < n - 1 ? k(t, t0 + (j + 1) * per, t0 + (j + 1) * per + 0.45, E.outExpo) : 0;
+      c.style.opacity = a;
+      c.style.transform = `translate(${(1 - a) * -120 + gone * 40}px, ${gone * -30}px) scale(${1 - gone * 0.06})`;
+      c.style.filter = `brightness(${1 - gone * 0.5})`;
+      c.style.zIndex = j;
+    });
+    const ex = s.querySelector('.ext');
+    if (ex) { const z = k(t, t0 + 2.4, t0 + 2.85, E.outBack); ex.style.transform = `scale(${z})`; ex.style.opacity = z > 0 ? 1 : 0; ex.style.zIndex = 9; }
+  } else {
+    const c = s.querySelector('.card'), a = k(t, t0 + 0.1, t0 + 0.6, E.outExpo);
+    c.style.opacity = a; c.style.transform = `translateY(${(1 - a) * 50}px)`;
+  }
+  if (f.from != null) {
+    const p = k(t, rev, rev + 1.1, E.outCubic);
+    const v = mix(f.from, f.to, p);
+    s.querySelector('.cnt').textContent = fmt(v, f) + (f.unitless ? '' : '%');
+    s.querySelector('.big small').style.opacity = k(t, rev + 1.0, rev + 1.3);
+    const st = s.querySelector('.stat');
+    st.style.opacity = k(t, t0 + 0.4, t0 + 0.8);
+    const fl = s.querySelectorAll('.fl');
+    fl[0].style.width = (+fl[0].dataset.w * k(t, t0 + 0.5, t0 + 1.0)) + '%';
+    fl[1].style.width = (+fl[1].dataset.w * k(t, rev, rev + 1.1)) + '%';
+    s.querySelector('.note').style.opacity = k(t, rev + 1.2, rev + 1.6);
+  } else {
+    s.querySelectorAll('.pt').forEach((p, j) => {
+      const a = k(t, t0 + 0.96 + j * 0.48, t0 + 1.4 + j * 0.48, E.outExpo);
+      p.style.opacity = a; p.style.transform = `translateX(${(1 - a) * 40}px)`;
+    });
+  }
+}
+
+function climax(t) {
+  const c = $('#cx'), t0 = 42.438, t1 = 53.958;
+  show(c, t >= t0 - 0.05 && t < t1 + 0.1);
+  if (c.style.display === 'none') return;
+  c.style.opacity = k(t, t0 - 0.05, t0 + 0.1) * (1 - k(t, t1 - 0.15, t1 + 0.05));
+  $('#coll').style.transform = `translate(${-(t - t0) * 14}px, ${-(t - t0) * 9}px) scale(${1.05 + punch(t, 0.02)})`;
+  const dots = $$('#dots i');
+  STATS.forEach((s, i) => {
+    const on = t >= s.t0 && t < s.t1;
+    show(s.el, on);
+    dots[i].className = t >= s.t0 ? 'on' : '';
+    if (!on) return;
+    const p = k(t, s.t0, s.t0 + 0.45, E.outExpo);
+    s.el.querySelector('.cnt').textContent = Number.isInteger(s.v) ? Math.round(s.v * p) : (s.v * p).toFixed(1);
+    const n = s.el.querySelector('.n');
+    n.style.transform = `scale(${mix(1.25, 1, p) * (1 + punch(t, 0.03))})`;
+    n.style.opacity = p;
+    n.style.filter = `blur(${(1 - p) * 12}px)`;
+    const u = s.el.querySelector('.u'), ua = k(t, s.t0 + 0.12, s.t0 + 0.5, E.outExpo);
+    u.style.opacity = ua; u.style.letterSpacing = mix(0.3, -0.01, ua) + 'em';
+    revealWords(s.words, t, s.t0 + 0.3, 0.06, 0.4);
+    s.el.querySelector('.r').style.opacity = k(t, s.t0 + 0.5, s.t0 + 0.8);
+    s.el.style.opacity = 1 - k(t, s.t1 - 0.1, s.t1);
+  });
+}
+
+function endCard(t) {
+  const e = $('#end'), t0 = 53.958;
+  show(e, t >= t0);
+  if (t < t0) return;
+  const l1 = $('#end .line1'), a = k(t, t0 + 1.44, t0 + 1.9, E.outExpo);
+  l1.style.opacity = a; l1.style.letterSpacing = mix(0.6, 0.32, a) + 'em';
+  revealWords(endw, t, t0 + 1.92, 0.08, 0.45);
+  const u = k(t, t0 + 2.4, t0 + 2.8); $('#end .url').style.opacity = u;
+  $$('#end .pl span').forEach((sp, j) => { const z = k(t, t0 + 2.6 + j * 0.12, t0 + 3.0 + j * 0.12, E.outBack); sp.style.opacity = z; sp.style.transform = `translateY(${(1 - z) * 20}px)`; });
+  $('#end .by').style.opacity = k(t, t0 + 2.9, t0 + 3.3);
+  e.style.opacity = 1 - k(t, 59.25, 59.636);
+}
+
+const CUTS = [4.05, ...FEATS.map((f) => f.t0), 42.438, 53.958];
+function fx(t) {
+  // amber scan line sweeps across on each scene cut — the "vision" beam
+  let x = -60;
+  for (const c of CUTS) if (t > c - 0.14 && t < c + 0.22) x = mix(-60, 1980, k(t, c - 0.14, c + 0.22, E.inOutCubic));
+  $('#scan').style.left = x + 'px';
+  $('#flash').style.opacity = 0.22 * Math.exp(-Math.max(0, t - HIT) * 5) * (t >= HIT ? 1 : 0) + 0.12 * Math.exp(-Math.max(0, t - 42.438) * 6) * (t >= 42.438 ? 1 : 0);
+  const hud = k(t, 4.0, 4.4) * (1 - k(t, 53.8, 54.0));
+  $('#hudL').style.opacity = $('#hudR').style.opacity = hud;
+  $('#progBar').style.width = (clamp((t - 4.05) / (53.958 - 4.05), 0, 1) * 100) + '%';
+  $('#prog').style.opacity = hud;
+  $('#glow').style.transform = `translate(${Math.sin(t * 0.3) * 120}px, ${Math.cos(t * 0.23) * 60}px) scale(${1 + punch(t, 0.05)})`;
+  $('#grid').style.backgroundPosition = `${-t * 6}px ${12 - t * 3}px`;
+}
+
+window.render = (t) => { logo(t); intro2(t); FEATS.forEach((f) => feat(f, t)); climax(t); endCard(t); fx(t); };
+Promise.all([document.fonts.ready, ...Array.from(document.images).map((i) => i.decode().catch(() => {}))]).then(() => {
+  render(0); window.READY = true;
+});
+</script>
+</body>
+</html>

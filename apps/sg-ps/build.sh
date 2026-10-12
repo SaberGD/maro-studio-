@@ -57,7 +57,8 @@ sed '/^# >>> compressed-wasm/,/^# <<< compressed-wasm/d' "$HERE/hosting/.htacces
 grep -q "compressed-wasm" "$WORK/site/htaccess-plain" && { echo "error: htaccess-plain still has the compressed block" >&2; exit 1; }
 cp "$HERE/hosting/waitlist.php" "$APP/waitlist.php"
 # HORIX AI selection: MobileSAM (first Quick / Object Selection) and IS-Net fp16 (first Select Subject).
-python3 -I "$HERE/ai/fetch.py" "$APP/models" web
+# -E, not -I: the web model needs onnx from the user site-packages (CI installs it with pip --user).
+python3 -E "$HERE/ai/fetch.py" "$APP/models" web
 # Desktop download page; the zips themselves live on engsaber.space/sgps-downloads/.
 DL="$WORK/site/downloads"
 cp -R "$HERE/hosting/download" "$DL"
