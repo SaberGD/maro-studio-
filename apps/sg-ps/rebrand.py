@@ -142,11 +142,13 @@ def menus(root: Path) -> None:
     edit(root, "crates/ui-egui/src/menus.rs", [
         ('("help.discord", "Join the ArtCraft Discord…", &["Help"], None),', '("help.discord", "Saber Group Academy on Facebook", &["Help"], None),\n    ("help.contact", "Contact Us: Courses & Services…", &["Help"], None),\n    ("help.download", "Download the Desktop App (Windows / Mac)…", &["Help"], None),'),
         ('("help.website", "PhotoCraft Website", &["Help"], None),', f'("help.website", "{APP_NAME} Website", &["Help"], None),'),
-        ('("window.theme.studio", "Studio Theme", &["Window", "Theme"], None),', '("window.theme.studio", "HORIX Theme", &["Window", "Theme"], None),'),
+        # The legacy Studio shell hides or simplifies several panels.  Keep its enum for loading
+        # old preference files, but do not expose it as a user-selectable theme.
+        ('    ("window.theme.studio", "Studio Theme", &["Window", "Theme"], None),\n', ""),
         ('    ("help.artcraftWebsite", "ArtCraft Website", &["Help"], None),\n', ""),
         ('    ("help.github", "PhotoCraft on GitHub", &["Help"], None),\n', ""),
         ('    ("help.reportIssue", "Report an Issue…", &["Help"], None),\n', ""),
-        ('("window.theme.pro", "Pro Theme", &["Window", "Theme"], None),', '("window.theme.pro", "HORIX Pro Theme", &["Window", "Theme"], None),'),
+        ('("window.theme.pro", "Pro Theme", &["Window", "Theme"], None),', '("window.theme.pro", "HORIX Theme", &["Window", "Theme"], None),'),
     ])
 
 
@@ -293,53 +295,62 @@ pub fn url_for("""),
 def theme(root: Path) -> None:
     rel = "crates/ui-egui/src/theme.rs"
     edit(root, rel, [
-        # HORIX's default is the Studio layout (rounded cards, floating panels) in HORIX colours.
+        # HORIX uses the complete Pro shell, recoloured with the quieter Studio palette.  The
+        # legacy Studio shell remains deserializable for compatibility but is hidden and migrated.
         ("    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas (default).\n    #[default]\n    ProMedium,\n    Studio,",
-         "    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas.\n    ProMedium,\n    /// HORIX's default.\n    #[default]\n    Studio,"),
-        ('ThemeKind::Pro => "Pro (Dark)",', 'ThemeKind::Pro => "HORIX Pro (Dark)",'),
-        ('ThemeKind::Studio => "Studio (Dark)",', 'ThemeKind::Studio => "HORIX (Dark)",'),
-        ('"pro" | "prodark" | "photoshop" | "dark" =>', '"pro" | "prodark" | "photoshop" | "horixpro" =>'),
-        ('"studio" | "studiodark" =>', '"studio" | "studiodark" | "dark" | "horix" =>'),
+         "    /// HORIX's complete editor shell.\n    #[default]\n    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas.\n    ProMedium,\n    /// Legacy compatibility only; old Studio preferences migrate to HORIX Dark.\n    Studio,"),
+        ('pub const ALL: [ThemeKind; 5] = [ThemeKind::Pro, ThemeKind::ProMedium, ThemeKind::Studio, ThemeKind::StudioLight, ThemeKind::Classic];',
+         'pub const ALL: [ThemeKind; 4] = [ThemeKind::Pro, ThemeKind::ProMedium, ThemeKind::StudioLight, ThemeKind::Classic];'),
+        ('ThemeKind::Pro => "Pro (Dark)",', 'ThemeKind::Pro => "HORIX (Dark)",'),
+        ('ThemeKind::Studio => "Studio (Dark)",', 'ThemeKind::Studio => "HORIX (Legacy)",'),
+        ('"pro" | "prodark" | "photoshop" | "dark" =>', '"pro" | "prodark" | "photoshop" | "dark" | "horix" | "horixpro" =>'),
+        ('"studio" | "studiodark" => Some(ThemeKind::Studio),',
+         '"studio" | "studiodark" => Some(ThemeKind::Pro),'),
+        ('unwrap_or_else(|| Tokens::for_kind(ThemeKind::Studio))',
+         'unwrap_or_else(|| Tokens::for_kind(ThemeKind::Pro))'),
+        ('assert_eq!(ThemeKind::from_name("studio"), Some(ThemeKind::Studio));',
+         'assert_eq!(ThemeKind::from_name("studio"), Some(ThemeKind::Pro));\n'
+         '        assert!(!ThemeKind::ALL.contains(&ThemeKind::Studio));'),
     ])
-    # HORIX palette (brand/HORIX-Brand-Guide.md): Horus Ink #141314 canvas, Graphite #2A2727 panels,
-    # Falcon Ivory #F3EFE8 text, Horix Red #D63C32 primary actions, Vision Amber #EA993F active state.
+    # The fully featured Pro shell gets the exact visual palette of the preferred Studio theme.
+    # Keep `pro: true`, plus opaque tab/row colours, because those drive the complete panel UI.
     path = root / rel
     text = path.read_text(encoding="utf-8")
     start = text.index("            ThemeKind::Pro => Tokens {")
     end = text.index("            ThemeKind::Studio => Tokens {")
     horix = """            ThemeKind::Pro => Tokens {
                 kind,
-                chrome: Color32::from_rgb(42, 39, 39),
-                canvas: Color32::from_rgb(20, 19, 20),
-                canvas_dot: Color32::from_rgb(20, 19, 20),
-                dock: Color32::from_rgb(30, 28, 28),
-                card: Color32::from_rgb(42, 39, 39),
-                card_border: Color32::from_rgb(28, 26, 26),
-                field: Color32::from_rgb(28, 26, 26),
-                field_border: Color32::from_rgb(68, 61, 58),
-                hover: Color32::from_rgb(58, 52, 50),
-                pressed: Color32::from_rgb(76, 62, 54),
+                chrome: Color32::from_rgb(20, 20, 21),
+                canvas: Color32::from_rgb(14, 14, 15),
+                canvas_dot: Color32::from_rgb(46, 46, 50),
+                dock: Color32::from_rgb(17, 17, 18),
+                card: Color32::from_rgb(26, 26, 28),
+                card_border: Color32::from_rgb(40, 40, 44),
+                field: Color32::from_rgb(35, 35, 38),
+                field_border: Color32::from_rgb(52, 52, 57),
+                hover: Color32::from_rgb(44, 44, 48),
+                pressed: Color32::from_rgb(56, 56, 62),
                 text: Color32::from_rgb(243, 239, 232),
-                text_dim: Color32::from_rgb(196, 189, 180),
-                text_faint: Color32::from_rgb(140, 132, 124),
-                icon: Color32::from_rgb(222, 216, 207),
+                text_dim: Color32::from_rgb(150, 150, 158),
+                text_faint: Color32::from_rgb(96, 96, 104),
+                icon: Color32::from_rgb(196, 196, 204),
                 accent: Color32::from_rgb(234, 153, 63),
-                accent_soft: Color32::from_rgb(77, 55, 32),
-                accent_border: Color32::from_rgb(234, 153, 63),
-                accent_text: Color32::from_rgb(20, 19, 20),
-                separator: Color32::from_rgb(20, 19, 20),
-                shadow: Color32::from_black_alpha(160),
-                primary_bg: Color32::from_rgb(214, 60, 50),
-                primary_text: Color32::from_rgb(243, 239, 232),
-                danger: Color32::from_rgb(255, 112, 112),
-                warning: Color32::from_rgb(242, 193, 78),
-                radius_sm: 4.0,
-                radius: 6.0,
-                radius_lg: 8.0,
+                accent_soft: Color32::from_rgba_unmultiplied(234, 153, 63, 46),
+                accent_border: Color32::from_rgba_unmultiplied(234, 153, 63, 120),
+                accent_text: Color32::from_rgb(246, 200, 148),
+                separator: Color32::from_rgb(38, 38, 42),
+                shadow: Color32::from_black_alpha(140),
+                primary_bg: Color32::from_rgb(243, 239, 232),
+                primary_text: Color32::from_rgb(20, 19, 20),
+                danger: Color32::from_rgb(240, 96, 96),
+                warning: Color32::from_rgb(240, 190, 90),
+                radius_sm: 6.0,
+                radius: 8.0,
+                radius_lg: 12.0,
                 bevel: false,
                 pro: true,
-                tab_strip: Color32::from_rgb(30, 28, 28),
-                row_selected: Color32::from_rgb(77, 55, 32),
+                tab_strip: Color32::from_rgb(20, 20, 21),
+                row_selected: Color32::from_rgb(44, 44, 48),
             },
 """
     text = text[:start] + horix + text[end:]
@@ -373,8 +384,38 @@ def theme(root: Path) -> None:
          "pub fn mono(size: f32) -> FontId {"),
     ])
     edit(root, "crates/engine/src/prefs.rs", [
-        ('Classic = "classic" } default ProMedium);', 'Classic = "classic" } default Studio);'),
-        ("            theme: Theme::ProMedium,", "            theme: Theme::Studio,"),
+        ('Classic = "classic" } default ProMedium);', 'Classic = "classic" } default Pro);'),
+        ("            theme: Theme::ProMedium,", "            theme: Theme::Pro,"),
+        ('choice!(Theme { Pro = "pro", ProMedium = "proMedium", Studio = "studio", StudioLight = "studioLight", Classic = "classic" } default Pro);',
+         'choice!(Theme { Pro = "pro", ProMedium = "proMedium", Studio = "studio", StudioLight = "studioLight", Classic = "classic" } default Pro);\n'
+         '// HORIX: `studio` remains deserializable for old files, but is no longer selectable.\n'
+         'const HORIX_THEME_NAMES: &[&str] = &["pro", "proMedium", "studioLight", "classic"];'),
+        ('        "interface.theme" => Theme::NAMES,', '        "interface.theme" => HORIX_THEME_NAMES,'),
+    ])
+    edit(root, "crates/ui-egui/src/state.rs", [
+        ("            theme: crate::theme::ThemeKind::ProMedium,", "            theme: crate::theme::ThemeKind::Pro,"),
+    ])
+    edit(root, "crates/ui-egui/src/prefs_ui.rs", [
+        # Existing desktop and web preferences can still contain `studio`.  Load it into the new
+        # HORIX shell, then the normal preference sync writes `pro` back on the next frame.
+        ("        Theme::Studio => ThemeKind::Studio,", "        Theme::Studio => ThemeKind::Pro,"),
+        ("        ThemeKind::Studio => Theme::Studio,", "        ThemeKind::Studio => Theme::Pro,"),
+        ("    #[test]\n    fn preferences_persist_through_services_and_theme_follows() {",
+         "    #[test]\n"
+         "    fn legacy_studio_preference_migrates_to_horix_shell() {\n"
+         "        let session = photocraft_engine::Session::new();\n"
+         "        let mut saved: Value = serde_json::from_str(&session.prefs_to_json()).unwrap();\n"
+         "        saved[\"interface\"][\"theme\"] = json!(\"studio\");\n"
+         "        let (mut app, store) = app_with_saved(Some(serde_json::to_string(&saved).unwrap()));\n"
+         "        let ctx = egui::Context::default();\n"
+         "        tick(&mut app, &ctx);\n"
+         "        tick(&mut app, &ctx);\n"
+         "        assert_eq!(app.ui.theme, ThemeKind::Pro);\n"
+         "        assert_eq!(app.session.prefs().interface.theme, Theme::Pro);\n"
+         "        assert_eq!(stored(&store)[\"interface\"][\"theme\"], \"pro\");\n"
+         "    }\n\n"
+         "    #[test]\n"
+         "    fn preferences_persist_through_services_and_theme_follows() {"),
     ])
 
 
