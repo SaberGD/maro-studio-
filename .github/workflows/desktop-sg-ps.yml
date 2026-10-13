@@ -23,9 +23,9 @@ jobs:
             target: windows
           - os: macos-latest
             target: macos
-    # macOS builds on the team's Mac (self-hosted runner labelled horix-mac); Windows on GitHub.
-    # Repository variable HORIX_RUNNER=github puts the Mac build back on GitHub's runner too.
-    runs-on: ${{ (matrix.target == 'macos' && vars.HORIX_RUNNER != 'github') && fromJSON('["self-hosted", "horix-mac"]') || matrix.os }}
+    # GitHub's hosted runners build both platforms (free for a public repository). Repository
+    # variable HORIX_RUNNER=mac moves the macOS build to the team's Mac (self-hosted, horix-mac).
+    runs-on: ${{ (matrix.target == 'macos' && vars.HORIX_RUNNER == 'mac') && fromJSON('["self-hosted", "horix-mac"]') || matrix.os }}
     timeout-minutes: 120
     defaults:
       run:
@@ -75,7 +75,7 @@ jobs:
     # Publish whatever built: a Windows build that could not run (no hosted minutes) must not hold
     # back the Mac one. publish.sh keeps the previous entry for a platform that has no new zip.
     if: ${{ !cancelled() }}
-    runs-on: ${{ vars.HORIX_RUNNER == 'github' && 'ubuntu-latest' || fromJSON('["self-hosted", "horix-mac"]') }}
+    runs-on: ${{ vars.HORIX_RUNNER == 'mac' && fromJSON('["self-hosted", "horix-mac"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:
