@@ -22,9 +22,9 @@ jobs:
   deploy:
     # Only the default branch goes live; pushes to other branches don't deploy.
     if: github.ref_name == github.event.repository.default_branch
-    # The team's Mac (self-hosted runner labelled horix-mac) builds by default: GitHub's hosted
-    # minutes ran out. Set the repository variable HORIX_RUNNER=github to use GitHub's runner again.
-    runs-on: ${{ vars.HORIX_RUNNER == 'github' && 'ubuntu-latest' || fromJSON('["self-hosted", "horix-mac"]') }}
+    # GitHub's hosted runner builds by default (free for a public repository). Set the repository
+    # variable HORIX_RUNNER=mac to build on the team's Mac (self-hosted runner labelled horix-mac).
+    runs-on: ${{ vars.HORIX_RUNNER == 'mac' && fromJSON('["self-hosted", "horix-mac"]') || 'ubuntu-latest' }}
     timeout-minutes: 90
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.sgps-target
