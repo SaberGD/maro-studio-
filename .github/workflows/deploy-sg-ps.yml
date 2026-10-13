@@ -22,8 +22,10 @@ jobs:
   deploy:
     # Only the default branch goes live; pushes to other branches don't deploy.
     if: github.ref_name == github.event.repository.default_branch
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # The team's Mac (self-hosted runner labelled horix-mac) builds by default: GitHub's hosted
+    # minutes ran out. Set the repository variable HORIX_RUNNER=github to use GitHub's runner again.
+    runs-on: ${{ vars.HORIX_RUNNER == 'github' && 'ubuntu-latest' || fromJSON('["self-hosted", "horix-mac"]') }}
+    timeout-minutes: 90
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.sgps-target
       SGPS_WORK: ${{ github.workspace }}/.sgps-build
@@ -33,6 +35,13 @@ jobs:
       HORIX_BUILD_ID: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
+
+      # A self-hosted Mac runs as a background service with a short PATH: add Rust and Homebrew.
+      - name: PATH on the Mac
+        if: runner.os == 'macOS'
+        run: |
+          for d in "$HOME/.cargo/bin" /opt/homebrew/bin /usr/local/bin; do [ -d "$d" ] && echo "$d" >> "$GITHUB_PATH"; done
+          true
 
       - name: Check the deploy secret
         env:
@@ -49,7 +58,9 @@ jobs:
           rustup default stable
 
       - name: Brotli (pre-compressed WebAssembly)
-        run: sudo apt-get install -y --no-install-recommends brotli
+        run: |
+          if command -v brotli >/dev/null; then exit 0; fi
+          if [ "$RUNNER_OS" = macOS ]; then brew install brotli; else sudo apt-get install -y --no-install-recommends brotli; fi
 
       # Select Subject on the web: fetch.py converts IS-Net to half precision with onnxruntime's
       # converter.
@@ -58,7 +69,10 @@ jobs:
 
       - name: Install trunk
         run: |
-          curl -fsSL https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin trunk
+          if ! command -v trunk >/dev/null; then
+            if [ "$RUNNER_OS" = macOS ]; then brew install trunk
+            else curl -fsSL https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin trunk; fi
+          fi
           trunk --version
 
       # Compiled dependencies are reused between runs: the first build takes ~25 min, later ones

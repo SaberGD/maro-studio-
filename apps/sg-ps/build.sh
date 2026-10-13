@@ -9,6 +9,7 @@
 #   downloads/  the desktop download page, https://sabergroupacademy.com/downloads/
 #   redirect/   the old studio.engsaber.space site: permanent redirects to the two above
 set -euo pipefail
+PYTHON="$(command -v python3)"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
@@ -34,7 +35,8 @@ mkdir -p "$APP"
 cp -R "$WORK/src/dist/web/." "$APP/"
 # Build id: the deploy waits until the live page carries it.
 BUILD_ID="${HORIX_BUILD_ID:-$(date -u +%Y%m%d%H%M%S)}"
-sed -i.bak "s|<head>|<head>\n  <meta name=\"horix-build\" content=\"$BUILD_ID\">|" "$APP/index.html" && rm -f "$APP/index.html.bak"
+# (python, not sed: macOS's sed writes "\n" in a replacement as a literal "n")
+"$PYTHON" -c 'import sys; p, b = sys.argv[1:3]; t = open(p, encoding="utf-8").read(); open(p, "w", encoding="utf-8").write(t.replace("<head>", "<head>\n  <meta name=\"horix-build\" content=\"" + b + "\">", 1))' "$APP/index.html" "$BUILD_ID"
 # The loading screen shows real progress against the WebAssembly file's size.
 WASM="$APP/sg-ps_bg.wasm"
 WASM_SIZE="$(stat -c%s "$WASM" 2>/dev/null || stat -f%z "$WASM")"

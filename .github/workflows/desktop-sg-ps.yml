@@ -23,7 +23,9 @@ jobs:
             target: windows
           - os: macos-latest
             target: macos
-    runs-on: ${{ matrix.os }}
+    # macOS builds on the team's Mac (self-hosted runner labelled horix-mac); Windows on GitHub.
+    # Repository variable HORIX_RUNNER=github puts the Mac build back on GitHub's runner too.
+    runs-on: ${{ (matrix.target == 'macos' && vars.HORIX_RUNNER != 'github') && fromJSON('["self-hosted", "horix-mac"]') || matrix.os }}
     timeout-minutes: 120
     defaults:
       run:
@@ -33,6 +35,13 @@ jobs:
       SGPS_WORK: ${{ github.workspace }}/.sgps-build
     steps:
       - uses: actions/checkout@v4
+
+      # A self-hosted Mac runs as a background service with a short PATH: add Rust and Homebrew.
+      - name: PATH on the Mac
+        if: runner.os == 'macOS'
+        run: |
+          for d in "$HOME/.cargo/bin" /opt/homebrew/bin /usr/local/bin; do [ -d "$d" ] && echo "$d" >> "$GITHUB_PATH"; done
+          true
 
       - name: Rust
         run: |
@@ -63,7 +72,10 @@ jobs:
 
   release:
     needs: build
-    runs-on: ubuntu-latest
+    # Publish whatever built: a Windows build that could not run (no hosted minutes) must not hold
+    # back the Mac one. publish.sh keeps the previous entry for a platform that has no new zip.
+    if: ${{ !cancelled() }}
+    runs-on: ${{ vars.HORIX_RUNNER == 'github' && 'ubuntu-latest' || fromJSON('["self-hosted", "horix-mac"]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -92,6 +104,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -l dist
+          ls dist/*.zip >/dev/null 2>&1 || { echo "::error::no desktop zip was built"; exit 1; }
           gh release create "$TAG" dist/*.zip \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
