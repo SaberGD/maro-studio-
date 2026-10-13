@@ -1,0 +1,336 @@
+diff --git a/crates/engine/src/smartselect_cmds.rs b/crates/engine/src/smartselect_cmds.rs
+index 2cba2ce..48be740 100644
+--- a/crates/engine/src/smartselect_cmds.rs
++++ b/crates/engine/src/smartselect_cmds.rs
+@@ -120,8 +120,35 @@ fn object_selection(s: &mut Session, p: &Value) -> Result<Value> {
+ }
+ 
+ fn select_subject(s: &mut Session, p: &Value) -> Result<Value> {
+-    let region = with_sampler(s, b(p, "sampleAllLayers", true), |smp, doc| subject::select_subject(smp, doc.bounds()))?;
+-    apply(s, "Select Subject", region, mode(p, "replace"))
++    let all_layers = b(p, "sampleAllLayers", true);
++    let m = mode(p, "replace");
++    crate::jobs::edit_job(
++        s,
++        "Select Subject",
++        move |doc, active, ctx| {
++            ctx.progress(0.02, "Preparing subject detection");
++            let layer = active.and_then(|id| doc.layer(id)).and_then(|l| l.surface());
++            let region = match (all_layers, layer) {
++                (false, Some(surf)) => {
++                    ctx.progress(0.12, "Analyzing the active layer");
++                    subject::select_subject(&SurfaceSampler(surf), doc.bounds())
++                }
++                _ => {
++                    ctx.progress(0.12, "Analyzing all visible layers");
++                    subject::select_subject(&CompositeSampler(doc), doc.bounds())
++                }
++            };
++            ctx.check()?;
++            ctx.progress(0.90, "Applying selection");
++            if region.is_none() && matches!(m, SelectionMode::Add | SelectionMode::Subtract) {
++                return Ok((doc.selection.is_some(), false, None));
++            }
++            let bbox = region.as_ref().map(|r| r.bbox);
++            doc.selection = combine_region(doc.selection.as_ref(), region.as_ref(), m);
++            Ok((doc.selection.is_some(), true, bbox))
++        },
++        |(selected, changed, bbox)| json!({ "selected": selected, "changed": changed, "bounds": bbox.map(|r| [r.x0, r.y0, r.width() as i32, r.height() as i32]) }),
++    )
+ }
+ 
+ fn focus_area(s: &mut Session, p: &Value) -> Result<Value> {
+diff --git a/crates/ui-egui/src/ai_segment.rs b/crates/ui-egui/src/ai_segment.rs
+index f9a7ef4..23ce329 100644
+--- a/crates/ui-egui/src/ai_segment.rs
++++ b/crates/ui-egui/src/ai_segment.rs
+@@ -70,6 +70,7 @@ struct SubjectRun {
+     req: u64,
+     doc: DocId,
+     side: u32,
++    started_ms: f64,
+     base: Option<Surface>,
+     mode: SelectionMode,
+     params: serde_json::Value,
+@@ -133,6 +134,16 @@ pub fn available(app: &PhotocraftApp) -> bool {
+     app.services.segmenter.is_some() && app.ai.failed.is_none()
+ }
+ 
++/// The Select Subject model is attached and has not failed.
++pub fn subject_available(app: &PhotocraftApp) -> bool {
++    app.services.segmenter.as_ref().and_then(|s| s.subject_side()).is_some() && app.ai.subject_failed.is_none()
++}
++
++/// User-facing model failure, if a model service has dropped out.
++pub fn problem(app: &PhotocraftApp) -> Option<&str> {
++    app.ai.subject_failed.as_deref().or(app.ai.failed.as_deref())
++}
++
+ /// A run is waiting for the model (the canvas keeps polling).
+ pub fn busy(app: &PhotocraftApp) -> bool {
+     app.ai.encoding.is_some() || app.ai.in_flight.is_some() || app.ai.subject.is_some()
+@@ -158,7 +169,7 @@ pub fn subject(app: &mut PhotocraftApp, params: &serde_json::Value) -> bool {
+     let rgb = stretch_rgb(&rgb, w as usize, h as usize, side as usize);
+     app.ai.next_req += 1;
+     let req = app.ai.next_req;
+-    app.ai.subject = Some(SubjectRun { req, doc, side, base, mode, params: params.clone() });
++    app.ai.subject = Some(SubjectRun { req, doc, side, started_ms: crate::gpu_canvas::now_ms(), base, mode, params: params.clone() });
+     if let Some(seg) = app.services.segmenter.as_mut() {
+         seg.subject(req, rgb, side);
+     }
+@@ -242,7 +253,7 @@ fn apply_subject(app: &mut PhotocraftApp, run: SubjectRun, mask: &[f32]) {
+     match photocraft_engine::smartselect_cmds::set_selection_from(&mut app.session, "Select Subject", run.base.as_ref(), region.as_ref(), run.mode) {
+         Ok(_) => {
+             app.sync_views();
+-            app.ui.status = "HORIX AI: subject selected".into();
++            app.ui.status = format!("HORIX AI: subject selected in {}", crate::jobs_ui::elapsed(crate::gpu_canvas::now_ms() - run.started_ms));
+             app.ui.status_error = false;
+         }
+         Err(e) => {
+@@ -662,7 +673,13 @@ pub fn poll(app: &mut PhotocraftApp, ctx: &egui::Context) {
+     }
+     if busy(app) {
+         app.ui.status = if app.ai.subject.is_some() {
+-            "HORIX AI: finding the subject…".into()
++            let elapsed = app
++                .ai
++                .subject
++                .as_ref()
++                .map(|s| crate::jobs_ui::elapsed(crate::gpu_canvas::now_ms() - s.started_ms))
++                .unwrap_or_else(|| "0.0 s".into());
++            format!("HORIX AI: finding the subject… {elapsed}")
+         } else if app.ai.encoding.is_some() {
+             "HORIX AI: analyzing the image…".into()
+         } else {
+diff --git a/crates/ui-egui/src/gpu_status.rs b/crates/ui-egui/src/gpu_status.rs
+index 8a1c944..bb830cc 100644
+--- a/crates/ui-egui/src/gpu_status.rs
++++ b/crates/ui-egui/src/gpu_status.rs
+@@ -72,6 +72,62 @@ pub fn system_info(app: &PhotocraftApp) -> Vec<String> {
+     v
+ }
+ 
++/// Compact, always-visible graphics and model health for the status bar.
++pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
++    let t = crate::theme::Tokens::get(ui.ctx());
++    let gpu = app.gpu_active() && app.perf.gpu_info.canvas == "gpu";
++    let weak = app.perf.gpu_info.device_type == "integratedGpu" || app.perf.gpu_info.device_type == "cpu" || app.perf.gpu_info.backend == "gl";
++    let ai_ready = crate::ai_segment::available(app) && crate::ai_segment::subject_available(app);
++    let problem = app.perf.gpu_info.lost.as_deref().or(app.perf.gpu_info.fallback.as_deref()).or(app.perf.gpu_fallback.as_deref());
++    let label = if ai_ready && gpu && !weak {
++        "AI/GPU ready"
++    } else if ai_ready && gpu {
++        "AI ready - GPU limited"
++    } else if ai_ready {
++        "AI ready - CPU fallback"
++    } else if gpu && !weak {
++        "GPU connected"
++    } else if gpu {
++        "GPU limited"
++    } else {
++        "CPU fallback"
++    };
++    let color = if ai_ready && gpu && !weak { t.accent } else { t.warning };
++    let hover = if let Some(reason) = problem {
++        format!("{}\n{}\nAI selection can become very slow when the browser falls back to CPU/WebGL.", graphics_line(app), reason)
++    } else if let Some(reason) = crate::ai_segment::problem(app) {
++        format!("{}\nAI model service failed: {reason}. HORIX will use the classic selection path.", graphics_line(app))
++    } else if !ai_ready {
++        format!("{}\nAI model service is not attached. HORIX will use the classic selection path.", graphics_line(app))
++    } else if weak {
++        format!("{}\nAI models are available, but this GPU/backend is limited. Heavy selection can be slower.", graphics_line(app))
++    } else {
++        format!("{}\nAI models and graphics acceleration are active.", graphics_line(app))
++    };
++    ui.label(egui::RichText::new(label).color(color).size(12.0)).on_hover_text(hover);
++    if (!gpu || !ai_ready) && ui.small_button("Retry").on_hover_text("Reload HORIX and try the GPU/model service again").clicked() {
++        app.ui.status = "Retrying the GPU/model connection...".into();
++        app.ui.status_error = false;
++        #[cfg(target_arch = "wasm32")]
++        ui.ctx().open_url(egui::OpenUrl::same_tab("/horix/"));
++        #[cfg(not(target_arch = "wasm32"))]
++        crate::notices::post(
++            app,
++            "Restart HORIX to reconnect the GPU/model service",
++            vec!["Your documents are unchanged. Save your work, close HORIX, and open it again to retry acceleration.".into()],
++            false,
++        );
++    }
++}
++
++fn graphics_line(app: &PhotocraftApp) -> String {
++    let info = &app.perf.gpu_info;
++    let adapter = if info.adapter.is_empty() { "unknown adapter" } else { &info.adapter };
++    let backend = if info.backend.is_empty() { "unknown backend" } else { &info.backend };
++    let device = if info.device_type.is_empty() { "unknown type" } else { &info.device_type };
++    format!("Graphics: {adapter} - {backend} - {device}")
++}
++
+ /// The `help.systemInfo` result: the same facts as JSON.
+ pub fn system_info_json(app: &PhotocraftApp) -> serde_json::Value {
+     json!({
+diff --git a/crates/ui-egui/src/jobs_ui.rs b/crates/ui-egui/src/jobs_ui.rs
+index c71324d..e7e316f 100644
+--- a/crates/ui-egui/src/jobs_ui.rs
++++ b/crates/ui-egui/src/jobs_ui.rs
+@@ -263,7 +263,8 @@ pub fn status_progress(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+     ui.label(RichText::new(percent(&j)).color(t.text_dim).size(11.5).monospace());
+     let (br, _) = ui.allocate_exact_size(vec2(bar_w, bar_h), Sense::hover());
+     bar(ui, br, shown_fraction(&j), &t);
+-    let label = if more > 0 { format!("{} (+{more})", j.label) } else { j.label.clone() };
++    let detail = if j.message.is_empty() || j.message == j.label { elapsed(j.elapsed_ms) } else { format!("{} - {}", j.message, elapsed(j.elapsed_ms)) };
++    let label = if more > 0 { format!("{} - {detail} (+{more})", j.label) } else { format!("{} - {detail}", j.label) };
+     ui.label(RichText::new(label).color(t.text_dim).size(12.0));
+     if xresp.clicked() {
+         cancel(app, j.id);
+@@ -312,7 +313,7 @@ pub fn dialog(app: &mut PhotocraftApp, ctx: &egui::Context) {
+     }
+ }
+ 
+-fn elapsed(ms: f64) -> String {
++pub fn elapsed(ms: f64) -> String {
+     let s = (ms / 1000.0).max(0.0);
+     if s < 60.0 { format!("{s:.1} s") } else { format!("{}:{:02}", (s / 60.0).floor() as u64, (s % 60.0).floor() as u64) }
+ }
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 782962c..ddbaf51 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -366,6 +366,9 @@ pub struct PhotocraftApp {
+     /// GPU canvas renderer, when running on the wgpu backend (see [`Self::set_wgpu`]). Dropped
+     /// for the rest of the session when the device is lost (see `gpu_status`).
+     gpu: Option<gpu_canvas::GpuCanvas>,
++    /// Command queued for the next painted frame. On the web, long commands run on the UI thread;
++    /// delaying them by one frame lets the status bar visibly say what is happening first.
++    pub(crate) pending_command: Option<(u64, String, Value)>,
+     /// Run once the first frames have rendered (see [`Self::on_started`]).
+     started: Option<gpu_status::StartedHook>,
+     /// Frame and canvas-upload timings (exposed via `ui.inspect`).
+@@ -452,6 +455,7 @@ impl PhotocraftApp {
+             tone_hist: None,
+             doc_hist: None,
+             gpu: None,
++            pending_command: None,
+             started: None,
+             perf: Default::default(),
+             prefs_rt: Default::default(),
+@@ -587,6 +591,38 @@ impl PhotocraftApp {
+         r
+     }
+ 
++    /// Run a command with immediate user feedback. On web builds, expensive fallback commands
++    /// cannot repaint while they execute, so queue them for the next visible frame first.
++    pub fn run_with_feedback(&mut self, ctx: &egui::Context, id: &str, params: Value) -> Result<Value, String> {
++        if cfg!(target_arch = "wasm32") && matches!(id, "select.subject" | "select.focusArea" | "layer.removeBackground") {
++            let label = photocraft_engine::commands::find(id).map_or(id, |c| c.label).to_string();
++            self.pending_command = Some((self.frame + 2, id.to_string(), params));
++            self.ui.status = format!("{label} is starting... GPU/model status is shown on the right.");
++            self.ui.status_error = false;
++            ctx.request_repaint_after(std::time::Duration::from_millis(16));
++            return Ok(serde_json::json!({"pending": true}));
++        }
++        self.run(id, params)
++    }
++
++    fn run_pending_command(&mut self, ctx: &egui::Context) {
++        let Some((frame, _, _)) = self.pending_command.as_ref() else { return };
++        if self.frame < *frame {
++            ctx.request_repaint_after(std::time::Duration::from_millis(16));
++            return;
++        }
++        let Some((_, id, params)) = self.pending_command.take() else { return };
++        let t0 = gpu_canvas::now_ms();
++        let label = photocraft_engine::commands::find(&id).map_or(id.as_str(), |c| c.label).to_string();
++        let r = self.run(&id, params);
++        let elapsed = gpu_canvas::now_ms() - t0;
++        let ai_pending = matches!(&r, Ok(v) if v.get("ai").and_then(serde_json::Value::as_bool).unwrap_or(false));
++        if r.is_ok() && !ai_pending {
++            self.ui.status = format!("{label} finished in {}", jobs_ui::elapsed(elapsed));
++            self.ui.status_error = false;
++        }
++    }
++
+     /// Keep one view per document.
+     pub fn sync_views(&mut self) {
+         let n = self.session.documents().len();
+@@ -882,6 +918,7 @@ impl eframe::App for PhotocraftApp {
+         // Background jobs: apply finished ones, keep frames coming, Esc cancels (before the
+         // shortcuts see Esc).
+         jobs_ui::tick(self, ctx);
++        self.run_pending_command(ctx);
+         shortcuts::handle(self, ctx);
+         let arrived: Vec<(String, Vec<u8>)> =
+             self.services.inbox.as_ref().map(|q| std::mem::take(&mut *q.lock().unwrap_or_else(|e| e.into_inner()))).unwrap_or_default();
+diff --git a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
+index 17774d6..d756c82 100644
+--- a/crates/ui-egui/src/menus.rs
++++ b/crates/ui-egui/src/menus.rs
+@@ -126,6 +126,9 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
+         app.ui.status = "Loading the fonts installed on this computer…".into();
+         return Ok(Value::Null);
+     }
++    if matches!(id, "select.subject" | "select.focusArea" | "layer.removeBackground") {
++        return app.run_with_feedback(ctx, id, params);
++    }
+     if id == "view.proofSetup.custom" {
+         return Ok(json!({"dialog": crate::filter_dialog::open(app, "view.proofSetup")}));
+     }
+diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
+index 13a8429..a7a192c 100644
+--- a/crates/ui-egui/src/panels.rs
++++ b/crates/ui-egui/src/panels.rs
+@@ -622,7 +622,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+                         widgets::checkbox(ui, &mut app.ui.tool_options.sample_all_layers, tl!("Sample All Layers"));
+                         widgets::vline(ui, 22.0);
+                         if widgets::secondary_button(ui, tl!("Select Subject"), 0.0).clicked() {
+-                            let _ = app.run("select.subject", json!({}));
++                            let _ = app.run_with_feedback(ui.ctx(), "select.subject", json!({}));
+                         }
+                         if widgets::secondary_button(ui, tl!("Select and Mask…"), 0.0).clicked() {
+                             let _ = crate::menus::invoke(app, ui.ctx(), "select.selectAndMask", json!({}));
+@@ -858,8 +858,12 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+             ui.horizontal_centered(|ui| {
+                 if t.pro {
+                     crate::chrome_ui::status_bar_pro(app, ui);
+-                    // Background job progress with Cancel, at the right end (#210).
+-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| crate::jobs_ui::status_progress(app, ui));
++                    // Background job progress and graphics health, at the right end (#210).
++                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
++                        crate::gpu_status::status_bar(app, ui);
++                        ui.add_space(10.0);
++                        crate::jobs_ui::status_progress(app, ui);
++                    });
+                     return;
+                 }
+                 if let (Some(st), Some(i)) = (app.session.active(), app.session.active_index()) {
+@@ -885,6 +889,8 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+                     ui.label(RichText::new(&app.ui.status).color(if is_err { t.warning } else { t.text_faint }));
+                 }
+                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
++                    crate::gpu_status::status_bar(app, ui);
++                    ui.add_space(10.0);
+                     if app.session.active().is_some()
+                         && !t.pro
+                         && widgets::secondary_button(ui, tl!("Fit"), 0.0).clicked()
+diff --git a/crates/ui-egui/src/retouch_ui.rs b/crates/ui-egui/src/retouch_ui.rs
+index 4712718..bc6d3b4 100644
+--- a/crates/ui-egui/src/retouch_ui.rs
++++ b/crates/ui-egui/src/retouch_ui.rs
+@@ -207,7 +207,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
+             opt(ui, &crate::i18n::fmt(tl!("{key} to subtract"), &[("key", &crate::shortcuts::pretty("Alt"))]));
+             crate::widgets::vline(ui, 22.0);
+             if crate::widgets::secondary_button(ui, tl!("Select Subject"), 0.0).clicked() {
+-                let _ = app.run("select.subject", json!({}));
++                let _ = app.run_with_feedback(ui.ctx(), "select.subject", json!({}));
+             }
+         }
+         Tool::ObjectSelection => {
+@@ -218,7 +218,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
+             opt(ui, tl!("Drag a rectangle around the object"));
+             crate::widgets::vline(ui, 22.0);
+             if crate::widgets::secondary_button(ui, tl!("Select Subject"), 0.0).clicked() {
+-                let _ = app.run("select.subject", json!({}));
++                let _ = app.run_with_feedback(ui.ctx(), "select.subject", json!({}));
+             }
+         }
+         _ => {}
