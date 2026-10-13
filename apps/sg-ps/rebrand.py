@@ -19,6 +19,7 @@ What it changes (UI only; licence files are kept as the licences require):
   - Web build output renamed to sg-ps-*.js / sg-ps-*_bg.wasm.
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -1736,9 +1737,15 @@ def apply_patches(root: Path) -> None:
         # Normalise line endings (a Windows checkout may hand us CRLF) and apply from stdin, so the
         # patch is read the same everywhere.
         data = diff.read_bytes().replace(b"\r\n", b"\n")
-        r = subprocess.run(["git", "apply", "--whitespace=nowarn", "-p1", "-"], cwd=root, input=data, capture_output=True)
-        if r.returncode != 0:
-            sys.exit(f"rebrand: patch {diff.name} does not apply:\n{r.stderr.decode(errors='replace')}")
+        # The work dir may sit inside another git repository (CI builds in .sgps-build/ of this
+        # repo). There `git apply` resolves the paths against that repository's root and silently
+        # skips every file outside the current directory, i.e. all of them. The ceiling stops git
+        # from finding the outer repository, and --verbose lets a skipped file fail the build.
+        env = {**os.environ, "GIT_CEILING_DIRECTORIES": str(Path(root).resolve().parent)}
+        r = subprocess.run(["git", "apply", "--verbose", "--whitespace=nowarn", "-p1", "-"], cwd=root, input=data, capture_output=True, env=env)
+        err = r.stderr.decode(errors="replace")
+        if r.returncode != 0 or "Skipped patch" in err:
+            sys.exit(f"rebrand: patch {diff.name} does not apply:\n{err}")
         print(f"rebrand: applied {diff.name}")
 
 
