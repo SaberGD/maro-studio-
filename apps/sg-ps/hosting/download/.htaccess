@@ -1,6 +1,15 @@
-# sabergroupacademy.com/downloads/: the HORIX desktop download page (the zips are on engsaber.space).
+# horix.si/: the HORIX desktop download page (the zips are on engsaber.space).
 DirectoryIndex index.html
 Options -Indexes
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+<FilesMatch "^sgps-config\.php$">
+  Require all denied
+</FilesMatch>
 <IfModule mod_headers.c>
   <FilesMatch "(\.html|^)$">
     Header set Cache-Control "no-cache"

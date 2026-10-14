@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
+  <link rel="canonical" href="https://horix.si/">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>تحميل HORIX | ويندوز وماك</title>
@@ -167,7 +168,7 @@
       <nav>
         <a href="#download">التحميل</a>
         <a href="#soon">قريبًا</a>
-        <a class="btn btn-line btn-sm" href="https://sabergroupacademy.com/horix/">افتحه في المتصفح</a>
+        <a class="btn btn-line btn-sm" href="https://horix.live/">افتحه في المتصفح</a>
       </nav>
     </div>
   </header>
@@ -228,7 +229,7 @@
             <h3>مش عاوز تسطّب حاجة؟</h3>
             <p>استخدم <bdi>HORIX</bdi> من المتصفح على طول، بنفس الأدوات.</p>
           </div>
-          <a class="btn btn-line" href="https://sabergroupacademy.com/horix/">افتح <bdi>HORIX</bdi> في المتصفح</a>
+          <a class="btn btn-line" href="https://horix.live/">افتح <bdi>HORIX</bdi> في المتصفح</a>
         </div>
       </div>
     </section>
@@ -282,7 +283,7 @@
       <nav>
         <a href="https://www.facebook.com/SABERGROUP.Courses/" rel="noopener">Saber Group Academy على فيسبوك</a>
         <a href="https://sabergroupacademy.com/" rel="noopener">sabergroupacademy.com</a>
-        <a href="/horix/LICENSE.txt">التراخيص</a>
+        <a href="https://horix.live/LICENSE.txt">التراخيص</a>
       </nav>
     </div>
   </footer>
@@ -303,7 +304,7 @@
         if (!products.length) { err.textContent = 'اختار برنامج واحد على الأقل.'; return; }
         if (!field('consent').checked) { err.textContent = 'محتاجين موافقتك عشان نقدر نبلغك.'; return; }
         var btn = form.querySelector('button'); btn.disabled = true; err.textContent = '';
-        fetch('/horix/waitlist.php', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        fetch('waitlist.php', { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: name, phone: phone, products: products, interests: [], consent: true, page: location.pathname }) })
           .then(function (r) { return r.json().then(function (j) { return [r.status, j]; }); })
           .then(function (res) {

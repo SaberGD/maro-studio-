@@ -22,7 +22,7 @@ HORIX محرر صور احترافي من صابر جروب، مصمم ليمن�
 تعلم التصميم والذكاء الاصطناعي مع صابر جروب
 -------------------------------------------
 الموقع الرسمي: https://sabergroupacademy.com/
-HORIX: https://sabergroupacademy.com/horix/
+HORIX: https://horix.live/
 الدورات والخدمات: https://www.facebook.com/SABERGROUP.Courses/
 التواصل عبر WhatsApp: https://wa.me/201103221873
 

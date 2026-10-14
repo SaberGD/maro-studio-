@@ -4,15 +4,15 @@
 # Usage: HOSTINGER_API_TOKEN=... apps/sg-ps/deploy.sh [deploy/sg-ps/sg-ps-<version>-hostinger.zip]
 # Env:   HOSTINGER_API_TOKEN (required)  hPanel > Account > API
 #        HOSTINGER_USERNAME  (default u570689065)
-#        HORIX_DOMAIN        (default sabergroupacademy.com)  site that gets /horix/ and /downloads/
+#        HORIX_EDITOR_DOMAIN (default horix.live)  editor at the domain root
+#        HORIX_DOWNLOAD_DOMAIN (default horix.si)  downloads at the domain root
+#        HORIX_LEGACY_DOMAIN (default sabergroupacademy.com)  old paths, redirected after verification
 #        HORIX_OLD_DOMAIN    (default studio.engsaber.space)  old address, turned into redirects;
 #                            set it empty to skip that step
 #
-# The academy site's folder also holds WordPress, the landing page and the subdomains, so nothing
-# is unpacked over it: each file of horix/ and downloads/ is uploaded on its own (TUS), which only
-# adds or overwrites those files. index.html goes last, so the page never points at a file that is
-# not there yet. The old subdomain gets the redirect/ folder as a static-site archive (it replaces
-# that subdomain's files; the leads in engsaber.space/public_html/sgps-data are outside it).
+# Each domain receives its own folder's files through TUS; index.html goes last.
+# The academy site keeps its WordPress, subdomains, assets and original lead store. Only the two
+# old page routes are redirected, after both new sites and the editor's binaries are verified.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,7 +20,9 @@ REPO="$(cd "$HERE/../.." && pwd)"
 ZIP="${1:-$(ls -t "$REPO"/deploy/sg-ps/sg-ps-*-hostinger.zip | head -1)}"
 API="https://developers.hostinger.com/api/hosting/v1"
 USERNAME="${HOSTINGER_USERNAME:-u570689065}"
-DOMAIN="${HORIX_DOMAIN:-sabergroupacademy.com}"
+DOMAIN="${HORIX_EDITOR_DOMAIN:-horix.live}"
+DOWNLOAD_DOMAIN="${HORIX_DOWNLOAD_DOMAIN:-horix.si}"
+LEGACY_DOMAIN="${HORIX_LEGACY_DOMAIN:-sabergroupacademy.com}"
 OLD_DOMAIN="${HORIX_OLD_DOMAIN-studio.engsaber.space}"
 : "${HOSTINGER_API_TOKEN:?set HOSTINGER_API_TOKEN (hPanel > Account > API)}"
 # Hostinger's bot protection answers plain curl with 403: checks use a browser user agent.
@@ -33,7 +35,7 @@ unzip -q "$ZIP" -d "$SITE"
 for d in horix downloads; do [ -f "$SITE/$d/index.html" ] || { echo "error: $ZIP has no $d/index.html" >&2; exit 1; }; done
 BUILD="$(grep -o 'name="horix-build" content="[^"]*"' "$SITE/horix/index.html" | sed 's/.*content="\([^"]*\)"/\1/')"
 [ -n "$BUILD" ] || { echo "error: horix/index.html has no horix-build id" >&2; exit 1; }
-echo "deploying build $BUILD to https://$DOMAIN/horix/ and /downloads/"
+echo "deploying build $BUILD to https://$DOMAIN/ and https://$DOWNLOAD_DOMAIN/"
 
 api() {
   curl -fsS -X POST -H "Authorization: Bearer $HOSTINGER_API_TOKEN" -H "Content-Type: application/json" \
@@ -65,27 +67,31 @@ upload() {
   echo "  $2 ($n bytes)"
 }
 
-# upload_dir <folder>: every file, the folder's index.html last.
+# upload_dir <source folder> <destination prefix>: index.html last.
 upload_dir() {
-  local f
-  (cd "$SITE" && find "$1" -type f ! -path "$1/index.html" | sort) | while read -r f; do upload "$SITE/$f" "$f"; done
-  upload "$SITE/$1/index.html" "$1/index.html"
+  local f prefix="${2:+$2/}"
+  while IFS= read -r -d '' f; do
+    upload "$f" "$prefix${f#"$SITE/$1/"}"
+  done < <(find "$SITE/$1" -type f ! -path "$SITE/$1/index.html" -print0)
+  upload "$SITE/$1/index.html" "${prefix}index.html"
 }
 
-# 1) The editor and the download page on the academy site.
+# 1) Independent domains: add/overwrite their files only.
 creds "$DOMAIN"
 upload_dir horix
+creds "$DOWNLOAD_DOMAIN"
 upload_dir downloads
 
 # 2) Wait until both pages serve this build.
 live() { curl -fsS -A "$UA" -H "Cache-Control: no-cache" "$1?v=$RANDOM" 2>/dev/null || true; }
 ok=""
 for _ in $(seq 1 24); do
-  if [[ "$(live "https://$DOMAIN/horix/")" == *"$BUILD"* ]] && [[ "$(live "https://$DOMAIN/downloads/")" == *"HORIX"* ]]; then ok=1; break; fi
+  if [[ "$(live "https://$DOMAIN/")" == *"$BUILD"* ]] && [[ "$(live "https://$DOWNLOAD_DOMAIN/")" == *"$BUILD"* ]]; then ok=1; break; fi
   sleep 5
 done
-[ -n "$ok" ] || { echo "error: https://$DOMAIN/horix/ does not serve build $BUILD after 2 minutes" >&2; exit 1; }
-echo "live: https://$DOMAIN/horix/ (build $BUILD) and https://$DOMAIN/downloads/"
+[ -n "$ok" ] || { echo "error: the new domains did not serve the expected pages after 2 minutes; old URLs were not redirected" >&2; exit 1; }
+echo "live: https://$DOMAIN/ (build $BUILD) and https://$DOWNLOAD_DOMAIN/"
+creds "$DOMAIN"
 
 # 3) The WebAssembly must reach every kind of browser intact: fetch it as a Brotli browser, a
 #    gzip-only one and one without compression, decode, and compare with the built file. If the
@@ -95,7 +101,7 @@ WASM_LOCAL="$SITE/horix/sg-ps_bg.wasm"
 wasm_ok() {
   local tmp hdr ce ct
   tmp="$(mktemp -d)"
-  curl -fsS -A "$UA" -H "Accept-Encoding: $1" -D "$tmp/h" -o "$tmp/body" "https://$DOMAIN/horix/sg-ps_bg.wasm?v=$RANDOM" || return 1
+  curl -fsS -A "$UA" -H "Accept-Encoding: $1" -D "$tmp/h" -o "$tmp/body" "https://$DOMAIN/sg-ps_bg.wasm?v=$RANDOM" || return 1
   ce="$(tr -d '\r' < "$tmp/h" | awk 'tolower($1)=="content-encoding:" {print tolower($2)}' | tail -1)"
   ct="$(tr -d '\r' < "$tmp/h" | awk 'tolower($1)=="content-type:" {print tolower($2)}' | tail -1)"
   case "$ce" in
@@ -112,32 +118,42 @@ bad=""
 for enc in "gzip, deflate, br" "gzip" "identity"; do wasm_ok "$enc" || { bad="$enc"; break; }; done
 if [ -n "$bad" ]; then
   echo "error: the WebAssembly is not served correctly for Accept-Encoding '$bad'; restoring .htaccess without pre-compression" >&2
-  upload "$SITE/htaccess-plain" horix/.htaccess
+  upload "$SITE/htaccess-plain" .htaccess
   exit 1
 fi
 
 # 3b) The AI selection models are served whole (the page fetches them on first use).
 for m in mobile_sam_image_encoder.onnx sam_mask_decoder_multi.onnx isnet_fp16.onnx; do
   want="$(size "$SITE/horix/models/$m")"
-  got="$(curl -fsS -A "$UA" -H "Accept-Encoding: identity" -o /dev/null -w '%{size_download}' "https://$DOMAIN/horix/models/$m?v=$RANDOM" || echo 0)"
-  [ "$got" = "$want" ] || { echo "error: https://$DOMAIN/horix/models/$m is $got bytes, expected $want" >&2; exit 1; }
+  got="$(curl -fsS -A "$UA" -H "Accept-Encoding: identity" -o /dev/null -w '%{size_download}' "https://$DOMAIN/models/$m?v=$RANDOM" || echo 0)"
+  [ "$got" = "$want" ] || { echo "error: https://$DOMAIN/models/$m is $got bytes, expected $want" >&2; exit 1; }
   echo "  model ok: $m ($got bytes)"
 done
 
-# 4) The old address now redirects there.
+# 4) Redirect only the academy's old page routes. Its assets, waitlist endpoint and data remain.
+if [ -n "$LEGACY_DOMAIN" ]; then
+  creds "$LEGACY_DOMAIN"
+  for pair in "horix:$DOMAIN" "downloads:$DOWNLOAD_DOMAIN"; do
+    folder="${pair%%:*}"; target="${pair#*:}"
+    rules="$SITE/$folder-redirect.htaccess"
+    printf '<IfModule mod_rewrite.c>\nRewriteEngine On\nRewriteCond %%{QUERY_STRING} !(^|&)legacy=1(&|$)\nRewriteRule ^(index\\.html)?$ https://%s/ [R=301,L]\n</IfModule>\n' "$target" > "$rules"
+    cat "$SITE/$folder/.htaccess" >> "$rules"
+    upload "$rules" "$folder/.htaccess"
+    loc="$(curl -sS -o /dev/null -A "$UA" -w '%{redirect_url}' "https://$LEGACY_DOMAIN/$folder/?v=$RANDOM")"
+    [[ "$loc" == "https://$target/"* ]] || { echo "error: $LEGACY_DOMAIN/$folder/ redirect verification failed" >&2; exit 1; }
+  done
+fi
+
+# 5) Update the older studio address by uploading only its redirect files.
 if [ -n "$OLD_DOMAIN" ]; then
-  RZIP="$(mktemp -d)/horix-redirect-$BUILD.zip"
-  (cd "$SITE/redirect" && zip -qr9 "$RZIP" .)
   creds "$OLD_DOMAIN"
-  NAME="$(basename "$RZIP")"
-  upload "$RZIP" "$NAME"
-  api "$API/accounts/$USERNAME/websites/$OLD_DOMAIN/deploy" -d "{\"archive_path\":\"$NAME\"}"
+  upload_dir redirect
   echo
   for _ in $(seq 1 24); do
     LOC="$(curl -sS -o /dev/null -A "$UA" -w '%{redirect_url}' "https://$OLD_DOMAIN/?v=$RANDOM" || true)"
-    if [[ "$LOC" == "https://$DOMAIN/horix/"* ]]; then echo "redirect: https://$OLD_DOMAIN/ -> $LOC"; exit 0; fi
+    if [[ "$LOC" == "https://$DOMAIN/"* ]]; then echo "redirect: https://$OLD_DOMAIN/ -> $LOC"; exit 0; fi
     sleep 5
   done
-  echo "error: https://$OLD_DOMAIN/ does not redirect to https://$DOMAIN/horix/ after 2 minutes" >&2
+  echo "error: https://$OLD_DOMAIN/ does not redirect to https://$DOMAIN/ after 2 minutes" >&2
   exit 1
 fi

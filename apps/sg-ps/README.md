@@ -1,6 +1,12 @@
 # HORIX
 
-**HORIX** (اسمه القديم SG - PS) هو محرر الصور بتاع أكاديمية صابر جروب: *The Visionary AI Editor by Saber Group*. شغال على https://sabergroupacademy.com/horix/، وصفحة تحميل نسخ الديسكتوب على https://sabergroupacademy.com/downloads/. العنوان القديم `studio.engsaber.space` بيحوّل على العناوين دي (301).
+**HORIX** (اسمه القديم SG - PS) هو محرر الصور بتاع أكاديمية صابر جروب: *The Visionary AI Editor by Saber Group*. عنوان المحرر الجديد https://horix.live/، وصفحة تحميل نسخ الديسكتوب https://horix.si/.
+
+النشر يرفع محتوى `horix/` لجذر `horix.live` ومحتوى `downloads/` لجذر `horix.si`. بعد التأكد من الموقعين وملفات المحرر، يحول `/horix/` و`/downloads/` على موقع الأكاديمية إلى العناوين الجديدة. ملفات WordPress وباقي موقع الأكاديمية لا يتم استبدالها. `?legacy=1` يفتح الصفحة القديمة عند الحاجة إلى إعدادات المتصفح المحفوظة على الدومين السابق.
+
+الفورم في كل دومين يرسل إلى `waitlist.php` على نفس الدومين. بيانات التسجيل تظل في `domains/sabergroupacademy.com/sgps-data/leads.csv`، وإعداد webhook السابق يستخدم تلقائيًا عند غياب إعداد محلي. الخطوط موجودة في `fonts/` بجوار كل صفحة؛ روابط نسخ ويندوز وماك تظل على `engsaber.space/sgps-downloads/`.
+
+إعدادات النشر: `HOSTINGER_USERNAME` و`HORIX_EDITOR_DOMAIN` (الافتراضي `horix.live`) و`HORIX_DOWNLOAD_DOMAIN` (الافتراضي `horix.si`) و`HORIX_LEGACY_DOMAIN` (الافتراضي `sabergroupacademy.com`) و`HORIX_OLD_DOMAIN` (الافتراضي `studio.engsaber.space`). وصف النشر القديم أدناه يشرح الوضع السابق على موقع الأكاديمية.
 
 الهوية البصرية الرسمية (الشعار، الألوان، قواعد الاستخدام) في [`brand/`](brand/HORIX-Brand-Guide.md). الأسماء الداخلية (فولدر `apps/sg-ps`، وملفات `sg-ps-<hash>.js`، ومفاتيح `sgps.*`، والـsecrets) فضلت زي ما هي عشان النشر وإعدادات المستخدمين ما يتكسروش.
 

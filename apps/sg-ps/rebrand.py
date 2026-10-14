@@ -28,8 +28,8 @@ from pathlib import Path
 
 APP_NAME = "HORIX"
 SABER_SITE = "https://sabergroupacademy.com"
-APP_SITE = "https://sabergroupacademy.com/horix"
-DOWNLOADS_PAGE = "https://sabergroupacademy.com/downloads/"
+APP_SITE = "https://horix.live"
+DOWNLOADS_PAGE = "https://horix.si/"
 FACEBOOK = "https://www.facebook.com/SABERGROUP.Courses/"
 # WhatsApp with a ready message: "Hello, I am coming from HORIX and want to know about the courses and services".
 WHATSAPP = ("https://wa.me/201103221873?text=%D9%85%D8%B1%D8%AD%D8%A8%D9%8B%D8%A7%D8%8C%20%D8%AC%D8%A7%D9%8A%20%D9%85%D9%86%20"
@@ -1277,8 +1277,8 @@ LOADER_CSS = """
        red rule, "BY SABER GROUP"), so the app opens on the same picture. The logo is revealed toward the
        beak as the app downloads (real bytes, see LOADER_SCRIPT), a thin bar under it is the progress, and
        the amber eye opens when the app is ready. Inter comes from the downloads page's fonts. */
-    @font-face { font-family: HorixInter; font-weight: 500; font-display: swap; src: url(/downloads/fonts/inter-latin-500-normal.woff2) format('woff2'); }
-    @font-face { font-family: HorixCairo; font-weight: 700; font-display: swap; src: url(/downloads/fonts/cairo-arabic-700-normal.woff2) format('woff2'); }
+    @font-face { font-family: HorixInter; font-weight: 500; font-display: swap; src: url(fonts/inter-latin-500-normal.woff2) format('woff2'); }
+    @font-face { font-family: HorixCairo; font-weight: 700; font-display: swap; src: url(fonts/cairo-arabic-700-normal.woff2) format('woff2'); }
     #photocraft_loading { font-family: HorixCairo, Cairo, 'Segoe UI', Tahoma, system-ui, sans-serif; transition: opacity .45s ease;
       background-image: radial-gradient(circle, #1C1C1F 1.3px, transparent 1.8px); background-size: 22px 22px; background-position: 11px 11px; }
     #photocraft_loading.hx-out { opacity: 0; }

@@ -5,8 +5,8 @@
 #   default source: archive/photocraft/photocraft-source-0.3.0.tar.gz
 # Needs: Rust >= 1.95, `rustup target add wasm32-unknown-unknown`, `cargo install trunk --locked`, zip.
 # Output: deploy/sg-ps/sg-ps-<version>-hostinger.zip, with three folders:
-#   horix/      the editor, served at https://sabergroupacademy.com/horix/
-#   downloads/  the desktop download page, https://sabergroupacademy.com/downloads/
+#   horix/      the editor, deployed at the root of https://horix.live/
+#   downloads/  the desktop download page, deployed at the root of https://horix.si/
 #   redirect/   the old studio.engsaber.space site: permanent redirects to the two above
 set -euo pipefail
 PYTHON="$(command -v python3)"
@@ -24,11 +24,11 @@ VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$WORK/src/Cargo.toml" | head -1)
 
 python3 -I "$HERE/rebrand.py" "$WORK/src"
 
-# The editor lives in a folder of the academy site. File names carry no hash: the deploy can only
+# The editor lives at its own domain's root. File names carry no hash: the deploy can only
 # add and overwrite files there (never delete), so each deploy replaces the same few files, and
 # .htaccess makes browsers revalidate them.
 (cd "$WORK/src/apps/photocraft-web" && CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$WORK/target}" \
-  trunk build --release --public-url /horix/ --filehash false)
+  trunk build --release --public-url / --filehash false)
 
 APP="$WORK/site/horix"
 mkdir -p "$APP"
@@ -64,16 +64,20 @@ python3 -E "$HERE/ai/fetch.py" "$APP/models" web
 # Desktop download page; the zips themselves live on engsaber.space/sgps-downloads/.
 DL="$WORK/site/downloads"
 cp -R "$HERE/hosting/download" "$DL"
+"$PYTHON" -c 'import sys; p, b = sys.argv[1:3]; t = open(p, encoding="utf-8").read(); open(p, "w", encoding="utf-8").write(t.replace("<head>", "<head>\n  <meta name=\"horix-build\" content=\"" + b + "\">", 1))' "$DL/index.html" "$BUILD_ID"
 cp "$HERE/assets/horix-lockup.svg" "$DL/horix-logo.svg"
 cp "$HERE/assets/horix-favicon.svg" "$DL/horix-favicon.svg"
-mkdir -p "$DL/fonts"
+mkdir -p "$DL/fonts" "$APP/fonts"
 cp "$HERE"/assets/fonts/*.woff2 "$DL/fonts/"
-# The old address: everything moves permanently to the academy site.
+cp "$HERE"/assets/fonts/*.woff2 "$APP/fonts/"
+cp "$HERE/hosting/waitlist.php" "$DL/waitlist.php"
+# The old address: everything moves permanently to the new domains.
 cp -R "$HERE/hosting/redirect" "$WORK/site/redirect"
 # n8n webhook for new leads (GitHub secret SGPS_LEAD_WEBHOOK); server-side only, never in the page.
 if [ -n "${SGPS_LEAD_WEBHOOK:-}" ]; then
   python3 -c 'import sys; u = sys.argv[1].replace("\\", "\\\\").replace("\x27", "\\\x27"); open(sys.argv[2], "w").write("<?php return [\x27lead_webhook\x27 => \x27" + u + "\x27];\n")' \
     "$SGPS_LEAD_WEBHOOK" "$APP/sgps-config.php"
+  cp "$APP/sgps-config.php" "$DL/sgps-config.php"
 fi
 # Licence obligations: the MIT licence text (with its copyright line) and the licences of the
 # fonts and icons compiled into the app. They are plain files on the server, not shown in the UI.

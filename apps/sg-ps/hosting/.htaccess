@@ -1,4 +1,4 @@
-# HORIX على Hostinger (LiteSpeed/Apache): sabergroupacademy.com/horix/. الملف ده جنب index.html.
+# HORIX على Hostinger (LiteSpeed/Apache): horix.live/. الملف ده جنب index.html.
 
 DirectoryIndex index.html
 
@@ -8,6 +8,8 @@ DirectoryIndex index.html
   RewriteCond %{HTTPS} !=on
   RewriteCond %{HTTP:X-Forwarded-Proto} !=https
   RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+  # Older compiled desktop/web builds may still open the former editor path.
+  RewriteRule ^horix/?$ / [L,R=302]
 </IfModule>
 
 # 2) نوع الملفات (بدونه المتصفح يرفض ملف الـwasm)

@@ -147,7 +147,7 @@ index 8a1c944..bb830cc 100644
 +        app.ui.status = "Retrying the GPU/model connection...".into();
 +        app.ui.status_error = false;
 +        #[cfg(target_arch = "wasm32")]
-+        ui.ctx().open_url(egui::OpenUrl::same_tab("/horix/"));
++        ui.ctx().open_url(egui::OpenUrl::same_tab("/"));
 +        #[cfg(not(target_arch = "wasm32"))]
 +        crate::notices::post(
 +            app,

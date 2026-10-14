@@ -63,7 +63,15 @@ if (!$consent) {
 }
 
 $docRoot = rtrim((string)($_SERVER['DOCUMENT_ROOT'] ?? __DIR__), '/');
-$dir = dirname($docRoot) . '/sgps-data';
+$legacyRoot = dirname($docRoot, 2) . '/sabergroupacademy.com/public_html';
+// Both new domains use the existing lead store and webhook on the same hosting account.
+$migrated = in_array(basename(dirname($docRoot)), ['horix.live', 'horix.si'], true) && is_dir($legacyRoot);
+$cfgFile = __DIR__ . '/sgps-config.php';
+if (!is_file($cfgFile) && $migrated) {
+    $cfgFile = $legacyRoot . '/horix/sgps-config.php';
+}
+$cfg = is_file($cfgFile) ? include $cfgFile : [];
+$dir = dirname($migrated ? $legacyRoot : $docRoot) . '/sgps-data';
 if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
     reply(500, ['ok' => false, 'error' => 'storage']);
 }
@@ -109,8 +117,6 @@ fclose($fh);
 
 // Forward to the n8n workflow (Telegram alert), when the deploy configured one. The lead is
 // already saved, so a slow or failing webhook never loses it.
-$cfgFile = __DIR__ . '/sgps-config.php';
-$cfg = is_file($cfgFile) ? include $cfgFile : [];
 $hook = is_array($cfg) ? (string)($cfg['lead_webhook'] ?? '') : '';
 if ($hook !== '' && function_exists('curl_init')) {
     $LABELS = [
