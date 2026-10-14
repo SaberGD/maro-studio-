@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """Download (once, cached) and verify the files HORIX AI selection ships with.
 
-Usage: python3 -I apps/sg-ps/ai/fetch.py <dest dir> models|full|web|windows|macos|linux
+Usage: python3 -I apps/sg-ps/ai/fetch.py <dest dir> models|web|windows|macos|linux
 
   models   the desktop apps' models: MobileSAM image encoder + mask decoder (Quick / Object
            Selection) and IS-Net general use (Select Subject, 179 MB)
   web      the web build's models: MobileSAM, and IS-Net for Select Subject converted to half
            precision (89 MB, same accuracy: IoU 0.930 on 80 DUTS-TE photos; needs the onnx and
            onnxruntime Python packages)
-  full     the full download's extra model: BiRefNet general (Select Subject, 973 MB, the most
-           accurate; used when a graphics card runs it)
   windows  onnxruntime.dll with DirectML (graphics cards; Microsoft onnxruntime 1.22.0, MIT) and
            DirectML.dll (Microsoft DirectML 1.15.4, redistributable)
   macos    libonnxruntime.dylib (universal2)
   linux    libonnxruntime.so
+
+IS-Net ships with its MaxPool layers rounding down (see floor_pools): onnxruntime-web's WebGPU
+cannot run them rounding up, and at 1024 x 1024 every pooled size is even, so the answer is the
+same to the bit.
 
 Every download is checked against the SHA-256 below, so a changed or tampered file fails the
 build. The cache is $HORIX_AI_CACHE (default .sgps-build/ai-cache in the repository).
@@ -38,8 +40,6 @@ FILES = {
     "sam_mask_decoder_multi.onnx": (SAM + "sam_mask_decoder_multi.onnx", "8976b90a87ba50a6a72217a5ff994f7d25ce16f2229fcc1ed259e1294c622ffe"),
     # IS-Net (xuebinqin/DIS), Apache-2.0, as exported by rembg.
     "isnet-general-use.onnx": (REMBG + "isnet-general-use.onnx", "60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a"),
-    # BiRefNet (ZhengPeng7/BiRefNet), MIT, general epoch 244 as exported by rembg.
-    "BiRefNet-general-epoch_244.onnx": (REMBG + "BiRefNet-general-epoch_244.onnx", "58f621f00f5d756097615970a88a791584600dcf7c45b18a0a6267535a1ebd3c"),
     # onnxruntime built with DirectML, and DirectML itself (NuGet packages).
     "Microsoft.ML.OnnxRuntime.DirectML.1.22.0.nupkg": (NUGET + "Microsoft.ML.OnnxRuntime.DirectML/1.22.0", "29f9872d786236b79aa83f94482f3a17c14297e4833768d6d0ed4883ee732e60"),
     "Microsoft.AI.DirectML.1.15.4.nupkg": (NUGET + "Microsoft.AI.DirectML/1.15.4", "4e7cb7ddce8cf837a7a75dc029209b520ca0101470fcdf275c1f49736a3615b9"),
@@ -67,6 +67,14 @@ def get(name: str) -> bytes:
         path.unlink()
         sys.exit(f"fetch: {name}: SHA-256 {got} does not match {sha}")
     return data
+
+
+def floor_pools(model: bytes) -> bytes:
+    """IS-Net with ceil_mode=0 on its 33 MaxPool layers (the attribute's bytes edited in place)."""
+    up, down = b"\x0a\x09ceil_mode\x18\x01", b"\x0a\x09ceil_mode\x18\x00"
+    if model.count(up) != 33:
+        sys.exit(f"fetch: IS-Net: expected 33 MaxPool ceil_mode=1, found {model.count(up)}")
+    return model.replace(up, down)
 
 
 def half(name: str) -> bytes:
@@ -105,12 +113,12 @@ def main() -> None:
     dest.mkdir(parents=True, exist_ok=True)
     if what in ("models", "web"):
         sam = ("mobile_sam_image_encoder.onnx", "sam_mask_decoder_multi.onnx")
-        for n in sam + (("isnet-general-use.onnx",) if what == "models" else ()):
+        for n in sam:
             (dest / n).write_bytes(get(n))
-        if what == "web":
-            (dest / "isnet_fp16.onnx").write_bytes(half("isnet-general-use.onnx"))
-    elif what == "full":
-        (dest / "birefnet-general.onnx").write_bytes(get("BiRefNet-general-epoch_244.onnx"))
+        if what == "models":
+            (dest / "isnet-general-use.onnx").write_bytes(floor_pools(get("isnet-general-use.onnx")))
+        else:
+            (dest / "isnet_fp16.onnx").write_bytes(floor_pools(half("isnet-general-use.onnx")))
     elif what == "windows":
         ort = get("Microsoft.ML.OnnxRuntime.DirectML.1.22.0.nupkg")
         (dest / "onnxruntime.dll").write_bytes(member(ort, "zip", "runtimes/win-x64/native/onnxruntime.dll"))
