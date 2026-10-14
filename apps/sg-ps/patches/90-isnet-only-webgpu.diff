@@ -1,0 +1,189 @@
+diff --git a/apps/photocraft-web/index.html b/apps/photocraft-web/index.html
+index f2bf455..810cd96 100644
+--- a/apps/photocraft-web/index.html
++++ b/apps/photocraft-web/index.html
+@@ -430,18 +430,26 @@
+           document.head.appendChild(s);
+         });
+       }
++      var adapter = false;
+       async function session(url, gpu) {
+         // The GPU (WebGPU) when the browser has it, else the CPU (WebAssembly).
+-        if (gpu && navigator.gpu) {
++        if (gpu && adapter) {
+           try { return await ort.InferenceSession.create(url, { executionProviders: ['webgpu'] }); } catch (e) { console.warn('HORIX AI: WebGPU unavailable', e); }
+         }
+         return ort.InferenceSession.create(url, { executionProviders: ['wasm'] });
+       }
+       function runtime() {
+         if (rt) return rt;
+-        rt = script(ORT + 'ort.webgpu.min.js').then(function () {
++        rt = Promise.all([
++          script(ORT + 'ort.webgpu.min.js'),
++          (navigator.gpu ? navigator.gpu.requestAdapter().catch(function () { return null; }) : Promise.resolve(null))
++        ]).then(function (r) {
++          adapter = !!r[1];
+           ort.env.wasm.wasmPaths = ORT;
+           ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(navigator.hardwareConcurrency || 4, 8) : 1;
++          // Without a graphics card the models run on the processor: in a worker, so the page
++          // keeps responding (on the page's own thread Select Subject froze it for ~16 s).
++          ort.env.wasm.proxy = !adapter;
+         });
+         rt.catch(function () { rt = null; });
+         return rt;
+@@ -493,9 +501,23 @@
+             if (!subj) subj = await session(MODELS + 'isnet_fp16.onnx', true);
+             var n = side * side, x = new Float32Array(3 * n);
+             for (var i = 0; i < n; i++) for (var c = 0; c < 3; c++) x[c * n + i] = rgb[i * 3 + c] / 255 - 0.5;
+-            var r = await subj.run({ [subj.inputNames[0]]: new ort.Tensor('float32', x, [1, 3, side, side]) });
+-            var y = await r[subj.outputNames[0]].getData(), lo = Infinity, hi = -Infinity;
+-            for (var i = 0; i < n; i++) { if (y[i] < lo) lo = y[i]; if (y[i] > hi) hi = y[i]; }
++            async function infer() {
++              var r = await subj.run({ [subj.inputNames[0]]: new ort.Tensor('float32', x, [1, 3, side, side]) });
++              var y = await r[subj.outputNames[0]].getData(), lo = Infinity, hi = -Infinity;
++              for (var i = 0; i < n; i++) { if (y[i] < lo) lo = y[i]; if (y[i] > hi) hi = y[i]; }
++              if (!(hi - lo > 1e-6)) throw new Error('the model answered an empty mask');
++              return { y: y, lo: lo, hi: hi };
++            }
++            var o;
++            try { o = await infer(); } catch (e) {
++              // A graphics card that runs the model wrongly or not at all: once more on the processor.
++              if (!adapter || subj.horixCpu) throw e;
++              console.warn('HORIX AI: Select Subject failed on WebGPU; using the CPU', e);
++              subj = await session(MODELS + 'isnet_fp16.onnx', false);
++              subj.horixCpu = true;
++              o = await infer();
++            }
++            var y = o.y, lo = o.lo, hi = o.hi;
+             var k = hi - lo > 1e-6 ? 1 / (hi - lo) : 0, m = new Float32Array(n);
+             for (var i = 0; i < n; i++) m[i] = (y[i] - lo) * k;
+             out.push({ type: 'subject', req: req, mask: m });
+diff --git a/apps/photocraft/src/ai_model.rs b/apps/photocraft/src/ai_model.rs
+index f72572b..d4926dd 100644
+--- a/apps/photocraft/src/ai_model.rs
++++ b/apps/photocraft/src/ai_model.rs
+@@ -13,9 +13,8 @@ use photocraft_ui_egui::ai_segment::{LOW, SegEvent, Segmenter};
+ 
+ const ENCODER: &str = "mobile_sam_image_encoder.onnx";
+ const DECODER: &str = "sam_mask_decoder_multi.onnx";
+-/// BiRefNet (general; MIT): the most accurate Select Subject, used when its model is present.
+-const SUBJECT_BEST: &str = "birefnet-general.onnx";
+-/// IS-Net (DIS, general use; Apache-2.0): the lighter fallback. Both take 1024 × 1024.
++/// IS-Net (DIS, general use; Apache-2.0), 1024 × 1024: Select Subject, on the graphics card when
++/// there is one.
+ const SUBJECT: &str = "isnet-general-use.onnx";
+ const SUBJECT_SIDE: u32 = 1024;
+ 
+@@ -187,60 +186,26 @@ impl Model {
+     }
+ }
+ 
+-/// Which salient-object model is loaded: they differ in input normalisation and output.
+-#[derive(Clone, Copy, PartialEq, Debug)]
+-enum SubjectKind {
+-    BiRefNet,
+-    IsNet,
+-}
+-
+ struct Subject {
+     s: Session,
+-    kind: SubjectKind,
+     device: Device,
+ }
+ 
+-/// BiRefNet (the full download) when it runs on the graphics card: on the processor it needs
+-/// about 8 GB of memory and half a minute, so IS-Net is used there unless `HORIX_AI_BIREFNET_CPU`
+-/// is set. IS-Net otherwise, on the graphics card when there is one.
++/// IS-Net, on the graphics card when it takes the model, else the processor.
+ fn load_subject() -> Result<Subject, String> {
+     runtime()?;
+-    if let Some(p) = find(SUBJECT_BEST) {
+-        // Only on the graphics card (never load it on the processor just to drop it).
+-        let device = if std::env::var_os("HORIX_AI_BIREFNET_CPU").is_some() {
+-            Device::Cpu
+-        } else if gpu_providers().is_empty() {
+-            log::info!("HORIX AI: no GPU for BiRefNet; Select Subject uses IS-Net");
+-            return load_isnet();
+-        } else {
+-            Device::Gpu
+-        };
+-        match session_on(&p, device) {
+-            Ok(s) => return Ok(Subject { s, kind: SubjectKind::BiRefNet, device }),
+-            Err(e) => log::warn!("HORIX AI: BiRefNet failed to load ({e}); using IS-Net"),
+-        }
+-    }
+-    load_isnet()
+-}
+-
+-fn load_isnet() -> Result<Subject, String> {
+     let (s, device) = session(&find(SUBJECT).ok_or("the Select Subject model is missing (models folder)")?)?;
+-    Ok(Subject { s, kind: SubjectKind::IsNet, device })
++    Ok(Subject { s, device })
+ }
+ 
+-/// Select Subject, falling back once from a failed run on the graphics card: BiRefNet to IS-Net,
+-/// IS-Net on the GPU to IS-Net on the processor.
++/// Select Subject, falling back once from a failed run on the graphics card to the processor.
+ fn subject_mask(sub: &mut Subject, rgb: &[u8], side: u32) -> Result<Vec<f32>, String> {
+-    match run_subject(&mut sub.s, sub.kind, rgb, side) {
++    match run_subject(&mut sub.s, rgb, side) {
+         Ok(m) => Ok(m),
+-        Err(e) if sub.device == Device::Gpu || sub.kind == SubjectKind::BiRefNet => {
+-            log::warn!("HORIX AI: Select Subject failed on {:?}/{:?} ({e}); retrying", sub.kind, sub.device);
+-            *sub = if sub.kind == SubjectKind::BiRefNet {
+-                load_isnet()?
+-            } else {
+-                let p = find(SUBJECT).ok_or("the Select Subject model is missing (models folder)")?;
+-                Subject { s: session_on(&p, Device::Cpu)?, kind: SubjectKind::IsNet, device: Device::Cpu }
+-            };
++        Err(e) if sub.device == Device::Gpu => {
++            log::warn!("HORIX AI: Select Subject failed on the GPU ({e}); retrying on the CPU");
++            let p = find(SUBJECT).ok_or("the Select Subject model is missing (models folder)")?;
++            *sub = Subject { s: session_on(&p, Device::Cpu)?, device: Device::Cpu };
+             subject_mask(sub, rgb, side)
+         }
+         Err(e) => Err(e),
+@@ -336,23 +301,16 @@ fn step(m: &mut Model, embedding: &mut Option<(u64, Vec<f32>, u32, u32)>, cmd: &
+ }
+ 
+ /// The salient-object model on a `side × side` RGB image: the subject's probability, 0..1.
+-fn run_subject(s: &mut Session, kind: SubjectKind, rgb: &[u8], side: u32) -> Result<Vec<f32>, String> {
++fn run_subject(s: &mut Session, rgb: &[u8], side: u32) -> Result<Vec<f32>, String> {
+     let n = side as usize * side as usize;
+     if rgb.len() < n * 3 {
+         return Err("bad image".into());
+     }
+-    // Planar, normalised as each model was trained: BiRefNet with the ImageNet mean and std,
+-    // IS-Net with (v / 255 − 0.5).
+-    const MEAN: [f32; 3] = [0.485, 0.456, 0.406];
+-    const STD: [f32; 3] = [0.229, 0.224, 0.225];
++    // Planar, normalised as IS-Net was trained: v / 255 − 0.5.
+     let mut x = vec![0.0f32; 3 * n];
+     for i in 0..n {
+         for c in 0..3 {
+-            let v = f32::from(rgb[i * 3 + c]) / 255.0;
+-            x[c * n + i] = match kind {
+-                SubjectKind::BiRefNet => (v - MEAN[c]) / STD[c],
+-                SubjectKind::IsNet => v - 0.5,
+-            };
++            x[c * n + i] = f32::from(rgb[i * 3 + c]) / 255.0 - 0.5;
+         }
+     }
+     let e = |e: ort::Error| e.to_string();
+@@ -360,14 +318,10 @@ fn run_subject(s: &mut Session, kind: SubjectKind, rgb: &[u8], side: u32) -> Res
+     let out = s.run(ort::inputs!["input_image" => input]).map_err(e)?;
+     let (_, y) = out[0].try_extract_tensor::<f32>().map_err(e)?;
+     let y = &y[..n.min(y.len())];
+-    Ok(match kind {
+-        // BiRefNet's output is logits: a calibrated probability after the sigmoid.
+-        SubjectKind::BiRefNet => y.iter().map(|v| 1.0 / (1.0 + (-v).exp())).collect(),
+-        SubjectKind::IsNet => normalise(y),
+-    })
++    Ok(normalise(y))
+ }
+ 
+-/// Min–max to 0..1 (the salient-object models' outputs aren't calibrated).
++/// Min–max to 0..1 (IS-Net's output isn't calibrated).
+ fn normalise(y: &[f32]) -> Vec<f32> {
+     let (lo, hi) = y.iter().fold((f32::MAX, f32::MIN), |(a, b), v| (a.min(*v), b.max(*v)));
+     let k = if hi - lo > 1e-6 { 1.0 / (hi - lo) } else { 0.0 };
