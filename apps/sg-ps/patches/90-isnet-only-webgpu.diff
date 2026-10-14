@@ -1,8 +1,8 @@
 diff --git a/apps/photocraft-web/index.html b/apps/photocraft-web/index.html
-index f2bf455..810cd96 100644
+index f2bf455..05a3cee 100644
 --- a/apps/photocraft-web/index.html
 +++ b/apps/photocraft-web/index.html
-@@ -430,18 +430,26 @@
+@@ -430,18 +430,28 @@
            document.head.appendChild(s);
          });
        }
@@ -22,16 +22,18 @@ index f2bf455..810cd96 100644
 +          script(ORT + 'ort.webgpu.min.js'),
 +          (navigator.gpu ? navigator.gpu.requestAdapter().catch(function () { return null; }) : Promise.resolve(null))
 +        ]).then(function (r) {
-+          adapter = !!r[1];
++          // Our models carry half-precision weights (IS-Net): a graphics card without shader-f16
++          // runs them wrongly (empty masks), so those take the processor path.
++          adapter = !!(r[1] && r[1].features.has('shader-f16'));
            ort.env.wasm.wasmPaths = ORT;
            ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(navigator.hardwareConcurrency || 4, 8) : 1;
-+          // Without a graphics card the models run on the processor: in a worker, so the page
++          // Without a usable graphics card the models run on the processor: in a worker, so the page
 +          // keeps responding (on the page's own thread Select Subject froze it for ~16 s).
 +          ort.env.wasm.proxy = !adapter;
          });
          rt.catch(function () { rt = null; });
          return rt;
-@@ -493,9 +501,23 @@
+@@ -493,9 +503,23 @@
              if (!subj) subj = await session(MODELS + 'isnet_fp16.onnx', true);
              var n = side * side, x = new Float32Array(3 * n);
              for (var i = 0; i < n; i++) for (var c = 0; c < 3; c++) x[c * n + i] = rgb[i * 3 + c] / 255 - 0.5;
