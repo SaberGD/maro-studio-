@@ -222,7 +222,7 @@ index 1c857bf..f79a022 100644
  /// copies become the selection.
  pub fn duplicate_selected(s: &mut Session) -> Result<Value> {
 diff --git a/crates/ui-egui/src/ai_segment.rs b/crates/ui-egui/src/ai_segment.rs
-index 23ce329..a0ed74f 100644
+index 23ce329..88bd24d 100644
 --- a/crates/ui-egui/src/ai_segment.rs
 +++ b/crates/ui-egui/src/ai_segment.rs
 @@ -45,6 +45,10 @@ pub enum SegEvent {
@@ -246,7 +246,7 @@ index 23ce329..a0ed74f 100644
  }
  
  /// A Select Subject request waiting for the model.
-@@ -127,6 +134,38 @@ pub struct State {
+@@ -127,6 +134,44 @@ pub struct State {
      hover_req: Option<u64>,
      hover_pt: Option<[f32; 2]>,
      hover_tex: Option<(egui::TextureHandle, f32)>,
@@ -254,6 +254,12 @@ index 23ce329..a0ed74f 100644
 +    /// started at in ms).
 +    preload_sent: bool,
 +    preparing: Option<(f32, String, f64)>,
++}
++
++/// The frame clock in ms (egui's time, which also runs in the browser, where
++/// `gpu_canvas::now_ms` is always 0).
++fn clock_ms(app: &PhotocraftApp) -> f64 {
++    app.last_frame_time * 1000.0
 +}
 +
 +/// Seconds after start-up before the models start loading (the app's own start comes first).
@@ -285,7 +291,25 @@ index 23ce329..a0ed74f 100644
  }
  
  /// The AI tools can run (a model service is attached and hasn't failed).
-@@ -606,12 +645,41 @@ fn send(app: &mut PhotocraftApp) {
+@@ -169,7 +214,7 @@ pub fn subject(app: &mut PhotocraftApp, params: &serde_json::Value) -> bool {
+     let rgb = stretch_rgb(&rgb, w as usize, h as usize, side as usize);
+     app.ai.next_req += 1;
+     let req = app.ai.next_req;
+-    app.ai.subject = Some(SubjectRun { req, doc, side, started_ms: crate::gpu_canvas::now_ms(), base, mode, params: params.clone() });
++    app.ai.subject = Some(SubjectRun { req, doc, side, started_ms: clock_ms(app), base, mode, params: params.clone() });
+     if let Some(seg) = app.services.segmenter.as_mut() {
+         seg.subject(req, rgb, side);
+     }
+@@ -253,7 +298,7 @@ fn apply_subject(app: &mut PhotocraftApp, run: SubjectRun, mask: &[f32]) {
+     match photocraft_engine::smartselect_cmds::set_selection_from(&mut app.session, "Select Subject", run.base.as_ref(), region.as_ref(), run.mode) {
+         Ok(_) => {
+             app.sync_views();
+-            app.ui.status = format!("HORIX AI: subject selected in {}", crate::jobs_ui::elapsed(crate::gpu_canvas::now_ms() - run.started_ms));
++            app.ui.status = format!("HORIX AI: subject selected in {}", crate::jobs_ui::elapsed(clock_ms(app) - run.started_ms));
+             app.ui.status_error = false;
+         }
+         Err(e) => {
+@@ -606,12 +651,41 @@ fn send(app: &mut PhotocraftApp) {
  
  /// Handle the model's results; call every frame.
  pub fn poll(app: &mut PhotocraftApp, ctx: &egui::Context) {
@@ -307,14 +331,14 @@ index 23ce329..a0ed74f 100644
      for e in events {
          match e {
 +            SegEvent::Progress { fraction, stage } => {
-+                let started = app.ai.preparing.as_ref().map_or_else(crate::gpu_canvas::now_ms, |p| p.2);
++                let started = app.ai.preparing.as_ref().map_or_else(|| clock_ms(app), |p| p.2);
 +                app.ai.preparing = Some((fraction, stage, started));
 +                ctx.request_repaint_after(std::time::Duration::from_millis(120));
 +            }
 +            SegEvent::Ready => {
 +                // Say so when it took long enough to have been noticed.
 +                if let Some((_, _, started)) = app.ai.preparing.take()
-+                    && crate::gpu_canvas::now_ms() - started > 1500.0
++                    && clock_ms(app) - started > 1500.0
 +                {
 +                    crate::notices::post_brief(
 +                        app,
@@ -327,6 +351,15 @@ index 23ce329..a0ed74f 100644
              SegEvent::Encoded { key } => {
                  app.ai.embedded = Some(key);
                  if app.ai.encoding == Some(key) {
+@@ -677,7 +751,7 @@ pub fn poll(app: &mut PhotocraftApp, ctx: &egui::Context) {
+                 .ai
+                 .subject
+                 .as_ref()
+-                .map(|s| crate::jobs_ui::elapsed(crate::gpu_canvas::now_ms() - s.started_ms))
++                .map(|s| crate::jobs_ui::elapsed(clock_ms(app) - s.started_ms))
+                 .unwrap_or_else(|| "0.0 s".into());
+             format!("HORIX AI: finding the subject… {elapsed}")
+         } else if app.ai.encoding.is_some() {
 diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
 index 5173c06..2677812 100644
 --- a/crates/ui-egui/src/canvas.rs
@@ -350,10 +383,10 @@ index 5173c06..2677812 100644
                  }
                  Tool::CloneStamp | Tool::Healing if mods.alt => {
 diff --git a/crates/ui-egui/src/gpu_status.rs b/crates/ui-egui/src/gpu_status.rs
-index bb830cc..33039d6 100644
+index bb830cc..058384b 100644
 --- a/crates/ui-egui/src/gpu_status.rs
 +++ b/crates/ui-egui/src/gpu_status.rs
-@@ -74,6 +74,7 @@ pub fn system_info(app: &PhotocraftApp) -> Vec<String> {
+@@ -74,10 +74,12 @@ pub fn system_info(app: &PhotocraftApp) -> Vec<String> {
  
  /// Compact, always-visible graphics and model health for the status bar.
  pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
@@ -361,6 +394,30 @@ index bb830cc..33039d6 100644
      let t = crate::theme::Tokens::get(ui.ctx());
      let gpu = app.gpu_active() && app.perf.gpu_info.canvas == "gpu";
      let weak = app.perf.gpu_info.device_type == "integratedGpu" || app.perf.gpu_info.device_type == "cpu" || app.perf.gpu_info.backend == "gl";
+-    let ai_ready = crate::ai_segment::available(app) && crate::ai_segment::subject_available(app);
++    // While the models are still being prepared the AI isn't ready yet (prep_status shows it).
++    let ai_ready = crate::ai_segment::available(app) && crate::ai_segment::subject_available(app) && crate::ai_segment::preparing(app).is_none();
+     let problem = app.perf.gpu_info.lost.as_deref().or(app.perf.gpu_info.fallback.as_deref()).or(app.perf.gpu_fallback.as_deref());
+     let label = if ai_ready && gpu && !weak {
+         "AI/GPU ready"
+@@ -97,6 +99,8 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+         format!("{}\n{}\nAI selection can become very slow when the browser falls back to CPU/WebGL.", graphics_line(app), reason)
+     } else if let Some(reason) = crate::ai_segment::problem(app) {
+         format!("{}\nAI model service failed: {reason}. HORIX will use the classic selection path.", graphics_line(app))
++    } else if crate::ai_segment::preparing(app).is_some() {
++        format!("{}\nAI models are being prepared in the background.", graphics_line(app))
+     } else if !ai_ready {
+         format!("{}\nAI model service is not attached. HORIX will use the classic selection path.", graphics_line(app))
+     } else if weak {
+@@ -105,7 +109,7 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+         format!("{}\nAI models and graphics acceleration are active.", graphics_line(app))
+     };
+     ui.label(egui::RichText::new(label).color(color).size(12.0)).on_hover_text(hover);
+-    if (!gpu || !ai_ready) && ui.small_button("Retry").on_hover_text("Reload HORIX and try the GPU/model service again").clicked() {
++    if (!gpu || !ai_ready) && crate::ai_segment::preparing(app).is_none() && ui.small_button("Retry").on_hover_text("Reload HORIX and try the GPU/model service again").clicked() {
+         app.ui.status = "Retrying the GPU/model connection...".into();
+         app.ui.status_error = false;
+         #[cfg(target_arch = "wasm32")]
 diff --git a/crates/ui-egui/src/group_delete_ui.rs b/crates/ui-egui/src/group_delete_ui.rs
 new file mode 100644
 index 0000000..f09cc9a
@@ -549,7 +606,7 @@ index d756c82..d20878c 100644
  }
  
 diff --git a/crates/ui-egui/src/notices.rs b/crates/ui-egui/src/notices.rs
-index 17e0968..43d66d4 100644
+index 17e0968..50a7dd5 100644
 --- a/crates/ui-egui/src/notices.rs
 +++ b/crates/ui-egui/src/notices.rs
 @@ -21,12 +21,15 @@ pub struct Notice {
@@ -587,12 +644,16 @@ index 17e0968..43d66d4 100644
  /// Report import/export `warnings` for the file operation `what` (e.g. "Opened a.psd"): the status
  /// bar says how many there were, and a notice lists them. Nothing happens when there are none.
  pub fn io_warnings(app: &mut PhotocraftApp, what: &str, warnings: &[String]) {
-@@ -54,6 +68,8 @@ pub fn error(app: &mut PhotocraftApp, message: String) {
+@@ -54,6 +68,12 @@ pub fn error(app: &mut PhotocraftApp, message: String) {
  
  /// Draw the notices; each has a close button.
  pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
 +    let now = ctx.input(|i| i.time);
 +    app.ui.notices.retain(|n| n.until.is_none_or(|u| now < u));
++    // Wake up when the next self-dismissing notice is due.
++    if let Some(next) = app.ui.notices.iter().filter_map(|n| n.until).reduce(f64::min) {
++        ctx.request_repaint_after(std::time::Duration::from_secs_f64((next - now).max(0.0) + 0.05));
++    }
      if app.ui.notices.is_empty() {
          return;
      }
