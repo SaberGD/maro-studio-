@@ -1,0 +1,1380 @@
+diff --git a/apps/photocraft-web/index.html b/apps/photocraft-web/index.html
+index 05a3cee..2c8b673 100644
+--- a/apps/photocraft-web/index.html
++++ b/apps/photocraft-web/index.html
+@@ -464,6 +464,55 @@
+         });
+         return ready;
+       }
++      // Background preparation (horixAi.preload, soon after start-up): download the three models
++      // with progress (the browser keeps them, so later visits only revalidate), open them, and on
++      // a graphics card run IS-Net once so its shaders are compiled before the first Select Subject.
++      var FILES = [['mobile_sam_image_encoder.onnx', 28157093], ['sam_mask_decoder_multi.onnx', 16496559], ['isnet_fp16.onnx', 90648790]];
++      var prepared = null, lastShown = -1;
++      function progress(fraction, stage) {
++        var pct = Math.floor(fraction * 100);
++        if (pct === lastShown) return;
++        lastShown = pct;
++        out.push({ type: 'progress', fraction: fraction, stage: stage });
++      }
++      async function download(name, size, done, total) {
++        var r = await fetch(MODELS + name);
++        if (!r.ok) throw new Error(name + ': HTTP ' + r.status);
++        if (!r.body || !r.body.getReader) return new Uint8Array(await r.arrayBuffer());
++        var reader = r.body.getReader(), parts = [], got = 0;
++        for (;;) {
++          var c = await reader.read();
++          if (c.done) break;
++          parts.push(c.value); got += c.value.length;
++          progress(0.04 + 0.78 * (done + Math.min(got, size)) / total, 'Downloading the AI models');
++        }
++        var buf = new Uint8Array(got), at = 0;
++        for (var i = 0; i < parts.length; i++) { buf.set(parts[i], at); at += parts[i].length; }
++        return buf;
++      }
++      function preload() {
++        if (prepared) return prepared;
++        prepared = queue = queue.then(async function () {
++          progress(0.01, 'Starting the AI runtime');
++          await runtime();
++          var total = FILES.reduce(function (a, f) { return a + f[1]; }, 0), done = 0, bufs = [];
++          for (var i = 0; i < FILES.length; i++) { bufs.push(await download(FILES[i][0], FILES[i][1], done, total)); done += FILES[i][1]; }
++          progress(0.84, 'Opening the models');
++          if (!enc) { enc = await session(bufs[0], true); dec = await session(bufs[1], false); ready = Promise.resolve(); }
++          if (!subj) subj = await session(bufs[2], true);
++          if (adapter) {
++            progress(0.92, 'Preparing the graphics card');
++            var n = 1024 * 1024;
++            await subj.run({ [subj.inputNames[0]]: new ort.Tensor('float32', new Float32Array(3 * n), [1, 3, 1024, 1024]) });
++          }
++          out.push({ type: 'ready' });
++        }).catch(function (e) {
++          // Not fatal: each tool loads what it needs on first use, as before.
++          console.warn('HORIX AI: background preparation failed', e);
++          out.push({ type: 'ready' });
++        });
++        return prepared;
++      }
+       // One model call at a time, in order.
+       function then(job) {
+         queue = queue.then(function () { return load().then(job); }).catch(function (e) {
+@@ -527,6 +576,7 @@
+             out.push({ type: 'subjectFailed', msg: String((e && e.message) || e) });
+           });
+         },
++        preload: function () { preload(); },
+         poll: function () { return out.splice(0, out.length); }
+       };
+     })();
+diff --git a/apps/photocraft-web/src/web.rs b/apps/photocraft-web/src/web.rs
+index 12be6e0..539d703 100644
+--- a/apps/photocraft-web/src/web.rs
++++ b/apps/photocraft-web/src/web.rs
+@@ -263,6 +263,8 @@ impl photocraft_ui_egui::ai_segment::Segmenter for WebSegmenter {
+                 "failed" => Some(SegEvent::Failed { msg: get(&e, "msg").as_string().unwrap_or_default() }),
+                 "subject" => Some(SegEvent::Subject { req: get(&e, "req").as_f64()? as u64, mask: f32s(get(&e, "mask")) }),
+                 "subjectFailed" => Some(SegEvent::SubjectFailed { msg: get(&e, "msg").as_string().unwrap_or_default() }),
++                "progress" => Some(SegEvent::Progress { fraction: get(&e, "fraction").as_f64()? as f32, stage: get(&e, "stage").as_string().unwrap_or_default() }),
++                "ready" => Some(SegEvent::Ready),
+                 _ => None,
+             })
+             .collect()
+@@ -273,6 +275,9 @@ impl photocraft_ui_egui::ai_segment::Segmenter for WebSegmenter {
+     fn subject(&mut self, req: u64, rgb: Vec<u8>, side: u32) {
+         Self::call("subject", &[(req as f64).into(), js_sys::Uint8Array::from(rgb.as_slice()).into(), side.into()]);
+     }
++    fn preload(&mut self) {
++        Self::call("preload", &[]);
++    }
+ }
+ 
+ /// IS-Net's input side (Select Subject; the browser runs the half-precision export).
+diff --git a/apps/photocraft/src/ai_model.rs b/apps/photocraft/src/ai_model.rs
+index d4926dd..808bce8 100644
+--- a/apps/photocraft/src/ai_model.rs
++++ b/apps/photocraft/src/ai_model.rs
+@@ -22,6 +22,8 @@ enum Cmd {
+     Encode { key: u64, rgb: Vec<u8>, w: u32, h: u32 },
+     Decode { key: u64, req: u64, points: Vec<[f32; 2]>, labels: Vec<f32>, prev: Option<Vec<f32>> },
+     Subject { req: u64, rgb: Vec<u8>, side: u32 },
++    /// Load both models now (start-up), reporting progress.
++    Preload,
+ }
+ 
+ pub struct NativeSegmenter {
+@@ -58,6 +60,9 @@ impl Segmenter for NativeSegmenter {
+     fn subject(&mut self, req: u64, rgb: Vec<u8>, side: u32) {
+         let _ = self.tx.send(Cmd::Subject { req, rgb, side });
+     }
++    fn preload(&mut self) {
++        let _ = self.tx.send(Cmd::Preload);
++    }
+ }
+ 
+ /// Folders the runtime library and the models may be in, nearest first.
+@@ -242,6 +247,32 @@ fn run(
+     cmd: Cmd,
+     tx: &Sender<SegEvent>,
+ ) {
++    // Start-up: both models load before anything asks (the graphics card compiles them on first
++    // load, Core ML especially), so the first selection doesn't wait.
++    if let Cmd::Preload = cmd {
++        let progress = |fraction: f32, stage: &str| {
++            let _ = tx.send(SegEvent::Progress { fraction, stage: stage.into() });
++        };
++        progress(0.05, "Loading the selection model");
++        if model.is_none() && failed.is_none() {
++            match load() {
++                Ok(m) => *model = Some(m),
++                Err(msg) => {
++                    log::warn!("HORIX AI: {msg}");
++                    *failed = Some(msg);
++                }
++            }
++        }
++        progress(0.5, "Loading the Select Subject model");
++        if subject.is_none() {
++            *subject = Some(load_subject());
++        }
++        if let Some(Err(msg)) = subject.as_ref() {
++            log::warn!("HORIX AI: {msg}");
++        }
++        let _ = tx.send(SegEvent::Ready);
++        return;
++    }
+     // Select Subject has its own model, loaded on first use.
+     if let Cmd::Subject { req, rgb, side } = cmd {
+         let ev = match subject.get_or_insert_with(load_subject) {
+@@ -296,7 +327,7 @@ fn step(m: &mut Model, embedding: &mut Option<(u64, Vec<f32>, u32, u32)>, cmd: &
+             }
+             None => return Err("the image is not encoded".into()),
+         },
+-        Cmd::Subject { .. } => return Ok(None),
++        Cmd::Subject { .. } | Cmd::Preload => return Ok(None),
+     }))
+ }
+ 
+diff --git a/crates/engine/src/extra_cmds.rs b/crates/engine/src/extra_cmds.rs
+index 1f9c9f0..a12445e 100644
+--- a/crates/engine/src/extra_cmds.rs
++++ b/crates/engine/src/extra_cmds.rs
+@@ -696,6 +696,15 @@ pub fn specs() -> Vec<CommandSpec> {
+             },
+             ungroup
+         ),
++        spec!(
++            "layer.deleteGroup",
++            "Delete Group",
++            &[],
++            None,
++            r##"{"mode":"groupOnly"|"contents"} (the selected layers; groups keep their layers or lose them)"##,
++            has_layer,
++            |s, p| crate::layer_multi_cmds::delete_groups(s, p.get("mode").and_then(Value::as_str) == Some("groupOnly"))
++        ),
+         spec!("layer.hideLayers", "Hide Layers", &["Layer"], Some("Cmd+,"), r##"{"layer":id?}"##, has_layer, |s, p| set_visible(s, p, false)),
+         spec!("layer.showLayers", "Show Layers", &[], None, r##"{"layer":id?}"##, has_layer, |s, p| set_visible(s, p, true)),
+         spec!("filter.blur.average", "Average", &["Filter", "Blur"], None, "{}", has_pixels, |s, _| average(s)),
+diff --git a/crates/engine/src/layer_multi_cmds.rs b/crates/engine/src/layer_multi_cmds.rs
+index 1c857bf..f79a022 100644
+--- a/crates/engine/src/layer_multi_cmds.rs
++++ b/crates/engine/src/layer_multi_cmds.rs
+@@ -698,6 +698,42 @@ pub fn delete_selected(s: &mut Session) -> Result<Value> {
+     Ok(json!({"deleted": sel.len()}))
+ }
+ 
++/// Delete with a group among the selected layers, after Photoshop's question: `group_only` keeps
++/// each group's layers (they take its place), otherwise they go and the emptied group stays.
++/// Other selected layers are deleted either way. One history step.
++pub fn delete_groups(s: &mut Session, group_only: bool) -> Result<Value> {
++    let sel = selected(s);
++    s.edit(if group_only { "Delete Group" } else { "Delete Group Contents" }, |doc, active| {
++        let mut keep = None;
++        for id in top_level(doc, &sel) {
++            if !doc.layer(id).is_some_and(Layer::is_group) {
++                doc.remove(id).ok_or(EngineError::NoLayer(id))?;
++            } else if group_only {
++                let path = doc.path_of(id).ok_or(EngineError::NoLayer(id))?;
++                let (&idx, parent) = path.split_last().ok_or(EngineError::NoLayer(id))?;
++                let sib = if parent.is_empty() { &mut doc.layers } else { doc.layer_at_mut(parent).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(id))? };
++                let children = match sib.remove(idx).content {
++                    LayerContent::Group(g) => g.children,
++                    _ => Vec::new(),
++                };
++                keep = children.last().map(|l| l.id).or(keep);
++                for (k, l) in children.into_iter().enumerate() {
++                    sib.insert(idx + k, l);
++                }
++            } else {
++                doc.layer_mut(id).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(id))?.clear();
++                keep = Some(id);
++            }
++        }
++        if doc.layers.is_empty() {
++            return Err(EngineError::Other("a document must keep at least one layer".into()));
++        }
++        *active = keep.filter(|k| doc.layer(*k).is_some()).or_else(|| doc.top_layer());
++        Ok(())
++    })?;
++    Ok(Value::Null)
++}
++
+ /// Duplicate Layer with several layers selected: each copy goes above its original and the
+ /// copies become the selection.
+ pub fn duplicate_selected(s: &mut Session) -> Result<Value> {
+diff --git a/crates/ui-egui/src/ai_segment.rs b/crates/ui-egui/src/ai_segment.rs
+index 23ce329..88bd24d 100644
+--- a/crates/ui-egui/src/ai_segment.rs
++++ b/crates/ui-egui/src/ai_segment.rs
+@@ -45,6 +45,10 @@ pub enum SegEvent {
+     Subject { req: u64, mask: Vec<f32> },
+     /// The Select Subject model is unavailable.
+     SubjectFailed { msg: String },
++    /// Background preparation ([`Segmenter::preload`]): how far (0..1) and what it is doing.
++    Progress { fraction: f32, stage: String },
++    /// The models are loaded and ready.
++    Ready,
+ }
+ 
+ /// The platform's model runner. Calls return at once; results arrive through [`Segmenter::poll`].
+@@ -63,6 +67,9 @@ pub trait Segmenter {
+     }
+     /// Run the Select Subject model on an RGB image `side × side` (8-bit, row-major).
+     fn subject(&mut self, _req: u64, _rgb: Vec<u8>, _side: u32) {}
++    /// Load and prepare the models in the background, reporting [`SegEvent::Progress`] and then
++    /// [`SegEvent::Ready`], so the first selection doesn't wait for them.
++    fn preload(&mut self) {}
+ }
+ 
+ /// A Select Subject request waiting for the model.
+@@ -127,6 +134,44 @@ pub struct State {
+     hover_req: Option<u64>,
+     hover_pt: Option<[f32; 2]>,
+     hover_tex: Option<(egui::TextureHandle, f32)>,
++    /// Background preparation: asked for, and its progress while it runs (fraction, stage,
++    /// started at in ms).
++    preload_sent: bool,
++    preparing: Option<(f32, String, f64)>,
++}
++
++/// The frame clock in ms (egui's time, which also runs in the browser, where
++/// `gpu_canvas::now_ms` is always 0).
++fn clock_ms(app: &PhotocraftApp) -> f64 {
++    app.last_frame_time * 1000.0
++}
++
++/// Seconds after start-up before the models start loading (the app's own start comes first).
++const PRELOAD_AFTER_S: f64 = 1.5;
++
++/// The models are being prepared in the background: (fraction 0..1, what is happening).
++pub fn preparing(app: &PhotocraftApp) -> Option<(f32, &str)> {
++    app.ai.preparing.as_ref().map(|(f, s, _)| (*f, s.as_str()))
++}
++
++/// Status-bar chip while the models are prepared: a thin progress bar and the percentage, with
++/// what is happening on hover.
++pub fn prep_status(app: &PhotocraftApp, ui: &mut egui::Ui) {
++    let Some((fraction, stage)) = preparing(app) else { return };
++    let t = crate::theme::Tokens::get(ui.ctx());
++    let (r, resp) = ui.allocate_exact_size(egui::vec2(196.0, 16.0), egui::Sense::hover());
++    let p = ui.painter();
++    let bar = egui::Rect::from_min_size(egui::pos2(r.left(), r.center().y - 1.5), egui::vec2(46.0, 3.0));
++    p.rect_filled(bar, 1.5, t.separator);
++    let shown = fraction.clamp(0.02, 1.0);
++    p.rect_filled(egui::Rect::from_min_size(bar.min, egui::vec2(bar.width() * shown, bar.height())), 1.5, t.accent);
++    let label = format!("{} {:.0}%", tl!("Preparing AI tools"), fraction.clamp(0.0, 1.0) * 100.0);
++    p.text(egui::pos2(bar.right() + 8.0, r.center().y), egui::Align2::LEFT_CENTER, label, egui::FontId::proportional(12.0), t.text_dim);
++    resp.on_hover_text(format!(
++        "{}\n{}\n{stage}",
++        tl!("HORIX is getting its AI tools ready in the background (only the first time takes long)."),
++        tl!("Keep working: we'll let you know when Select Subject and Object Selection are ready.")
++    ));
+ }
+ 
+ /// The AI tools can run (a model service is attached and hasn't failed).
+@@ -169,7 +214,7 @@ pub fn subject(app: &mut PhotocraftApp, params: &serde_json::Value) -> bool {
+     let rgb = stretch_rgb(&rgb, w as usize, h as usize, side as usize);
+     app.ai.next_req += 1;
+     let req = app.ai.next_req;
+-    app.ai.subject = Some(SubjectRun { req, doc, side, started_ms: crate::gpu_canvas::now_ms(), base, mode, params: params.clone() });
++    app.ai.subject = Some(SubjectRun { req, doc, side, started_ms: clock_ms(app), base, mode, params: params.clone() });
+     if let Some(seg) = app.services.segmenter.as_mut() {
+         seg.subject(req, rgb, side);
+     }
+@@ -253,7 +298,7 @@ fn apply_subject(app: &mut PhotocraftApp, run: SubjectRun, mask: &[f32]) {
+     match photocraft_engine::smartselect_cmds::set_selection_from(&mut app.session, "Select Subject", run.base.as_ref(), region.as_ref(), run.mode) {
+         Ok(_) => {
+             app.sync_views();
+-            app.ui.status = format!("HORIX AI: subject selected in {}", crate::jobs_ui::elapsed(crate::gpu_canvas::now_ms() - run.started_ms));
++            app.ui.status = format!("HORIX AI: subject selected in {}", crate::jobs_ui::elapsed(clock_ms(app) - run.started_ms));
+             app.ui.status_error = false;
+         }
+         Err(e) => {
+@@ -606,12 +651,41 @@ fn send(app: &mut PhotocraftApp) {
+ 
+ /// Handle the model's results; call every frame.
+ pub fn poll(app: &mut PhotocraftApp, ctx: &egui::Context) {
++    // Prepare the models in the background soon after start-up, so the first selection is quick.
++    if !app.ai.preload_sent
++        && ctx.input(|i| i.time) > PRELOAD_AFTER_S
++        && let Some(s) = app.services.segmenter.as_mut()
++    {
++        app.ai.preload_sent = true;
++        s.preload();
++    }
+     let events = match app.services.segmenter.as_mut() {
+         Some(s) => s.poll(),
+         None => return,
+     };
++    if app.ai.preparing.is_some() {
++        ctx.request_repaint_after(std::time::Duration::from_millis(120));
++    }
+     for e in events {
+         match e {
++            SegEvent::Progress { fraction, stage } => {
++                let started = app.ai.preparing.as_ref().map_or_else(|| clock_ms(app), |p| p.2);
++                app.ai.preparing = Some((fraction, stage, started));
++                ctx.request_repaint_after(std::time::Duration::from_millis(120));
++            }
++            SegEvent::Ready => {
++                // Say so when it took long enough to have been noticed.
++                if let Some((_, _, started)) = app.ai.preparing.take()
++                    && clock_ms(app) - started > 1500.0
++                {
++                    crate::notices::post_brief(
++                        app,
++                        ctx,
++                        tl!("AI tools are ready"),
++                        vec![tl!("Select Subject, Quick Selection and Object Selection now respond right away.").to_string()],
++                    );
++                }
++            }
+             SegEvent::Encoded { key } => {
+                 app.ai.embedded = Some(key);
+                 if app.ai.encoding == Some(key) {
+@@ -677,7 +751,7 @@ pub fn poll(app: &mut PhotocraftApp, ctx: &egui::Context) {
+                 .ai
+                 .subject
+                 .as_ref()
+-                .map(|s| crate::jobs_ui::elapsed(crate::gpu_canvas::now_ms() - s.started_ms))
++                .map(|s| crate::jobs_ui::elapsed(clock_ms(app) - s.started_ms))
+                 .unwrap_or_else(|| "0.0 s".into());
+             format!("HORIX AI: finding the subject… {elapsed}")
+         } else if app.ai.encoding.is_some() {
+diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
+index 5173c06..2677812 100644
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -2116,7 +2116,7 @@ fn tool_move(app: &mut PhotocraftApp, x: f64, y: f64, pressure: f32, mods: egui:
+         crate::type_tool::pointer_move(app, x, y);
+     }
+     if tool == Tool::Pen {
+-        crate::vector_ui::pen_move(app, x, y);
++        crate::vector_ui::pen_move(app, x, y, mods);
+     }
+     let zoom = app.current_zoom();
+     if let Some(d) = app.drag.as_mut().filter(|d| d.reposition) {
+@@ -2227,7 +2227,7 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
+             }
+             match tool {
+                 Tool::Pen => {
+-                    crate::vector_ui::pen_down(app, x, y);
++                    crate::vector_ui::pen_press(app, x, y, mods);
+                     return;
+                 }
+                 Tool::CloneStamp | Tool::Healing if mods.alt => {
+diff --git a/crates/ui-egui/src/gpu_status.rs b/crates/ui-egui/src/gpu_status.rs
+index bb830cc..058384b 100644
+--- a/crates/ui-egui/src/gpu_status.rs
++++ b/crates/ui-egui/src/gpu_status.rs
+@@ -74,10 +74,12 @@ pub fn system_info(app: &PhotocraftApp) -> Vec<String> {
+ 
+ /// Compact, always-visible graphics and model health for the status bar.
+ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
++    crate::ai_segment::prep_status(app, ui);
+     let t = crate::theme::Tokens::get(ui.ctx());
+     let gpu = app.gpu_active() && app.perf.gpu_info.canvas == "gpu";
+     let weak = app.perf.gpu_info.device_type == "integratedGpu" || app.perf.gpu_info.device_type == "cpu" || app.perf.gpu_info.backend == "gl";
+-    let ai_ready = crate::ai_segment::available(app) && crate::ai_segment::subject_available(app);
++    // While the models are still being prepared the AI isn't ready yet (prep_status shows it).
++    let ai_ready = crate::ai_segment::available(app) && crate::ai_segment::subject_available(app) && crate::ai_segment::preparing(app).is_none();
+     let problem = app.perf.gpu_info.lost.as_deref().or(app.perf.gpu_info.fallback.as_deref()).or(app.perf.gpu_fallback.as_deref());
+     let label = if ai_ready && gpu && !weak {
+         "AI/GPU ready"
+@@ -97,6 +99,8 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+         format!("{}\n{}\nAI selection can become very slow when the browser falls back to CPU/WebGL.", graphics_line(app), reason)
+     } else if let Some(reason) = crate::ai_segment::problem(app) {
+         format!("{}\nAI model service failed: {reason}. HORIX will use the classic selection path.", graphics_line(app))
++    } else if crate::ai_segment::preparing(app).is_some() {
++        format!("{}\nAI models are being prepared in the background.", graphics_line(app))
+     } else if !ai_ready {
+         format!("{}\nAI model service is not attached. HORIX will use the classic selection path.", graphics_line(app))
+     } else if weak {
+@@ -105,7 +109,7 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+         format!("{}\nAI models and graphics acceleration are active.", graphics_line(app))
+     };
+     ui.label(egui::RichText::new(label).color(color).size(12.0)).on_hover_text(hover);
+-    if (!gpu || !ai_ready) && ui.small_button("Retry").on_hover_text("Reload HORIX and try the GPU/model service again").clicked() {
++    if (!gpu || !ai_ready) && crate::ai_segment::preparing(app).is_none() && ui.small_button("Retry").on_hover_text("Reload HORIX and try the GPU/model service again").clicked() {
+         app.ui.status = "Retrying the GPU/model connection...".into();
+         app.ui.status_error = false;
+         #[cfg(target_arch = "wasm32")]
+diff --git a/crates/ui-egui/src/group_delete_ui.rs b/crates/ui-egui/src/group_delete_ui.rs
+new file mode 100644
+index 0000000..f09cc9a
+--- /dev/null
++++ b/crates/ui-egui/src/group_delete_ui.rs
+@@ -0,0 +1,133 @@
++//! Deleting a group asks what goes, as in Photoshop ("Delete the group and its contents, or the
++//! group only?"), plus the contents only: the Layers panel's trash button, Delete / ⌫ and Layer ›
++//! Delete all come here when a selected group has layers in it.
++
++use serde_json::json;
++
++use crate::PhotocraftApp;
++
++/// The first selected group that has layers in it (its name), if any.
++fn non_empty_group(app: &PhotocraftApp) -> Option<String> {
++    let st = app.session.active()?;
++    st.selected_layers().into_iter().filter_map(|id| st.doc.layer(id)).find(|l| l.children().is_some_and(|c| !c.is_empty())).map(|l| l.name.clone())
++}
++
++/// Layer › Delete with a non-empty group selected: ask instead of deleting (true when asked).
++pub fn intercept(app: &mut PhotocraftApp) -> bool {
++    let Some(name) = non_empty_group(app) else { return false };
++    app.ui.group_delete = Some(name);
++    true
++}
++
++fn answer(app: &mut PhotocraftApp, command: &str, params: serde_json::Value) {
++    app.ui.group_delete = None;
++    if let Err(e) = app.run(command, params) {
++        app.ui.status = e;
++        app.ui.status_error = true;
++    }
++}
++
++pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
++    let Some(name) = app.ui.group_delete.clone() else { return };
++    let t = crate::theme::Tokens::get(ctx);
++    let (mut all, mut group_only, mut contents, mut cancel) = (false, false, false, false);
++    let modal = egui::Modal::new(egui::Id::new("group-delete-prompt")).show(ctx, |ui| {
++        ui.set_max_width(440.0);
++        ui.label(egui::RichText::new(tl!("Delete Group")).font(crate::theme::semibold(15.0)));
++        ui.add_space(4.0);
++        crate::widgets::hairline(ui);
++        ui.add_space(8.0);
++        ui.label(crate::i18n::fmt(tl!("Delete the group “{name}” and its contents, or only one of them?"), &[("name", &name)]));
++        ui.add_space(2.0);
++        ui.label(egui::RichText::new(tl!("Group Only keeps its layers in place; Contents Only keeps the empty group.")).color(t.text_dim).size(12.0));
++        ui.add_space(12.0);
++        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
++            ui.spacing_mut().item_spacing.x = 8.0;
++            all = crate::widgets::primary_button(ui, tl!("Group and Contents"), 140.0).clicked();
++            group_only = crate::widgets::secondary_button(ui, tl!("Group Only"), 96.0).clicked();
++            contents = crate::widgets::secondary_button(ui, tl!("Contents Only"), 108.0).clicked();
++            cancel = crate::widgets::secondary_button(ui, tl!("Cancel"), 76.0).clicked();
++        });
++    });
++    // ↩ answers with the default (Group and Contents), Esc or a click outside cancels.
++    all |= ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
++    if all {
++        answer(app, "layer.delete", json!({}));
++    } else if group_only {
++        answer(app, "layer.deleteGroup", json!({"mode": "groupOnly"}));
++    } else if contents {
++        answer(app, "layer.deleteGroup", json!({"mode": "contents"}));
++    } else if cancel || modal.should_close() {
++        app.ui.group_delete = None;
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use egui::{Event, Key, Modifiers, vec2};
++    use egui_kittest::Harness;
++    use egui_kittest::kittest::Queryable;
++    use serde_json::json;
++
++    use crate::PhotocraftApp;
++
++    fn harness() -> Harness<'static, PhotocraftApp> {
++        let mut s = photocraft_engine::Session::new();
++        s.execute("file.new", json!({"width": 64, "height": 64})).unwrap();
++        let mut h = Harness::builder().with_size(vec2(1280.0, 800.0)).with_max_steps(64).build_eframe(move |cc| {
++            PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
++            PhotocraftApp::new(s, crate::Services::default())
++        });
++        h.run_steps(4);
++        // Background, then a group holding two layers, selected.
++        for _ in 0..2 {
++            h.state_mut().run("layer.new.layer", json!({})).unwrap();
++        }
++        let ids: Vec<u64> = h.state().session.active().unwrap().doc.layers.iter().skip(1).map(|l| l.id.0).collect();
++        h.state_mut().run("layer.select", json!({"layer": ids[0]})).unwrap();
++        h.state_mut().run("layer.select", json!({"layer": ids[1], "mode": "add"})).unwrap();
++        h.state_mut().run("layer.new.groupFromLayers", json!({})).unwrap();
++        h.run_steps(2);
++        h
++    }
++
++    fn top(h: &Harness<'_, PhotocraftApp>) -> Vec<(bool, usize)> {
++        h.state().session.active().unwrap().doc.layers.iter().map(|l| (l.is_group(), l.children().map_or(0, <[_]>::len))).collect()
++    }
++
++    fn delete_key(h: &mut Harness<'_, PhotocraftApp>) {
++        h.event(Event::Key { key: Key::Delete, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
++        h.event(Event::Key { key: Key::Delete, physical_key: None, pressed: false, repeat: false, modifiers: Modifiers::NONE });
++        h.run_steps(3);
++    }
++
++    #[test]
++    fn deleting_a_group_asks_and_each_answer_does_what_it_says() {
++        let mut h = harness();
++        assert_eq!(top(&h), vec![(false, 0), (true, 2)]);
++        delete_key(&mut h);
++        assert!(h.state().ui.group_delete.is_some(), "asked: {}", h.state().ui.status);
++        assert_eq!(top(&h), vec![(false, 0), (true, 2)], "nothing deleted yet");
++        h.get_by_label("Group Only").click();
++        h.run_steps(3);
++        assert_eq!(top(&h), vec![(false, 0), (false, 0), (false, 0)], "the layers stayed, the group went");
++        h.state_mut().run("edit.undo", json!({})).unwrap();
++        h.run_steps(2);
++        delete_key(&mut h);
++        h.get_by_label("Contents Only").click();
++        h.run_steps(3);
++        assert_eq!(top(&h), vec![(false, 0), (true, 0)], "an empty group stayed");
++        h.state_mut().run("edit.undo", json!({})).unwrap();
++        h.run_steps(2);
++        delete_key(&mut h);
++        h.get_by_label("Group and Contents").click();
++        h.run_steps(3);
++        assert_eq!(top(&h), vec![(false, 0)]);
++        // A plain layer is deleted without asking.
++        h.state_mut().run("layer.new.layer", json!({})).unwrap();
++        h.run_steps(2);
++        delete_key(&mut h);
++        assert!(h.state().ui.group_delete.is_none());
++        assert_eq!(top(&h), vec![(false, 0)]);
++    }
++}
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index ddbaf51..278ef72 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -16,6 +16,7 @@ macro_rules! tl {
+ 
+ pub mod actions;
+ pub mod adjust_dialog;
++pub mod group_delete_ui;
+ pub mod ai_segment;
+ pub mod adjust_editors;
+ pub mod adjust_preview;
+@@ -1006,6 +1007,7 @@ impl eframe::App for PhotocraftApp {
+         dialogs::show(self, &ctx);
+         jobs_ui::dialog(self, &ctx);
+         discard_ui::show(self, &ctx);
++        group_delete_ui::show(self, &ctx);
+         distort_ui::show(self, &ctx);
+         camera_raw_ui::show(self, &ctx);
+         wide_angle_ui::show(self, &ctx);
+diff --git a/crates/ui-egui/src/mask_thumbs_ui/tests.rs b/crates/ui-egui/src/mask_thumbs_ui/tests.rs
+index 6aba8c6..d758a12 100644
+--- a/crates/ui-egui/src/mask_thumbs_ui/tests.rs
++++ b/crates/ui-egui/src/mask_thumbs_ui/tests.rs
+@@ -336,7 +336,7 @@ fn clicking_the_vector_mask_targets_it_for_the_path_tools() {
+     let k = layer(&h, masked).vector_mask.unwrap().path.subpaths[0].knots[0].anchor;
+     assert_eq!((k.x, k.y), (25.0, 12.0));
+     // The Pen adds a subpath to it.
+-    h.state_mut().ui.pen = Some(crate::vector_ui::PenPath { knots: vec![[[150.0, 10.0]; 3], [[190.0, 10.0]; 3], [[190.0, 40.0]; 3]], dragging: false });
++    h.state_mut().ui.pen = Some(crate::vector_ui::PenPath { knots: vec![[[150.0, 10.0]; 3], [[190.0, 10.0]; 3], [[190.0, 40.0]; 3]], dragging: false, resume: None });
+     crate::vector_ui::pen_commit(h.state_mut(), true);
+     assert_eq!(layer(&h, masked).vector_mask.unwrap().path.subpaths.len(), 2);
+     assert!(h.state().session.active().unwrap().doc.work_path.is_none(), "not a work path");
+diff --git a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
+index d756c82..d20878c 100644
+--- a/crates/ui-egui/src/menus.rs
++++ b/crates/ui-egui/src/menus.rs
+@@ -107,6 +107,10 @@ pub fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: Va
+     if crate::discard_ui::intercept(app, id, &params) {
+         return Ok(Value::Null);
+     }
++    // Deleting a group with layers in it asks what goes, as in Photoshop.
++    if id == "layer.delete" && params.as_object().is_none_or(|o| o.is_empty()) && crate::group_delete_ui::intercept(app) {
++        return Ok(Value::Null);
++    }
+     invoke_unguarded(app, ctx, id, params)
+ }
+ 
+diff --git a/crates/ui-egui/src/notices.rs b/crates/ui-egui/src/notices.rs
+index 17e0968..50a7dd5 100644
+--- a/crates/ui-egui/src/notices.rs
++++ b/crates/ui-egui/src/notices.rs
+@@ -21,12 +21,15 @@ pub struct Notice {
+     /// An error (warning colour) rather than an informational notice.
+     #[serde(default)]
+     pub error: bool,
++    /// Dismissed by itself at this time (egui seconds), for good news that needs no answer.
++    #[serde(default)]
++    pub until: Option<f64>,
+ }
+ 
+ /// Show a notice (newest last); returns its id.
+ pub fn post(app: &mut PhotocraftApp, title: impl Into<String>, lines: Vec<String>, error: bool) -> u64 {
+     let id = app.ui.alloc_id();
+-    app.ui.notices.push(Notice { id, title: title.into(), lines, error });
++    app.ui.notices.push(Notice { id, title: title.into(), lines, error, until: None });
+     let n = app.ui.notices.len();
+     if n > MAX_NOTICES {
+         app.ui.notices.drain(..n - MAX_NOTICES);
+@@ -34,6 +37,17 @@ pub fn post(app: &mut PhotocraftApp, title: impl Into<String>, lines: Vec<String
+     id
+ }
+ 
++/// A notice that goes away by itself after a few seconds.
++pub fn post_brief(app: &mut PhotocraftApp, ctx: &egui::Context, title: impl Into<String>, lines: Vec<String>) -> u64 {
++    let id = post(app, title, lines, false);
++    let until = ctx.input(|i| i.time) + 6.0;
++    if let Some(n) = app.ui.notices.iter_mut().find(|n| n.id == id) {
++        n.until = Some(until);
++    }
++    ctx.request_repaint_after(std::time::Duration::from_secs(6));
++    id
++}
++
+ /// Report import/export `warnings` for the file operation `what` (e.g. "Opened a.psd"): the status
+ /// bar says how many there were, and a notice lists them. Nothing happens when there are none.
+ pub fn io_warnings(app: &mut PhotocraftApp, what: &str, warnings: &[String]) {
+@@ -54,6 +68,12 @@ pub fn error(app: &mut PhotocraftApp, message: String) {
+ 
+ /// Draw the notices; each has a close button.
+ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
++    let now = ctx.input(|i| i.time);
++    app.ui.notices.retain(|n| n.until.is_none_or(|u| now < u));
++    // Wake up when the next self-dismissing notice is due.
++    if let Some(next) = app.ui.notices.iter().filter_map(|n| n.until).reduce(f64::min) {
++        ctx.request_repaint_after(std::time::Duration::from_secs_f64((next - now).max(0.0) + 0.05));
++    }
+     if app.ui.notices.is_empty() {
+         return;
+     }
+diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
+index a7a192c..1c1f200 100644
+--- a/crates/ui-egui/src/panels.rs
++++ b/crates/ui-egui/src/panels.rs
+@@ -1525,7 +1525,8 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+         ui.spacing_mut().item_spacing.x = 2.0;
+         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+             if icons::button(ui, "trash", 26.0, false, tl!("Delete layer")).clicked() {
+-                actions.push(("layer.delete".into(), json!({})));
++                // Like Layer › Delete (a group asks what goes).
++                actions.push(("layer.delete".into(), Value::Null));
+             }
+             if icons::button(ui, "square-plus", 26.0, false, &crate::shortcuts::tip_label(app, "Create a new layer", "layer.new.layer")).clicked() {
+                 actions.push(("layer.new.layer".into(), json!({})));
+diff --git a/crates/ui-egui/src/path_selection_tests.rs b/crates/ui-egui/src/path_selection_tests.rs
+index d7fa0d0..ca1695e 100644
+--- a/crates/ui-egui/src/path_selection_tests.rs
++++ b/crates/ui-egui/src/path_selection_tests.rs
+@@ -66,7 +66,7 @@ fn cmd_enter_while_drawing_finishes_the_path_and_loads_it() {
+     let mut h = harness();
+     h.state_mut().ui.tool = Tool::Pen;
+     let p = |x: f64, y: f64| [[x, y], [x, y], [x, y]];
+-    h.state_mut().ui.pen = Some(PenPath { knots: vec![p(20.0, 20.0), p(120.0, 20.0), p(120.0, 80.0)], dragging: false });
++    h.state_mut().ui.pen = Some(PenPath { knots: vec![p(20.0, 20.0), p(120.0, 20.0), p(120.0, 80.0)], dragging: false, resume: None });
+     h.run_steps(2);
+     press(&mut h, Key::Enter, command());
+     let app = h.state();
+@@ -76,7 +76,7 @@ fn cmd_enter_while_drawing_finishes_the_path_and_loads_it() {
+     // Plain ↩ still only finishes a path.
+     let mut h = harness();
+     h.state_mut().ui.tool = Tool::Pen;
+-    h.state_mut().ui.pen = Some(PenPath { knots: vec![p(20.0, 20.0), p(120.0, 20.0), p(120.0, 80.0)], dragging: false });
++    h.state_mut().ui.pen = Some(PenPath { knots: vec![p(20.0, 20.0), p(120.0, 20.0), p(120.0, 80.0)], dragging: false, resume: None });
+     h.run_steps(2);
+     press(&mut h, Key::Enter, Modifiers::NONE);
+     assert!(h.state().session.active().unwrap().doc.work_path.is_some());
+diff --git a/crates/ui-egui/src/pen_tool_tests.rs b/crates/ui-egui/src/pen_tool_tests.rs
+new file mode 100644
+index 0000000..349777d
+--- /dev/null
++++ b/crates/ui-egui/src/pen_tool_tests.rs
+@@ -0,0 +1,200 @@
++//! The Pen as in Photoshop: ⌘Z / ⌫ take back the last point, an open path continues from its end
++//! point, new subpaths join the Work Path, Make Selection hides the path, ⌘ drags anchors and
++//! handles (Direct Selection) and ⌥ converts points. Also ⇧⌘Z redoes.
++
++use egui::{Event, Key, Modifiers, vec2};
++use egui_kittest::Harness;
++use serde_json::json;
++
++use crate::PhotocraftApp;
++use crate::state::Tool;
++use crate::vector_ui::{pen_commit, pen_move, pen_press, pen_up};
++
++fn harness() -> Harness<'static, PhotocraftApp> {
++    let mut s = photocraft_engine::Session::new();
++    s.execute("file.new", json!({"width": 200, "height": 100})).unwrap();
++    let mut h = Harness::builder().with_size(vec2(1280.0, 800.0)).with_max_steps(64).build_eframe(move |cc| {
++        PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
++        PhotocraftApp::new(s, crate::Services::default())
++    });
++    h.state_mut().ui.tool = Tool::Pen;
++    h.run_steps(6);
++    h
++}
++
++/// ⌘ on the Mac, Ctrl elsewhere, as egui-winit reports them.
++fn command() -> Modifiers {
++    if cfg!(target_os = "macos") {
++        Modifiers { command: true, mac_cmd: true, ..Default::default() }
++    } else {
++        Modifiers { command: true, ctrl: true, ..Default::default() }
++    }
++}
++
++fn press(h: &mut Harness<'_, PhotocraftApp>, key: Key, m: Modifiers) {
++    h.event(Event::ModifiersChanged(m));
++    h.event(Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: m });
++    h.event(Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers: m });
++    h.event(Event::ModifiersChanged(Modifiers::NONE));
++    h.run_steps(3);
++}
++
++/// A click (press and release where pressed) with the Pen.
++fn click(app: &mut PhotocraftApp, x: f64, y: f64, m: Modifiers) {
++    pen_press(app, x, y, m);
++    pen_up(app);
++}
++
++fn drag(app: &mut PhotocraftApp, from: [f64; 2], to: [f64; 2], m: Modifiers) {
++    pen_press(app, from[0], from[1], m);
++    pen_move(app, (from[0] + to[0]) / 2.0, (from[1] + to[1]) / 2.0, m);
++    pen_move(app, to[0], to[1], m);
++    pen_up(app);
++}
++
++fn work(app: &PhotocraftApp) -> photocraft_doc::vector::Path {
++    app.session.active().unwrap().doc.work_path.clone().expect("a work path")
++}
++
++fn anchors(app: &PhotocraftApp, sub: usize) -> Vec<[f64; 2]> {
++    work(app).subpaths[sub].knots.iter().map(|k| [k.anchor.x, k.anchor.y]).collect()
++}
++
++#[test]
++fn cmd_z_and_backspace_take_back_the_last_point() {
++    let mut h = harness();
++    for (x, y) in [(10.0, 10.0), (60.0, 10.0), (60.0, 60.0)] {
++        click(h.state_mut(), x, y, Modifiers::NONE);
++    }
++    h.run_steps(2);
++    press(&mut h, Key::Z, command());
++    assert_eq!(h.state().ui.pen.as_ref().unwrap().knots.len(), 2, "⌘Z removed the last point");
++    press(&mut h, Key::Backspace, Modifiers::NONE);
++    assert_eq!(h.state().ui.pen.as_ref().unwrap().knots.len(), 1);
++    press(&mut h, Key::Delete, Modifiers::NONE);
++    assert!(h.state().ui.pen.is_none(), "the last point gone, the path is dropped");
++    assert!(h.state().session.active().unwrap().doc.work_path.is_none(), "nothing reached the document");
++}
++
++#[test]
++fn an_open_path_continues_from_its_end_point() {
++    let mut h = harness();
++    let app = h.state_mut();
++    click(app, 10.0, 10.0, Modifiers::NONE);
++    click(app, 60.0, 10.0, Modifiers::NONE);
++    pen_commit(app, false);
++    assert_eq!(anchors(app, 0).len(), 2);
++    // Click the last point, then go on.
++    click(app, 60.0, 10.0, Modifiers::NONE);
++    click(app, 60.0, 60.0, Modifiers::NONE);
++    pen_commit(app, false);
++    assert_eq!(work(app).subpaths.len(), 1, "the same subpath, continued");
++    assert_eq!(anchors(app, 0), vec![[10.0, 10.0], [60.0, 10.0], [60.0, 60.0]]);
++    // From the first point it runs the other way; clicking the far end closes it.
++    click(app, 10.0, 10.0, Modifiers::NONE);
++    click(app, 10.0, 60.0, Modifiers::NONE);
++    click(app, 60.0, 60.0, Modifiers::NONE);
++    let w = work(app);
++    assert_eq!(w.subpaths.len(), 1);
++    assert!(w.subpaths[0].closed, "closed on the other end point");
++    assert_eq!(anchors(app, 0).len(), 4);
++}
++
++#[test]
++fn a_second_path_joins_the_work_path_and_make_selection_hides_it() {
++    let mut h = harness();
++    let app = h.state_mut();
++    for (x, y) in [(10.0, 10.0), (40.0, 10.0), (40.0, 40.0)] {
++        click(app, x, y, Modifiers::NONE);
++    }
++    click(app, 10.0, 10.0, Modifiers::NONE); // close
++    for (x, y) in [(100.0, 10.0), (140.0, 10.0), (140.0, 40.0)] {
++        click(app, x, y, Modifiers::NONE);
++    }
++    click(app, 100.0, 10.0, Modifiers::NONE);
++    assert_eq!(work(app).subpaths.len(), 2, "both shapes are in the Work Path");
++    crate::vector_ui::path_to_selection(app, json!({})).unwrap();
++    assert!(app.session.active().unwrap().doc.selection.is_some());
++    assert!(app.ui.paths_hidden, "the path left the canvas");
++    assert!(app.session.active().unwrap().doc.work_path.is_some(), "but stays in the Paths panel");
++    // Drawing again starts a new Work Path.
++    click(app, 10.0, 80.0, Modifiers::NONE);
++    click(app, 50.0, 80.0, Modifiers::NONE);
++    pen_commit(app, false);
++    assert_eq!(work(app).subpaths.len(), 1);
++    assert!(!app.ui.paths_hidden);
++}
++
++#[test]
++fn cmd_drags_anchors_handles_and_the_path() {
++    let mut h = harness();
++    let app = h.state_mut();
++    click(app, 10.0, 10.0, Modifiers::NONE);
++    drag(app, [60.0, 10.0], [80.0, 10.0], Modifiers::NONE); // smooth point, handles ±20 px
++    click(app, 60.0, 60.0, Modifiers::NONE);
++    pen_commit(app, false);
++    // ⌘-drag an anchor: it moves with its handles; nothing else does.
++    drag(app, [60.0, 60.0], [70.0, 70.0], command());
++    assert_eq!(anchors(app, 0)[2], [70.0, 70.0]);
++    assert_eq!(anchors(app, 0)[0], [10.0, 10.0]);
++    // ⌘-drag a handle of the smooth point: the other one stays opposite, at its own length.
++    drag(app, [80.0, 10.0], [60.0, 30.0], command());
++    let k = work(app).subpaths[0].knots[1];
++    assert_eq!([k.out_ctrl.x, k.out_ctrl.y], [60.0, 30.0]);
++    assert!((k.in_ctrl.x - 60.0).abs() < 1e-6 && (k.in_ctrl.y + 10.0).abs() < 1e-6, "in handle mirrored: {:?}", k.in_ctrl);
++    // ⌘-drag a segment moves the whole path.
++    drag(app, [35.0, 10.0], [35.0, 15.0], command());
++    assert_eq!(anchors(app, 0)[0], [10.0, 15.0]);
++}
++
++#[test]
++fn alt_converts_points() {
++    let mut h = harness();
++    let app = h.state_mut();
++    click(app, 10.0, 10.0, Modifiers::NONE);
++    click(app, 60.0, 10.0, Modifiers::NONE);
++    click(app, 60.0, 60.0, Modifiers::NONE);
++    pen_commit(app, false);
++    // ⌥-drag from a corner pulls out smooth handles.
++    drag(app, [60.0, 10.0], [80.0, 10.0], Modifiers::ALT);
++    let k = work(app).subpaths[0].knots[1];
++    assert!(k.smooth);
++    assert_eq!([k.out_ctrl.x, k.out_ctrl.y, k.in_ctrl.x, k.in_ctrl.y], [80.0, 10.0, 40.0, 10.0]);
++    // ⌥-drag one handle moves it alone (a cusp).
++    drag(app, [80.0, 10.0], [80.0, 30.0], Modifiers::ALT);
++    let k = work(app).subpaths[0].knots[1];
++    assert!(!k.smooth);
++    assert_eq!([k.in_ctrl.x, k.in_ctrl.y], [40.0, 10.0]);
++    // ⌥-click the anchor: a corner again.
++    click(app, 60.0, 10.0, Modifiers::ALT);
++    let k = work(app).subpaths[0].knots[1];
++    assert_eq!([k.in_ctrl, k.out_ctrl], [k.anchor, k.anchor]);
++}
++
++#[test]
++fn cmd_edits_the_path_being_drawn_and_cmd_click_away_finishes_it() {
++    let mut h = harness();
++    let app = h.state_mut();
++    click(app, 10.0, 10.0, Modifiers::NONE);
++    click(app, 60.0, 10.0, Modifiers::NONE);
++    drag(app, [60.0, 10.0], [60.0, 20.0], command());
++    assert_eq!(app.ui.pen.as_ref().unwrap().knots[1][0], [60.0, 20.0], "moved while drawing");
++    click(app, 150.0, 90.0, command());
++    assert!(app.ui.pen.is_none(), "⌘-click away finished the path");
++    assert_eq!(anchors(app, 0), vec![[10.0, 10.0], [60.0, 20.0]]);
++}
++
++#[test]
++fn shift_cmd_z_redoes() {
++    let mut h = harness();
++    h.state_mut().run("layer.new.layer", json!({})).unwrap();
++    let layers = |h: &Harness<'_, PhotocraftApp>| h.state().session.active().unwrap().doc.layers.len();
++    let n = layers(&h);
++    h.state_mut().ui.tool = Tool::Brush;
++    press(&mut h, Key::Z, command());
++    assert_eq!(layers(&h), n - 1, "⌘Z undid");
++    let mut m = command();
++    m.shift = true;
++    press(&mut h, Key::Z, m);
++    assert_eq!(layers(&h), n, "⇧⌘Z redid: {}", h.state().ui.status);
++}
+diff --git a/crates/ui-egui/src/shortcuts.rs b/crates/ui-egui/src/shortcuts.rs
+index f4b0c39..055a44b 100644
+--- a/crates/ui-egui/src/shortcuts.rs
++++ b/crates/ui-egui/src/shortcuts.rs
+@@ -272,7 +272,7 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
+     // Dialogs (and Liquify's panel while one of its controls has focus) keep canvas zoom; a
+     // focused text field keeps its keys.
+     let liquify_focus = app.distort.liquify.is_some() && focus != Focus::None;
+-    if liquify_focus || !app.ui.dialogs.is_empty() || app.discard.is_some() {
++    if liquify_focus || !app.ui.dialogs.is_empty() || app.discard.is_some() || app.ui.group_delete.is_some() {
+         if focus != Focus::Text {
+             nav_keys(app, ctx);
+         }
+@@ -313,6 +313,11 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
+             app.ui.pen = None;
+             return;
+         }
++        // ⌘Z, ⌫ and Delete take back the last point, as in Photoshop.
++        if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Z) || i.consume_key(Modifiers::NONE, Key::Backspace) || i.consume_key(Modifiers::NONE, Key::Delete)) {
++            crate::vector_ui::pen_undo_point(app);
++            return;
++        }
+     }
+     // A Magnetic Lasso in progress takes Enter, Esc and ⌫ / Delete before any shortcut.
+     if crate::magnetic_ui::keys(app, ctx) {
+diff --git a/crates/ui-egui/src/state.rs b/crates/ui-egui/src/state.rs
+index 4e7ed22..5f7372a 100644
+--- a/crates/ui-egui/src/state.rs
++++ b/crates/ui-egui/src/state.rs
+@@ -615,6 +615,16 @@ pub struct UiState {
+     /// Pen path under construction.
+     #[serde(default)]
+     pub pen: Option<crate::vector_ui::PenPath>,
++    /// The Work Path is hidden on the canvas (after Make Selection, as in Photoshop); drawing
++    /// with the Pen or selecting it in the Paths panel shows it again.
++    #[serde(default)]
++    pub paths_hidden: bool,
++    /// An anchor or handle being dragged with the Pen's ⌘ (Direct Selection) or ⌥ (Convert Point).
++    #[serde(skip)]
++    pub path_drag: Option<crate::vector_ui::PathDrag>,
++    /// Deleting a group is asking what goes (`group_delete_ui`): the group's name.
++    #[serde(skip)]
++    pub group_delete: Option<String>,
+     /// Selected row in the Paths panel ("work" or a saved path name).
+     #[serde(default)]
+     pub selected_path: Option<String>,
+@@ -723,6 +733,9 @@ impl Default for UiState {
+             shell: Default::default(),
+             layer_filter: Vec::new(),
+             pen: None,
++            paths_hidden: false,
++            path_drag: None,
++            group_delete: None,
+             selected_path: None,
+             panels: Panels::default(),
+             views: Vec::new(),
+diff --git a/crates/ui-egui/src/vector_ui.rs b/crates/ui-egui/src/vector_ui.rs
+index c660d53..0288f06 100644
+--- a/crates/ui-egui/src/vector_ui.rs
++++ b/crates/ui-egui/src/vector_ui.rs
+@@ -2,7 +2,7 @@
+ //! All edits go through the engine's `shape.*` / `path.*` commands.
+ 
+ use egui::{Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
+-use photocraft_doc::vector::Path;
++use photocraft_doc::vector::{Path, Subpath};
+ use photocraft_doc::{Document, Knot, LayerContent};
+ use photocraft_geom::{Affine, Point};
+ use serde::{Deserialize, Serialize};
+@@ -19,6 +19,10 @@ pub struct PenPath {
+     pub knots: Vec<[[f64; 2]; 3]>,
+     #[serde(skip)]
+     pub dragging: bool,
++    /// Continuing an open subpath of the Work Path (clicked on one of its end points): its index,
++    /// replaced by this path on commit.
++    #[serde(default)]
++    pub resume: Option<usize>,
+ }
+ 
+ pub fn is_shape_tool(t: Tool) -> bool {
+@@ -174,6 +178,14 @@ pub fn pen_down(app: &mut PhotocraftApp, x: f64, y: f64) {
+     }
+     let tol = 6.0 / app.current_zoom().max(0.01) as f64;
+     let curvature = app.ui.tool_options.pen_kind == "curvature";
++    // Clicking an end point of an open Work Path subpath continues it, as in Photoshop.
++    if app.ui.pen.is_none()
++        && !app.ui.paths_hidden
++        && let Some(resumed) = resume_at(app, [x, y], tol)
++    {
++        app.ui.pen = Some(resumed);
++        return;
++    }
+     let pen = app.ui.pen.get_or_insert_with(PenPath::default);
+     if let Some(first) = pen.knots.first().map(|k| k[0])
+         && pen.knots.len() >= 2
+@@ -189,7 +201,11 @@ pub fn pen_down(app: &mut PhotocraftApp, x: f64, y: f64) {
+     }
+ }
+ 
+-pub fn pen_move(app: &mut PhotocraftApp, x: f64, y: f64) {
++pub fn pen_move(app: &mut PhotocraftApp, x: f64, y: f64, mods: egui::Modifiers) {
++    if app.ui.path_drag.is_some() {
++        drag_point(app, [x, y]);
++        return;
++    }
+     if app.ui.tool_options.pen_kind == "curvature" {
+         return;
+     }
+@@ -199,16 +215,234 @@ pub fn pen_move(app: &mut PhotocraftApp, x: f64, y: f64) {
+     {
+         let a = k[0];
+         k[2] = [x, y];
+-        k[1] = [2.0 * a[0] - x, 2.0 * a[1] - y];
++        // ⌥ while dragging breaks the handles: only the outgoing one follows (a cusp).
++        if !mods.alt {
++            k[1] = [2.0 * a[0] - x, 2.0 * a[1] - y];
++        }
+     }
+ }
+ 
+ pub fn pen_up(app: &mut PhotocraftApp) {
++    if app.ui.path_drag.is_some() {
++        finish_point_drag(app);
++        return;
++    }
+     if let Some(pen) = app.ui.pen.as_mut() {
+         pen.dragging = false;
+     }
+ }
+ 
++/// ⌘Z, ⌫ or Delete while drawing: remove the last anchor (the path is dropped with its first).
++pub fn pen_undo_point(app: &mut PhotocraftApp) {
++    if let Some(pen) = app.ui.pen.as_mut() {
++        pen.knots.pop();
++        pen.dragging = false;
++        if pen.knots.is_empty() || (pen.resume.is_some() && pen.knots.len() < 2) {
++            app.ui.pen = None;
++        }
++    }
++}
++
++/// Which tool the Pen acts as while a modifier is held, as in Photoshop: ⌘/Ctrl is the Direct
++/// Selection tool, ⌥/Alt the Convert Point tool.
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub enum PenMode {
++    Draw,
++    Direct,
++    Convert,
++}
++
++pub fn pen_mode(app: &PhotocraftApp, mods: egui::Modifiers) -> PenMode {
++    if !matches!(app.ui.tool_options.pen_kind.as_str(), "standard" | "curvature") {
++        PenMode::Draw
++    } else if mods.command {
++        PenMode::Direct
++    } else if mods.alt {
++        PenMode::Convert
++    } else {
++        PenMode::Draw
++    }
++}
++
++/// Pen press with the modifiers held: draw, or edit a point of the path (⌘ / ⌥).
++pub fn pen_press(app: &mut PhotocraftApp, x: f64, y: f64, mods: egui::Modifiers) {
++    match pen_mode(app, mods) {
++        PenMode::Draw => pen_down(app, x, y),
++        mode => point_press(app, [x, y], mode == PenMode::Convert),
++    }
++}
++
++/// A part of a path the Pen's ⌘ / ⌥ grab: an anchor, one of its handles, new handles pulled out
++/// of an anchor (⌥-drag), or the whole path (⌘-drag on a segment).
++#[derive(Clone, Copy, Debug, PartialEq)]
++enum Part {
++    Anchor(usize, usize),
++    In(usize, usize),
++    Out(usize, usize),
++    Pull(usize, usize),
++    Whole,
++}
++
++/// An anchor or handle being dragged (see [`pen_press`]).
++#[derive(Clone, Debug, PartialEq)]
++pub struct PathDrag {
++    /// The path being drawn (`None`) or a saved one.
++    target: Option<PathTarget>,
++    original: Path,
++    path: Path,
++    part: Part,
++    start: [f64; 2],
++    convert: bool,
++    moved: bool,
++}
++
++fn pen_as_path(pen: &PenPath) -> Path {
++    let knots = pen.knots.iter().map(|k| Knot { anchor: point(k[0]), in_ctrl: point(k[1]), out_ctrl: point(k[2]), smooth: k[1] != k[0] || k[2] != k[0] }).collect();
++    Path { subpaths: vec![Subpath { closed: false, knots, ..Default::default() }], ..Default::default() }
++}
++
++/// The path ⌘ / ⌥ edit: the one being drawn, else the targeted vector mask, the active shape's
++/// path or the Work Path (unless hidden).
++fn editable_path(app: &PhotocraftApp) -> Option<(Option<PathTarget>, Path)> {
++    if let Some(pen) = app.ui.pen.as_ref().filter(|p| !p.knots.is_empty()) {
++        return Some((None, pen_as_path(pen)));
++    }
++    target_path(app).filter(|(t, _)| !(matches!(t, PathTarget::Work) && app.ui.paths_hidden)).map(|(t, p)| (Some(t), p))
++}
++
++/// The handle or anchor under the pointer (handles first: they sit on top).
++fn part_at(path: &Path, at: [f64; 2], tol: f64) -> Option<Part> {
++    for (si, sub) in path.subpaths.iter().enumerate() {
++        for (ki, k) in sub.knots.iter().enumerate() {
++            let (a, i, o) = knot_points(k);
++            if o != a && distance(o, at) <= tol {
++                return Some(Part::Out(si, ki));
++            }
++            if i != a && distance(i, at) <= tol {
++                return Some(Part::In(si, ki));
++            }
++        }
++    }
++    nearest_anchor(path, at).filter(|(_, _, d)| *d <= tol).map(|(si, ki, _)| Part::Anchor(si, ki))
++}
++
++fn point_press(app: &mut PhotocraftApp, at: [f64; 2], convert: bool) {
++    let tol = 8.0 / app.current_zoom().max(0.01) as f64;
++    let Some((target, path)) = editable_path(app) else { return };
++    let part = match part_at(&path, at, tol) {
++        Some(Part::Anchor(si, ki)) if convert => Some(Part::Pull(si, ki)),
++        Some(p) => Some(p),
++        None if !convert && nearest_segment(&path, at).is_some_and(|(_, _, _, d)| d <= tol) => Some(Part::Whole),
++        None => None,
++    };
++    let Some(part) = part else {
++        // ⌘-click away from the path finishes the one being drawn, as in Photoshop.
++        if !convert && app.ui.pen.is_some() {
++            pen_commit(app, false);
++        }
++        return;
++    };
++    app.ui.paths_hidden = false;
++    app.ui.path_drag = Some(PathDrag { target, original: path.clone(), path, part, start: at, convert, moved: false });
++}
++
++/// `handle` mirrored through `anchor`, at `len` from it (Photoshop keeps a smooth point's other
++/// handle in line, at its own length).
++fn opposite(anchor: [f64; 2], handle: [f64; 2], len: f64) -> [f64; 2] {
++    let (dx, dy) = (anchor[0] - handle[0], anchor[1] - handle[1]);
++    let d = dx.hypot(dy);
++    if d < 1e-9 { anchor } else { [anchor[0] + dx / d * len, anchor[1] + dy / d * len] }
++}
++
++fn drag_point(app: &mut PhotocraftApp, at: [f64; 2]) {
++    let Some(d) = app.ui.path_drag.as_mut() else { return };
++    let (dx, dy) = (at[0] - d.start[0], at[1] - d.start[1]);
++    if dx.abs() + dy.abs() < 0.5 && !d.moved {
++        return;
++    }
++    d.moved = true;
++    let mut path = d.original.clone();
++    let shift = |p: Point| Point::new(p.x + dx, p.y + dy);
++    match d.part {
++        Part::Whole => path = path.transform(&Affine::translate(dx, dy)),
++        Part::Anchor(si, ki) => {
++            let k = &mut path.subpaths[si].knots[ki];
++            *k = Knot { anchor: shift(k.anchor), in_ctrl: shift(k.in_ctrl), out_ctrl: shift(k.out_ctrl), smooth: k.smooth };
++        }
++        Part::In(si, ki) | Part::Out(si, ki) => {
++            let k = &mut path.subpaths[si].knots[ki];
++            let (a, i, o) = knot_points(k);
++            let outgoing = matches!(d.part, Part::Out(..));
++            let (moved, other) = if outgoing { (o, i) } else { (i, o) };
++            let new = [moved[0] + dx, moved[1] + dy];
++            // ⌥ (Convert Point) moves one handle alone; ⌘ keeps a smooth point smooth.
++            let other = if k.smooth && !d.convert && other != a { opposite(a, new, distance(a, other)) } else { other };
++            let (ni, no) = if outgoing { (other, new) } else { (new, other) };
++            *k = Knot { anchor: point(a), in_ctrl: point(ni), out_ctrl: point(no), smooth: k.smooth && !d.convert };
++        }
++        Part::Pull(si, ki) => {
++            let k = &mut path.subpaths[si].knots[ki];
++            let a = [k.anchor.x, k.anchor.y];
++            *k = Knot::smooth(point(a), point([2.0 * a[0] - at[0], 2.0 * a[1] - at[1]]), point(at));
++        }
++    }
++    d.path = path;
++    if d.target.is_none() {
++        write_back_pen(app);
++    }
++}
++
++/// The dragged copy of the path being drawn goes back into the Pen's knots.
++fn write_back_pen(app: &mut PhotocraftApp) {
++    let (Some(d), Some(pen)) = (app.ui.path_drag.as_ref(), app.ui.pen.as_mut()) else { return };
++    if let Some(sub) = d.path.subpaths.first() {
++        pen.knots = sub.knots.iter().map(|k| [knot_points(k).0, knot_points(k).1, knot_points(k).2]).collect();
++    }
++}
++
++fn finish_point_drag(app: &mut PhotocraftApp) {
++    let Some(mut d) = app.ui.path_drag.take() else { return };
++    if !d.moved {
++        // ⌥-click on an anchor without dragging: a corner point (no handles).
++        let Part::Pull(si, ki) = d.part else { return };
++        let a = d.path.subpaths[si].knots[ki].anchor;
++        d.path.subpaths[si].knots[ki] = Knot::corner(a.x, a.y);
++    }
++    match d.target {
++        None => {
++            app.ui.path_drag = Some(d);
++            write_back_pen(app);
++            app.ui.path_drag = None;
++        }
++        Some(target) => save_target_path(app, target, &d.path),
++    }
++}
++
++/// An open Work Path subpath whose end point is under the pointer, as a Pen path to continue
++/// from that end (the subpath reversed when it was its first point).
++fn resume_at(app: &PhotocraftApp, at: [f64; 2], tol: f64) -> Option<PenPath> {
++    if app.ui.tool_options.vector_mode == "shape" || targeted_vector_mask(app).is_some() {
++        return None;
++    }
++    let wp = app.session.active()?.doc.work_path.as_ref()?;
++    for (si, sub) in wp.subpaths.iter().enumerate() {
++        if sub.closed || sub.knots.len() < 2 {
++            continue;
++        }
++        let knots: Vec<[[f64; 2]; 3]> = sub.knots.iter().map(|k| [knot_points(k).0, knot_points(k).1, knot_points(k).2]).collect();
++        let last = knots[knots.len() - 1][0];
++        if distance(last, at) <= tol {
++            return Some(PenPath { knots, dragging: false, resume: Some(si) });
++        }
++        if distance(knots[0][0], at) <= tol {
++            // Reversed: segments run the other way, so each knot's handles swap.
++            let knots = knots.into_iter().rev().map(|k| [k[0], k[2], k[1]]).collect();
++            return Some(PenPath { knots, dragging: false, resume: Some(si) });
++        }
++    }
++    None
++}
++
+ /// Finish the pen path: a work path (Path mode) or a new shape layer (Shape mode).
+ pub fn pen_commit(app: &mut PhotocraftApp, closed: bool) {
+     let Some(mut pen) = app.ui.pen.take() else { return };
+@@ -235,8 +469,25 @@ pub fn pen_commit(app: &mut PhotocraftApp, closed: bool) {
+         }
+         app.run("layer.vectorMask.edit", json!({"layer": id, "path": p}))
+     } else {
++        // The new subpath joins the Work Path while it shows (or replaces the subpath it
++        // continues); after Make Selection hid it, a new Work Path starts, as in Photoshop.
++        let existing = app.session.active().and_then(|st| st.doc.work_path.clone()).filter(|_| !app.ui.paths_hidden || pen.resume.is_some());
++        let path = match existing {
++            Some(wp) => {
++                let mut p = photocraft_engine::vector_cmds::path_json(&wp);
++                if let (Some(subs), Some(new)) = (p.get_mut("subpaths").and_then(Value::as_array_mut), path.get("subpaths").and_then(Value::as_array)) {
++                    match pen.resume.filter(|i| *i < subs.len()) {
++                        Some(i) => subs.splice(i..=i, new.iter().cloned()).for_each(drop),
++                        None => subs.extend(new.iter().cloned()),
++                    }
++                }
++                p
++            }
++            None => path,
++        };
+         app.run("path.set", json!({"name": "work", "path": path}))
+     };
++    app.ui.paths_hidden = false;
+     if let Err(e) = r {
+         app.ui.status = e;
+         app.ui.status_error = true;
+@@ -271,13 +522,21 @@ pub fn path_to_selection(app: &mut PhotocraftApp, params: Value) -> Result<Value
+         .ok_or_else(|| tl!("No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.").to_string())?;
+     let mut p = params.as_object().cloned().unwrap_or_default();
+     p.insert("name".into(), json!(name));
+-    app.run("path.toSelection", Value::Object(p))
++    let r = app.run("path.toSelection", Value::Object(p));
++    if r.is_ok() {
++        // As in Photoshop, the path is deselected once it is a selection: it stays in the Paths
++        // panel but leaves the canvas.
++        app.ui.paths_hidden = true;
++        app.ui.selected_path = None;
++    }
++    r
+ }
+ 
+ // ---------------------------------------------------------------------------------------------
+ // Path Selection
+ 
+ /// What Path Selection edits.
++#[derive(Clone, Copy, Debug, PartialEq)]
+ enum PathTarget {
+     Shape(u64),
+     /// The active layer's vector mask, when its Layers thumbnail is targeted (#196).
+@@ -530,28 +789,45 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
+             for s in &p.subpaths {
+                 for k in &s.knots {
+                     let c = to_scr([k.anchor.x, k.anchor.y]);
++                    // Handles, as Photoshop shows them on a selected path.
++                    for h in [k.in_ctrl, k.out_ctrl] {
++                        if h != k.anchor {
++                            let hp = to_scr([h.x, h.y]);
++                            painter.line_segment([c, hp], Stroke::new(1.0, accent));
++                            painter.circle_filled(hp, 3.0, accent);
++                        }
++                    }
+                     painter.rect_filled(Rect::from_center_size(c, vec2(6.0, 6.0)), 0.0, Color32::WHITE);
+                     painter.rect_stroke(Rect::from_center_size(c, vec2(6.0, 6.0)), 0.0, Stroke::new(1.0, accent), egui::StrokeKind::Inside);
+                 }
+             }
+         }
+     };
++    let mods = painter.ctx().input(|i| i.modifiers);
++    let pen_editing = tool == Tool::Pen && (pen_mode(app, mods) != PenMode::Draw || app.ui.path_drag.is_some());
+     let edit_anchors = tool == Tool::PathSelection
++        || pen_editing
+         || (tool == Tool::Pen && matches!(app.ui.tool_options.pen_kind.as_str(), "add-anchor" | "delete-anchor" | "convert-anchor"));
++    // A saved path being dragged shows its dragged copy in place of the stored one.
++    let dragged = app.ui.path_drag.as_ref().and_then(|d| d.target.map(|t| (t, &d.path)));
++    let shown = |t: PathTarget, p: &Path| match dragged {
++        Some((dt, dp)) if dt == t => draw_path(dp, true),
++        _ => draw_path(p, edit_anchors),
++    };
+     if vector_tool {
+-        if let Some(wp) = &doc.work_path {
+-            draw_path(wp, edit_anchors);
++        if let Some(wp) = doc.work_path.as_ref().filter(|_| !app.ui.paths_hidden) {
++            shown(PathTarget::Work, wp);
+         }
+         let st = app.session.active();
+         if let Some(l) = st.and_then(|s| s.active_layer.and_then(|id| s.doc.layer(id)))
+             && let LayerContent::Shape(sh) = &l.content
+         {
+-            draw_path(&sh.path, edit_anchors);
++            shown(PathTarget::Shape(l.id.0), &sh.path);
+         }
+     }
+     // A targeted vector mask shows its path with any tool (#196).
+-    if let Some((_, p)) = targeted_vector_mask(app) {
+-        draw_path(&p, edit_anchors);
++    if let Some((id, p)) = targeted_vector_mask(app) {
++        shown(PathTarget::VectorMask(id), &p);
+     }
+     // Pen path in progress, with handles of the last knot and a rubber band to the pointer.
+     if let Some(pen) = &app.ui.pen {
+@@ -569,7 +845,8 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
+         }
+         for (i, k) in pen.knots.iter().enumerate() {
+             let c = to_scr(k[0]);
+-            if i + 1 == pen.knots.len() && k[2] != k[0] {
++            // The last point's handles; every point's while ⌘ / ⌥ edit the path.
++            if (i + 1 == pen.knots.len() || pen_editing) && (k[2] != k[0] || k[1] != k[0]) {
+                 for hnd in [k[1], k[2]] {
+                     let hp = to_scr(hnd);
+                     painter.line_segment([c, hp], Stroke::new(1.0, accent));
+@@ -1001,6 +1278,7 @@ pub fn paths_panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+                 ui.painter().galley(pos2(r.left() + 46.0, r.center().y - g.size().y / 2.0), g, t.text);
+                 if resp.clicked() {
+                     app.ui.selected_path = Some(key.clone());
++                    app.ui.paths_hidden = false;
+                 }
+                 // Double-clicking the Work Path saves it (Photoshop's "Save Path").
+                 if resp.double_clicked() && *kind == PathRow::Work {
+@@ -1108,7 +1386,7 @@ mod tests {
+             pen_up(&mut app);
+         }
+         pen_down(&mut app, 120.0, 120.0);
+-        pen_move(&mut app, 140.0, 140.0); // smooth knot
++        pen_move(&mut app, 140.0, 140.0, egui::Modifiers::NONE); // smooth knot
+         pen_up(&mut app);
+         pen_down(&mut app, 20.5, 20.5); // click the first anchor: close
+         assert!(app.ui.pen.is_none());
+@@ -1257,3 +1535,7 @@ mod tests {
+ #[cfg(test)]
+ #[path = "path_selection_tests.rs"]
+ mod path_selection_tests;
++
++#[cfg(test)]
++#[path = "pen_tool_tests.rs"]
++mod pen_tool_tests;
