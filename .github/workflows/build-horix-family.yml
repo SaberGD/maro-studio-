@@ -1,9 +1,10 @@
 # Builds the web versions of Horix Vectors (apps/horix-vectors, rebranded VectorCraft) and
 # Horix Light (apps/horix-light, rebranded LightCraft), keeps each zip as a build artifact, and on
 # the default branch publishes them to https://vectors.horix.live/ and https://light.horix.live/.
-# Needs the repository secret HOSTINGER_API_TOKEN (the same one HORIX uses). Optional repository
-# variables: HORIX_VECTORS_DOMAIN, HORIX_LIGHT_DOMAIN, and, when hPanel keeps a subdomain in a
-# folder of its main site, HORIX_<APP>_UPLOAD_DOMAIN (e.g. horix.live) and HORIX_<APP>_UPLOAD_DIR.
+# Needs the repository secret HOSTINGER_API_TOKEN (the same one HORIX uses). The first deploy
+# creates each subdomain through the Hostinger API (ensure-subdomain.sh). Optional repository
+# variables: HORIX_VECTORS_DOMAIN, HORIX_LIGHT_DOMAIN, and, to upload somewhere else than where the
+# subdomain was found, HORIX_<APP>_UPLOAD_DOMAIN and HORIX_<APP>_UPLOAD_DIR.
 name: Build Horix Vectors and Horix Light
 
 on:
@@ -81,14 +82,28 @@ jobs:
           path: deploy/horix-${{ matrix.app }}/*.zip
           retention-days: 30
 
-      - name: Deploy to Hostinger
+      - name: Subdomain on Hostinger
         if: github.ref_name == github.event.repository.default_branch
         env:
           HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
           HOSTINGER_USERNAME: ${{ vars.HOSTINGER_USERNAME || 'u570689065' }}
           DOMAIN: ${{ matrix.app == 'vectors' && (vars.HORIX_VECTORS_DOMAIN || 'vectors.horix.live') || (vars.HORIX_LIGHT_DOMAIN || 'light.horix.live') }}
-          UPLOAD_DOMAIN: ${{ matrix.app == 'vectors' && vars.HORIX_VECTORS_UPLOAD_DOMAIN || matrix.app == 'light' && vars.HORIX_LIGHT_UPLOAD_DOMAIN || '' }}
-          UPLOAD_DIR: ${{ matrix.app == 'vectors' && vars.HORIX_VECTORS_UPLOAD_DIR || matrix.app == 'light' && vars.HORIX_LIGHT_UPLOAD_DIR || '' }}
+          SET_UPLOAD_DOMAIN: ${{ matrix.app == 'vectors' && vars.HORIX_VECTORS_UPLOAD_DOMAIN || matrix.app == 'light' && vars.HORIX_LIGHT_UPLOAD_DOMAIN || '' }}
+          SET_UPLOAD_DIR: ${{ matrix.app == 'vectors' && vars.HORIX_VECTORS_UPLOAD_DIR || matrix.app == 'light' && vars.HORIX_LIGHT_UPLOAD_DIR || '' }}
+        run: |
+          echo "DOMAIN=$DOMAIN" >> "$GITHUB_ENV"
+          if [ -n "$SET_UPLOAD_DOMAIN" ]; then
+            printf 'UPLOAD_DOMAIN=%s\nUPLOAD_DIR=%s\n' "$SET_UPLOAD_DOMAIN" "$SET_UPLOAD_DIR" >> "$GITHUB_ENV"
+          else
+            # Creates the subdomain on the first deploy (folder inside horix.live), then finds it.
+            apps/horix-common/ensure-subdomain.sh "$DOMAIN" "${DOMAIN#*.}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Deploy to Hostinger
+        if: github.ref_name == github.event.repository.default_branch
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+          HOSTINGER_USERNAME: ${{ vars.HOSTINGER_USERNAME || 'u570689065' }}
         run: |
           zip="$(ls -t deploy/horix-${{ matrix.app }}/*.zip | head -1)"
           apps/horix-common/deploy-static.sh "$zip" "horix-${{ matrix.app }}" "$DOMAIN"

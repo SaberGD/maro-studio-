@@ -67,12 +67,13 @@ done < <(find "$SITE/$FOLDER" -type f ! -path "$SITE/$FOLDER/index.html" -print0
 upload "$SITE/$FOLDER/index.html" "${prefix}index.html"
 
 # The page must serve this build, and the WebAssembly must arrive whole as application/wasm.
+# Up to 10 minutes: a new subdomain's DNS and certificate can take a few minutes.
 ok=""
-for _ in $(seq 1 24); do
+for _ in $(seq 1 120); do
   if [[ "$(curl -fsS -A "$UA" -H "Cache-Control: no-cache" "https://$DOMAIN/?v=$RANDOM" 2>/dev/null || true)" == *"$BUILD"* ]]; then ok=1; break; fi
   sleep 5
 done
-[ -n "$ok" ] || { echo "error: https://$DOMAIN/ did not serve build $BUILD after 2 minutes" >&2; exit 1; }
+[ -n "$ok" ] || { echo "error: https://$DOMAIN/ did not serve build $BUILD after 10 minutes" >&2; exit 1; }
 # Every kind of browser must get the WebAssembly intact: fetch it as a Brotli browser, a gzip-only
 # one and one without compression, decode, and compare with the build. If the host mangles the
 # pre-compressed copies, put back .htaccess without them (bigger downloads, but working) and fail.

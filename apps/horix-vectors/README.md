@@ -36,7 +36,7 @@ apps/horix-vectors/build.sh        # يطلع deploy/horix-vectors/horix-vectors
 
 الـzip فيه فولدر `horix-vectors/`، وده موقع static يشتغل على أي دومين وأي مسار (فيه `.htaccess` لـApache/Hostinger).
 
-`.github/workflows/build-horix-family.yml` بيبني النسخة دي مع Horix Light على GitHub مع أي تعديل، وبيحفظ الـzip كـartifact. وعلى الفرع الافتراضي بينشرها على الدومين بتاعها (`apps/horix-common/deploy-static.sh`، بنفس secret `HOSTINGER_API_TOKEN` بتاع HORIX).
+`.github/workflows/build-horix-family.yml` بيبني النسخة دي مع Horix Light على GitHub مع أي تعديل، وبيحفظ الـzip كـartifact. وعلى الفرع الافتراضي بينشرها على الدومين بتاعها (`apps/horix-common/deploy-static.sh`، بنفس secret `HOSTINGER_API_TOKEN` بتاع HORIX). أول نشر بيعمل الـsubdomain نفسه على Hostinger (`apps/horix-common/ensure-subdomain.sh`) جوه فولدر في `horix.live`، ويطلب له شهادة SSL.
 
 ## التحديث لإصدار جديد
 
