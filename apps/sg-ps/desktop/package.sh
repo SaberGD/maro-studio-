@@ -30,7 +30,7 @@ fi
 rm -rf "$WORK/src" "$WORK/pkg"
 mkdir -p "$WORK/src" "$WORK/pkg" "$OUT"
 tar ${TAR_LOCAL[@]+"${TAR_LOCAL[@]}"} -xzf "$SRC_TGZ" -C "$WORK/src" --strip-components=1
-VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$WORK/src/Cargo.toml" | head -1)"
+VERSION="$(tr -d "[:space:]" < "$HERE/../VERSION")${HORIX_BUILD_NUMBER:+.$HORIX_BUILD_NUMBER}"
 "$PY" -I "$HERE/../rebrand.py" "$WORK/src"
 
 licences() {

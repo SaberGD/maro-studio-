@@ -28,6 +28,9 @@ jobs:
     runs-on: ${{ vars.HORIX_RUNNER == 'mac' && fromJSON('["self-hosted", "horix-mac"]') || 'ubuntu-latest' }}
     timeout-minutes: 90
     env:
+      # HORIX's version is apps/sg-ps/VERSION plus this build number (0.2.57); see CHANGELOG.md.
+      HORIX_BUILD_NUMBER: ${{ github.run_number }}
+      PHOTOCRAFT_BUILD_SHA: ${{ github.sha }}
       CARGO_TARGET_DIR: ${{ github.workspace }}/.sgps-target
       SGPS_WORK: ${{ github.workspace }}/.sgps-build
       HOSTINGER_USERNAME: ${{ vars.HOSTINGER_USERNAME || 'u570689065' }}

@@ -20,7 +20,7 @@ OUT="$REPO/deploy/sg-ps"
 rm -rf "$WORK/src" "$WORK/site"
 mkdir -p "$WORK/src" "$WORK/site" "$OUT"
 tar -xzf "$SRC_TGZ" -C "$WORK/src" --strip-components=1
-VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$WORK/src/Cargo.toml" | head -1)"
+VERSION="$(tr -d "[:space:]" < "$HERE/VERSION")${HORIX_BUILD_NUMBER:+.$HORIX_BUILD_NUMBER}"
 
 python3 -I "$HERE/rebrand.py" "$WORK/src"
 

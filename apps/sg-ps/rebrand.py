@@ -1523,6 +1523,33 @@ def stability(root: Path) -> None:
     edit(root, "apps/photocraft-web/index.html", [("</body>", CRASH_SCRIPT.replace("__WHATSAPP__", WHATSAPP) + "</body>")])
 
 
+def version(root: Path) -> None:
+    """HORIX's own version (apps/sg-ps/VERSION, e.g. 0.2), with the CI build number as its last
+    part (0.2.57), in About, System Info, --version and on the start screen. Every change that
+    ships moves VERSION up one step (0.3, 0.4, ...); see CHANGELOG.md."""
+    v = (HERE / "VERSION").read_text(encoding="utf-8").strip()
+    if not re.fullmatch(r"\d+\.\d+", v):
+        sys.exit(f"rebrand: VERSION must look like 0.2, not {v!r}")
+    edit(root, "crates/engine/src/build_info.rs", [(
+        "pub fn long_version() -> String {\n    format_long(VERSION, short_sha(), build_date())\n}",
+        f"/// HORIX's version (apps/sg-ps/VERSION); CI adds its build number: `{v}.57`.\n"
+        f"pub const HORIX_VERSION: &str = \"{v}\";\n\n"
+        "/// `0.2.57`, or `0.2` for a build without a build number.\n"
+        "pub fn horix_version() -> String {\n"
+        "    match option_env!(\"HORIX_BUILD_NUMBER\").map(str::trim).filter(|s| !s.is_empty()) {\n"
+        "        Some(n) => format!(\"{HORIX_VERSION}.{n}\"),\n"
+        "        None => HORIX_VERSION.to_string(),\n"
+        "    }\n"
+        "}\n\n"
+        "pub fn long_version() -> String {\n    format_long(&horix_version(), short_sha(), build_date())\n}",
+    )])
+    edit(root, "crates/ui-egui/src/canvas.rs", [(
+        'ui.label(egui::RichText::new("BY SABER GROUP").font(crate::theme::medium(10.5)).color(t.text_faint));',
+        'ui.label(egui::RichText::new("BY SABER GROUP").font(crate::theme::medium(10.5)).color(t.text_faint));\n'
+        '            ui.label(egui::RichText::new(format!("v{}", photocraft_engine::build_info::horix_version())).size(10.0).color(t.text_faint));',
+    )])
+
+
 def apply_patches(root: Path) -> None:
     """Unified diffs in apps/sg-ps/patches/ (made against the rebranded tree), applied in name order."""
     for diff in sorted((HERE / "patches").glob("*.diff")):
@@ -1564,6 +1591,7 @@ def main() -> None:
     web_place(root)
     selection_quality(root)
     stability(root)
+    version(root)
     apply_patches(root)
     check(root)
     print(f"rebrand: done ({n} name replacements)")

@@ -31,6 +31,9 @@ jobs:
       run:
         shell: bash
     env:
+      # HORIX's version is apps/sg-ps/VERSION plus this build number (0.2.57); see CHANGELOG.md.
+      HORIX_BUILD_NUMBER: ${{ github.run_number }}
+      PHOTOCRAFT_BUILD_SHA: ${{ github.sha }}
       CARGO_TARGET_DIR: ${{ github.workspace }}/.sgps-target
       SGPS_WORK: ${{ github.workspace }}/.sgps-build
     steps:
