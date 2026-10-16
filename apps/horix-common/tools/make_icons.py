@@ -3,11 +3,12 @@
 
 The falcon is copied from apps/sg-ps/assets/horix-symbol.svg without changing its geometry (brand
 guide). Each product adds one small Horix Red badge in the lower right: a pen anchor with its
-handles (Vectors), an aperture (Light).
+handles (Vectors), an aperture (Light), four app tiles (Launcher).
 
     pip install cairosvg pillow
     python3 -I apps/horix-common/tools/make_icons.py vectors apps/horix-vectors/assets/app-icon
     python3 -I apps/horix-common/tools/make_icons.py light   apps/horix-light/assets/app-icon
+    python3 -I apps/horix-common/tools/make_icons.py launcher apps/horix-launcher/assets/app-icon
 
 Writes icon.svg (1024 tile), favicon.svg, and PNGs at 16..1024 plus icon.ico; macOS .icns is
 built from the PNGs by Pillow.
@@ -34,6 +35,10 @@ BADGES = {
   <circle cx="-96" cy="-28" r="20" fill="{IVORY}"/>
   <circle cx="96" cy="-28" r="20" fill="{IVORY}"/>
   <rect x="-30" y="-58" width="60" height="60" rx="6" fill="{RED}" stroke="{IVORY}" stroke-width="14"/>""",
+    # Launcher: four app tiles.
+    "launcher": "".join(
+        f'\n  <rect x="{x}" y="{y}" width="92" height="92" rx="20" fill="{IVORY}"/>' for x in (-104, 12) for y in (-104, 12)
+    ),
     # Aperture: a ring, a hexagonal opening, and the six blade edges running from it to the ring.
     "light": f'''
   <circle r="118" fill="none" stroke="{IVORY}" stroke-width="18"/>
