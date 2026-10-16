@@ -2,7 +2,7 @@
 # Build HORIX (rebranded PhotoCraft Web) and package it for Hostinger.
 #
 # Usage: apps/sg-ps/build.sh [photocraft-source.tar.gz]
-#   default source: archive/photocraft/photocraft-source-0.3.0.tar.gz
+#   default source: archive/photocraft/photocraft-source-0.9.0.tar.gz
 # Needs: Rust >= 1.95, `rustup target add wasm32-unknown-unknown`, `cargo install trunk --locked`, zip.
 # Output: deploy/sg-ps/sg-ps-<version>-hostinger.zip, with three folders:
 #   horix/      the editor, deployed at the root of https://horix.live/
@@ -13,14 +13,14 @@ PYTHON="$(command -v python3)"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-SRC_TGZ="${1:-$REPO/archive/photocraft/photocraft-source-0.3.0.tar.gz}"
+SRC_TGZ="${1:-$REPO/archive/photocraft/photocraft-source-0.9.0.tar.gz}"
 WORK="${SGPS_WORK:-$REPO/.sgps-build}"
 OUT="$REPO/deploy/sg-ps"
 
 rm -rf "$WORK/src" "$WORK/site"
 mkdir -p "$WORK/src" "$WORK/site" "$OUT"
 tar -xzf "$SRC_TGZ" -C "$WORK/src" --strip-components=1
-VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$WORK/src/Cargo.toml" | head -1)"
+VERSION="$(tr -d "[:space:]" < "$HERE/VERSION")${HORIX_BUILD_NUMBER:+.$HORIX_BUILD_NUMBER}"
 
 python3 -I "$HERE/rebrand.py" "$WORK/src"
 
