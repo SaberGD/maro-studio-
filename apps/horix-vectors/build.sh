@@ -27,6 +27,11 @@ mkdir -p "$SITE"
 cp -R "$WORK/src/dist/web/." "$SITE/"
 BUILD_ID="${HORIX_BUILD_ID:-$(date -u +%Y%m%d%H%M%S)}"
 python3 -c 'import sys; p, b = sys.argv[1:3]; t = open(p, encoding="utf-8").read(); open(p, "w", encoding="utf-8").write(t.replace("<head>", "<head>\n  <meta name=\"horix-build\" content=\"" + b + "\">", 1))' "$SITE/index.html" "$BUILD_ID"
+# Upstream's pre-compressed copies of the page would still hold the old page: redo them.
+[ -f "$SITE/index.html.gz" ] && gzip -9 -k -f "$SITE/index.html"
+if [ -f "$SITE/index.html.br" ]; then
+  if command -v brotli >/dev/null 2>&1; then brotli -q 11 -f -k "$SITE/index.html"; else rm -f "$SITE/index.html.br"; fi
+fi
 cp "$WORK/src/packaging/web/.htaccess" "$WORK/src/packaging/web/_headers" "$SITE/"
 # Licence obligations: the licence texts and the third-party notices, as plain files.
 cp "$WORK/src/LICENSE-MIT" "$WORK/src/LICENSE-APACHE" "$WORK/src/NOTICE" "$SITE/"
