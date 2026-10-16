@@ -1,5 +1,7 @@
 # Horix Light
 
+العنوان: https://light.horix.live/
+
 **Horix Light** هو برنامج تنظيم وتحميض الصور (بديل Lightroom) من عيلة HORIX بتاعة أكاديمية صابر جروب. مبني على [LightCraft](https://github.com/storytold/lightcraft) المفتوح المصدر (MIT OR Apache-2.0)، الإصدار **0.8.0** (commit `f34c7a8`).
 
 زي HORIX بالظبط: إحنا مش بنعدّل الكود الأصلي بإيدينا. `rebrand.py` بيتطبّق على نسخة نظيفة من الكود وقت البناء، فالتحديث لأي إصدار جديد من LightCraft هو إن تحفظ الكود الجديد في `archive/lightcraft/` وتشغّل البناء تاني.
@@ -34,7 +36,7 @@ apps/horix-light/build.sh        # يطلع deploy/horix-light/horix-light-<vers
 
 الـzip فيه فولدر `horix-light/`، وده موقع static يشتغل على أي دومين وأي مسار (فيه `.htaccess` لـApache/Hostinger).
 
-`.github/workflows/build-horix-family.yml` بيبني النسخة دي مع Horix Vectors على GitHub مع أي تعديل، وبيحفظ الـzip كـartifact. النشر لسه متوقف لحد ما نحدد الدومين.
+`.github/workflows/build-horix-family.yml` بيبني النسخة دي مع Horix Vectors على GitHub مع أي تعديل، وبيحفظ الـzip كـartifact. وعلى الفرع الافتراضي بينشرها على الدومين بتاعها (`apps/horix-common/deploy-static.sh`، بنفس secret `HOSTINGER_API_TOKEN` بتاع HORIX).
 
 ## التحديث لإصدار جديد
 
