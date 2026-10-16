@@ -1,0 +1,76 @@
+# Builds the web versions of Horix Vectors (apps/horix-vectors, rebranded VectorCraft) and
+# Horix Light (apps/horix-light, rebranded LightCraft) and keeps each zip as a build artifact.
+# Nothing is deployed yet: publishing waits until their domains are chosen.
+name: Build Horix Vectors and Horix Light
+
+on:
+  push:
+    paths:
+      - "apps/horix-common/**"
+      - "apps/horix-vectors/**"
+      - "apps/horix-light/**"
+      - "archive/vectorcraft/**"
+      - "archive/lightcraft/**"
+      - ".github/workflows/build-horix-family.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: build-horix-family-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [vectors, light]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.horix-target-${{ matrix.app }}
+      HORIX_BUILD_ID: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust with the WebAssembly target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+
+      - name: Pillow (icons) and zip
+        run: python3 -m pip install --user --quiet pillow
+
+      - name: trunk (Horix Vectors)
+        if: matrix.app == 'vectors'
+        run: |
+          curl -fsSL https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-x86_64-unknown-linux-gnu.tar.gz | sudo tar -xz -C /usr/local/bin trunk
+          trunk --version
+
+      - name: wasm-bindgen CLI at the version in Cargo.lock (Horix Light)
+        if: matrix.app == 'light'
+        run: |
+          v="$(tar -xzOf archive/lightcraft/lightcraft-source-*.tar.gz --wildcards '*/Cargo.lock' | grep -A1 '^name = "wasm-bindgen"$' | sed -n 's/version = "\(.*\)"/\1/p')"
+          curl -fsSL "https://github.com/rustwasm/wasm-bindgen/releases/download/$v/wasm-bindgen-$v-x86_64-unknown-linux-musl.tar.gz" | tar -xz
+          sudo cp "wasm-bindgen-$v-x86_64-unknown-linux-musl/wasm-bindgen" /usr/local/bin/
+          wasm-bindgen --version
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/trunk
+            .horix-target-${{ matrix.app }}
+          key: horix-${{ matrix.app }}-${{ runner.os }}-${{ hashFiles(format('archive/{0}craft/*.tar.gz', matrix.app == 'vectors' && 'vector' || 'light')) }}-${{ hashFiles('apps/horix-common/**', format('apps/horix-{0}/**', matrix.app)) }}
+          restore-keys: |
+            horix-${{ matrix.app }}-${{ runner.os }}-${{ hashFiles(format('archive/{0}craft/*.tar.gz', matrix.app == 'vectors' && 'vector' || 'light')) }}-
+
+      - name: Build
+        run: apps/horix-${{ matrix.app }}/build.sh
+
+      - name: Keep the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: horix-${{ matrix.app }}-web
+          path: deploy/horix-${{ matrix.app }}/*.zip
+          retention-days: 30
