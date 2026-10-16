@@ -237,12 +237,25 @@ def version(root: Path) -> None:
     lock.write_text(text, encoding="utf-8")
 
 
+def upstream_fixes(root: Path) -> None:
+    """Fixes to craft-launcher 0.4.1 itself."""
+    # install_dmg gained a `replace` flag; the macOS self-update (and its test) still passed the
+    # old 6 arguments, so the macOS build doesn't compile. The launcher's own bundle is never
+    # "someone else's app", so it doesn't need replace.
+    hx.edit(root, "crates/native/src/self_update.rs", [
+        ("install_dmg(&LAUNCHER, &file, Some(&existing), None, paths,", "install_dmg(&LAUNCHER, &file, Some(&existing), None, false, paths,"),
+        ("install_dmg(&LAUNCHER, &dmg, Some(&existing), None, &Paths::under(dir.path()),",
+         "install_dmg(&LAUNCHER, &dmg, Some(&existing), None, false, &Paths::under(dir.path()),"),
+    ])
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     root = Path(sys.argv[1]).resolve()
     if not (root / "crates/core/src/catalog.rs").is_file():
         sys.exit(f"rebrand: {root} is not a craft-launcher source tree")
+    upstream_fixes(root)
     catalog(root)
     tag_prefixes(root)
     names(root)
