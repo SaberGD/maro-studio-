@@ -96,7 +96,7 @@ apps/sg-ps/build.sh                # يطلع deploy/sg-ps/sg-ps-<version>-hosti
 ## نسخ الديسكتوب (ويندوز وماك)
 
 `.github/workflows/desktop-sg-ps.yml` بيبني البرنامج على أجهزة ويندوز وماك حقيقية عند GitHub، وبينزّل الملفين في صفحة **Releases** في الريبو:
-- **ويندوز:** `HORIX-<version>-windows-x64-portable.zip`. الحزمة النظيفة فيها `HORIX.exe` و`README.txt` فقط. فكّها وشغّل البرنامج من غير تثبيت؛ وضع Portable مدمج في النسخة، وبيعمل `HORIX-Data` جنب البرنامج تلقائيًا لحفظ الإعدادات.
+- **ويندوز:** `HORIX-<version>-windows-x64.zip`. الحزمة النظيفة فيها `HORIX.exe` و`README.txt` فقط. فكّها وشغّل البرنامج من غير تثبيت؛ وضع Portable مدمج في النسخة، وبيعمل `HORIX-Data` جنب البرنامج تلقائيًا لحفظ الإعدادات.
 - **ماك:** `HORIX-<version>-macos-universal.zip` فيه `HORIX.app`، وبيشتغل على أجهزة Apple Silicon وIntel. اسحبه لـApplications.
 
 **تشغيله:** من Actions ← Desktop HORIX ← Run workflow، أو اعمل push لـtag بالشكل `desktop-v0.3.0`. البناء بياخد من 20 لـ40 دقيقة. وتقدر تبني من جهاز ويندوز أو ماك بـ`apps/sg-ps/desktop/package.sh windows|macos`.

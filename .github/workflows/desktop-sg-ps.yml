@@ -121,7 +121,7 @@ jobs:
             --title "HORIX Desktop ($TAG)" \
             --notes "HORIX desktop app.
 
-          Windows: download HORIX-...-windows-x64-portable.zip, unzip it, and run HORIX.exe. On the first run Windows may show \"Windows protected your PC\": click More info > Run anyway.
+          Windows: download HORIX-...-windows-x64.zip, unzip it, and run HORIX.exe. On the first run Windows may show \"Windows protected your PC\": click More info > Run anyway.
 
           macOS (Apple Silicon and Intel): download HORIX-...-macos-universal.zip, unzip it, and drag \"HORIX\" into Applications. On the first run macOS says it could not verify the app (it is not notarized yet): click Done, then System Settings > Privacy & Security > Open Anyway next to HORIX, and enter your password."
 
