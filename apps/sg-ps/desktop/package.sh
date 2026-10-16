@@ -2,7 +2,7 @@
 # Build the HORIX desktop app and package it.
 #
 # Usage: apps/sg-ps/desktop/package.sh windows|macos
-#   windows -> deploy/sg-ps-desktop/HORIX-<version>-windows-x64-portable.zip  (unzip and run HORIX.exe)
+#   windows -> deploy/sg-ps-desktop/HORIX-<version>-windows-x64.zip           (unzip and run HORIX.exe)
 #   macos   -> deploy/sg-ps-desktop/HORIX-<version>-macos-universal.zip       ("HORIX.app", Apple Silicon + Intel)
 # Runs on the matching OS (Git Bash on Windows). Needs Rust; on macOS the aarch64-apple-darwin and
 # x86_64-apple-darwin targets. Not code-signed: Windows SmartScreen and macOS Gatekeeper warn on
@@ -12,7 +12,7 @@ set -euo pipefail
 OS="${1:?usage: package.sh windows|macos}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
-SRC_TGZ="${SRC_TGZ:-$REPO/archive/photocraft/photocraft-source-0.3.0.tar.gz}"
+SRC_TGZ="${SRC_TGZ:-$REPO/archive/photocraft/photocraft-source-0.9.0.tar.gz}"
 WORK="${SGPS_WORK:-$REPO/.sgps-build}"
 OUT="$REPO/deploy/sg-ps-desktop"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$WORK/target}"
@@ -94,7 +94,9 @@ case "$OS" in
     "$PY" -I "$HERE/../ai/fetch.py" "$PKG" windows
     "$PY" -I "$HERE/../ai/fetch.py" "$PKG/models" models
     licences "$PKG"
-    ZIP="$OUT/HORIX-$VERSION-windows-x64-portable.zip"
+    # Not "-portable.zip": on Windows (and macOS) file names ignore case, so this one and the
+    # launcher's horix-<version>-windows-x64-portable.zip below would be the same file.
+    ZIP="$OUT/HORIX-$VERSION-windows-x64.zip"
     rm -f "$ZIP"
     (cd "$WORK/pkg" && 7z a -tzip -mx=9 "$ZIP" HORIX >/dev/null)
     # HORIX Launcher's package: the same files at the top of the zip (it runs horix.exe from there).

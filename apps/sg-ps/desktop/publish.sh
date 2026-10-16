@@ -21,10 +21,10 @@ API="https://developers.hostinger.com/api/hosting/v1"
 # Any platform may be missing (e.g. Windows when GitHub's hosted minutes ran out): its previous
 # files and latest.json entry stay as they are.
 pick() { ls "$DIR"/$1 2>/dev/null | head -1 || true; }
-WIN="$(pick 'HORIX-*-windows-x64-portable.zip')"
+WIN="$(pick 'HORIX-*-windows-x64.zip')"
 MAC="$(pick 'HORIX-*-macos-universal.zip')"
 [ -n "$WIN$MAC" ] || { echo "error: no desktop zip in $DIR" >&2; exit 1; }
-VERSION="$(basename "${WIN:-$MAC}" | sed -En 's/^HORIX-(.*)-(windows-x64-portable|macos-universal)\.zip$/\1/p')"
+VERSION="$(basename "${WIN:-$MAC}" | sed -En 's/^HORIX-(.*)-(windows-x64|macos-universal)\.zip$/\1/p')"
 size() { stat -c%s "$1" 2>/dev/null || stat -f%z "$1"; }
 
 CREDS="$(curl -fsS -X POST -H "Authorization: Bearer $HOSTINGER_API_TOKEN" -H "Content-Type: application/json" \
