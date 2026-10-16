@@ -32,7 +32,10 @@ for w in "$SITE"/*.wasm; do
   gzip -9 -k -f "$w"
   if command -v brotli >/dev/null 2>&1; then brotli -q 11 -f -k "$w"; fi
 done
-{ printf 'AddType application/wasm .wasm\nAddType text/javascript .js\n\n'; cat "$HERE/../horix-common/htaccess-compressed-wasm"; } > "$SITE/.htaccess"
+# The feed (release_info.json, published beside the page by horix-feed.yml) and the page itself
+# must never come from a stale cache.
+{ printf 'AddType application/wasm .wasm\nAddType text/javascript .js\n\n<IfModule mod_headers.c>\n  <FilesMatch "\\.(json|html)$">\n    Header set Cache-Control "no-cache"\n  </FilesMatch>\n</IfModule>\n\n'
+  cat "$HERE/../horix-common/htaccess-compressed-wasm"; } > "$SITE/.htaccess"
 cp "$WORK/src/LICENSE-MIT" "$WORK/src/LICENSE-APACHE" "$WORK/src/NOTICE" "$SITE/"
 
 ZIP="$OUT/horix-launcher-$VERSION-web.zip"

@@ -216,6 +216,27 @@ def look(root: Path) -> None:
     print(f"rebrand: {n} launcher icons")
 
 
+def version(root: Path) -> None:
+    """HORIX Launcher's own version (apps/horix-launcher/VERSION) as the workspace version: it is
+    what the launcher reports, compares its own releases with, and names its files after."""
+    v = (HERE / "VERSION").read_text(encoding="utf-8").strip()
+    if not re.fullmatch(r"\d+\.\d+\.\d+", v):
+        hx.fail(f"VERSION must look like 1.0.0, not {v!r}")
+    path = root / "Cargo.toml"
+    text = path.read_text(encoding="utf-8")
+    new, n = re.subn(r'(\[workspace\.package\][^\[]*?\nversion = ")[^"]+(")', rf"\g<1>{v}\g<2>", text, count=1)
+    if n != 1:
+        hx.fail("Cargo.toml: [workspace.package] version not found")
+    path.write_text(new, encoding="utf-8")
+    # Cargo.lock records the workspace crates' versions too.
+    lock = root / "Cargo.lock"
+    text = lock.read_text(encoding="utf-8")
+    text, n = re.subn(r'(name = "(?:artcraft-launcher[\w-]*|xtask)"\nversion = ")[^"]+(")', rf"\g<1>{v}\g<2>", text)
+    if n == 0:
+        hx.fail("Cargo.lock: workspace crates not found")
+    lock.write_text(text, encoding="utf-8")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -226,6 +247,7 @@ def main() -> None:
     tag_prefixes(root)
     names(root)
     look(root)
+    version(root)
     # Inline unit tests in catalog.rs / feed.rs and the tests/ folders keep upstream fixtures.
     hx.check_no_upstream_brand(root, CODE, allowed=["/tests/", "crates/core/src/catalog.rs", "crates/core/src/feed.rs"])
     print("rebrand: done")
