@@ -12,4 +12,6 @@ returns here as new, smaller patches, one milestone at a time:
    Properties auto-raise.
 3. `20-blur-gallery-handles`: Iris, Spin, Tilt-Shift and Path on the canvas.
 4. `30-refine`, `40-healing`: only where segeval measures a gain over upstream.
-5. `50-horix-ai`: MobileSAM Quick / Object Selection, IS-Net Select Subject, preload, GPU status.
+5. `50-horix-ai`: MobileSAM Quick / Object Selection, IS-Net Select Subject, preload, GPU status: done.
+   The AI drives upstream's Object Finder hover and click when the model is ready; without a
+   model every tool falls back to upstream's own algorithm.
