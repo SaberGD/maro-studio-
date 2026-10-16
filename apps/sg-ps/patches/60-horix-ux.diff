@@ -1,0 +1,2213 @@
+diff --git a/crates/engine/src/color_cmds.rs b/crates/engine/src/color_cmds.rs
+index d3a6d36..bf43a4d 100644
+--- a/crates/engine/src/color_cmds.rs
++++ b/crates/engine/src/color_cmds.rs
+@@ -112,6 +112,10 @@ pub struct ColorSettings {
+     pub policy_cmyk: Policy,
+     pub policy_gray: Policy,
+     /// Ask what to do when an opened file's embedded profile differs from the working space.
++    /// HORIX: off by default, the file opens at once with its own profile (Preserve); Color
++    /// Settings › Ask When Opening turns it on. Stored under a new key so the old default (ask)
++    /// that earlier versions saved doesn't come back.
++    #[serde(rename = "askOnOpenMismatch")]
+     pub ask_on_mismatch: bool,
+     pub ask_on_paste: bool,
+     /// Ask when an opened file has no profile.
+@@ -138,7 +142,7 @@ impl Default for ColorSettings {
+             policy_rgb: Policy::Preserve,
+             policy_cmyk: Policy::Preserve,
+             policy_gray: Policy::Preserve,
+-            ask_on_mismatch: true,
++            ask_on_mismatch: false,
+             ask_on_paste: true,
+             ask_on_missing: false,
+             intent: Intent::RelativeColorimetric.id().into(),
+@@ -491,6 +495,12 @@ fn cms_err(e: photocraft_cms::CmsError) -> EngineError {
+ 
+ // ------------------------------------------------------------------ profiles
+ 
++/// HORIX: built-in profiles a document in `mode` can carry: (id, description). File › New lists them.
++pub fn profiles_for_mode(mode: ColorMode) -> Vec<(&'static str, &'static str)> {
++    let space = mode_space(mode);
++    Builtin::ALL.into_iter().filter(|b| b.profile().color_space == space).map(|b| (b.id(), b.description())).collect()
++}
++
+ /// ICC colour space of a document mode.
+ pub fn mode_space(mode: ColorMode) -> ColorSpace {
+     match mode {
+@@ -1156,7 +1166,7 @@ pub fn specs() -> Vec<CommandSpec> {
+             "edit.colorSettings",
+             "Color Settings…",
+             ["Edit"],
+-            r##"{"workingRgb":"srgb|display-p3|adobe-rgb-compat|prophoto-compat|linear-srgb|rec2020","workingCmyk":"coated-cmyk","workingGray":"dot-gain-20-compat|sgray|gray-gamma-2.2","policyRgb":"preserve|convert|off","policyCmyk":"preserve|convert|off","policyGray":"preserve|convert|off","askOnMismatch":bool=true,"askOnPaste":bool=true,"askOnMissing":bool=false,"intent":"relative|perceptual|saturation|absolute","blendTextGamma":1.0..2.2|bool=1.45,"bpc":bool=true,"dither":bool=true,"monitorProfile":"auto|srgb|display-p3|adobe-rgb-compat|prophoto-compat|rec2020","reset":bool=false} (working spaces and the monitor profile also accept .icc paths; monitor `auto` = the main display's profile when the platform provides it, else sRGB; the reply's `monitorStatus` says which profile is in use and why: source auto|manual|fallback, reason)"##,
++            r##"{"workingRgb":"srgb|display-p3|adobe-rgb-compat|prophoto-compat|linear-srgb|rec2020","workingCmyk":"coated-cmyk","workingGray":"dot-gain-20-compat|sgray|gray-gamma-2.2","policyRgb":"preserve|convert|off","policyCmyk":"preserve|convert|off","policyGray":"preserve|convert|off","askOnMismatch":bool=false,"askOnPaste":bool=true,"askOnMissing":bool=false,"intent":"relative|perceptual|saturation|absolute","blendTextGamma":1.0..2.2|bool=1.45,"bpc":bool=true,"dither":bool=true,"monitorProfile":"auto|srgb|display-p3|adobe-rgb-compat|prophoto-compat|rec2020","reset":bool=false} (working spaces and the monitor profile also accept .icc paths; monitor `auto` = the main display's profile when the platform provides it, else sRGB; the reply's `monitorStatus` says which profile is in use and why: source auto|manual|fallback, reason)"##,
+             always,
+             color_settings,
+             true,
+@@ -1481,12 +1491,47 @@ mod settings_tests {
+         assert!(s.color.resolve_open(&mut d, "explode").is_err());
+     }
+ 
++    /// HORIX round 4 #1: the mismatch question is off by default and saved under its own key, so
++    /// an `askOnMismatch: true` saved by an earlier version doesn't turn it back on.
++    #[test]
++    fn mismatch_question_is_off_by_default_under_a_new_key() {
++        assert!(!ColorSettings::default().ask_on_mismatch);
++        let old: ColorSettings = serde_json::from_value(json!({"askOnMismatch": true})).unwrap();
++        assert!(!old.ask_on_mismatch);
++        let on = ColorSettings { ask_on_mismatch: true, ..Default::default() };
++        let v = serde_json::to_value(&on).unwrap();
++        assert_eq!(v["askOnOpenMismatch"], true);
++        assert_eq!(serde_json::from_value::<ColorSettings>(v).unwrap(), on);
++    }
++
++    /// HORIX round 4 #2: File › New › Color Profile (`file.new {"profile"}`).
++    #[test]
++    fn new_document_color_profile() {
++        let mut s = Session::new();
++        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
++        assert!(s.active().unwrap().doc.icc_profile.is_none(), "working space by default");
++        s.execute("file.new", json!({"width": 8, "height": 8, "profile": "working"})).unwrap();
++        assert!(s.active().unwrap().doc.icc_profile.is_none());
++        s.execute("file.new", json!({"width": 8, "height": 8, "profile": "display-p3"})).unwrap();
++        assert!(desc(&s.active().unwrap().doc).unwrap().starts_with("Display P3"));
++        s.execute("file.new", json!({"width": 8, "height": 8, "mode": "gray", "profile": "dot-gain-20-compat"})).unwrap();
++        assert!(desc(&s.active().unwrap().doc).unwrap().starts_with("Dot Gain 20%"));
++        assert!(s.execute("file.new", json!({"width": 8, "height": 8, "profile": "coated-cmyk"})).is_err(), "a CMYK profile on an RGB document");
++        assert!(s.execute("file.new", json!({"width": 8, "height": 8, "profile": 3})).is_err());
++        assert!(profiles_for_mode(ColorMode::Rgb).iter().any(|(id, _)| *id == "adobe-rgb-compat"));
++        assert!(profiles_for_mode(ColorMode::Cmyk).iter().all(|(id, _)| *id == "coated-cmyk"));
++    }
++
+     #[test]
+     fn open_policies() {
+         let mut s = Session::new();
+-        // Preserve (default): an Adobe RGB file keeps its profile and asks.
++        // Preserve (default): an Adobe RGB file keeps its profile and (HORIX) opens without asking.
++        let (_, r) = s.open_document(tagged("adobe-rgb-compat"), None);
++        assert_eq!((r["action"].as_str(), r["mismatch"].as_bool(), r["ask"].as_bool()), (Some("kept"), Some(true), Some(false)));
++        // Ask When Opening, ticked in Color Settings, asks.
++        s.execute("edit.colorSettings", json!({"askOnMismatch": true})).unwrap();
+         let (_, r) = s.open_document(tagged("adobe-rgb-compat"), None);
+-        assert_eq!((r["action"].as_str(), r["mismatch"].as_bool(), r["ask"].as_bool()), (Some("kept"), Some(true), Some(true)));
++        assert_eq!(r["ask"].as_bool(), Some(true));
+         assert!(desc(&s.active().unwrap().doc).unwrap().starts_with("Adobe RGB"));
+         // Matching profiles never ask.
+         let (_, r) = s.open_document(tagged("srgb"), None);
+@@ -1574,7 +1619,7 @@ mod settings_tests {
+         let mut d = tagged("srgb");
+         d.icc_profile = Some(input.to_bytes());
+         let (photo, r) = s.open_document(d, None);
+-        assert_eq!((r["action"].as_str(), r["inputOnly"].as_bool(), r["ask"].as_bool()), (Some("converted"), Some(true), Some(true)));
++        assert_eq!((r["action"].as_str(), r["inputOnly"].as_bool(), r["ask"].as_bool()), (Some("converted"), Some(true), Some(false)));
+         let doc = &s.active().unwrap().doc;
+         assert!(desc(doc).unwrap().starts_with("sRGB"));
+         // Converted from P3, not reinterpreted as sRGB.
+diff --git a/crates/engine/src/commands.rs b/crates/engine/src/commands.rs
+index a954eca..c18715f 100644
+--- a/crates/engine/src/commands.rs
++++ b/crates/engine/src/commands.rs
+@@ -403,7 +403,7 @@ fn build() -> Vec<CommandSpec> {
+             "New…",
+             ["File"],
+             Some("Cmd+N"),
+-            r##"{"width":1..300000=1920,"height":1..300000=1080 (pixel counts are rounded),"mode":"rgb|gray|grayscale|cmyk|lab"="rgb","depth":8|16|32=8,"background":"white|black|backgroundColor|transparent|#rrggbb"="white","backgroundColor":[r,g,b]? (0..1; defaults to toolbox colour),"resolution":1..30000=72 (ppi),"name":str}"##,
++            r##"{"width":1..300000=1920,"height":1..300000=1080 (pixel counts are rounded),"mode":"rgb|gray|grayscale|cmyk|lab"="rgb","depth":8|16|32=8,"background":"white|black|backgroundColor|transparent|#rrggbb"="white","backgroundColor":[r,g,b]? (0..1; defaults to toolbox colour),"resolution":1..30000=72 (ppi),"name":str,"profile":"working|<profile id>|<.icc path>"="working"}"##,
+             always,
+             |s, p| {
+                 use crate::document_preset_cmds::{MAX_DIMENSION, MAX_RESOLUTION, background_color, color_mode, sample_type};
+@@ -439,6 +439,19 @@ fn build() -> Vec<CommandSpec> {
+                     }
+                 };
+                 doc.resolution_dpi = res;
++                // HORIX: New Document › Color Profile: the working space (the default; the
++                // document stays untagged and follows it) or a profile embedded in the document.
++                let spec = p.get("profile").and_then(Value::as_str).unwrap_or("working");
++                if !matches!(spec, "working" | "") {
++                    let prof = s.color.resolve(spec, Some(&doc), None)?;
++                    if prof.color_space != crate::color_cmds::mode_space(doc.mode) {
++                        return Err(EngineError::BadParams {
++                            cmd: "file.new".into(),
++                            msg: format!("profile `{}` doesn't fit the colour mode", prof.description),
++                        });
++                    }
++                    doc.icc_profile = Some(prof.to_bytes());
++                }
+                 let i = s.add_document(doc, None);
+                 Ok(json!({ "document": i }))
+             }
+diff --git a/crates/engine/src/document_preset_cmds.rs b/crates/engine/src/document_preset_cmds.rs
+index 0bb409b..fc10f7d 100644
+--- a/crates/engine/src/document_preset_cmds.rs
++++ b/crates/engine/src/document_preset_cmds.rs
+@@ -78,6 +78,8 @@ pub(crate) fn validate_new_params(s: &Session, p: &Value) -> Result<()> {
+                 continue;
+             }
+             "name" => (value.is_string(), "a string".into()),
++            // HORIX: New Document › Color Profile (`working`, a built-in profile id or an .icc path).
++            "profile" => (value.is_string(), "a profile id or path".into()),
+             _ => return Err(bad(cmd, format!("unknown parameter `{key}`"))),
+         };
+         if !valid {
+diff --git a/crates/engine/src/extra_cmds.rs b/crates/engine/src/extra_cmds.rs
+index 3a27c99..78e73b4 100644
+--- a/crates/engine/src/extra_cmds.rs
++++ b/crates/engine/src/extra_cmds.rs
+@@ -548,11 +548,22 @@ fn ungroup(s: &mut Session, p: &Value) -> Result<Value> {
+     s.edit("Ungroup Layers", |doc, active| {
+         let path = doc.path_of(id).ok_or(EngineError::NoLayer(id))?;
+         let g = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
++        let (&idx, parent) = path.split_last().ok_or(EngineError::NoLayer(id))?;
+         let LayerContent::Group(group) = &g.content else {
+-            return Err(EngineError::Other("the active layer is not a group".into()));
++            // HORIX (Photoshop): Ungroup on a layer inside a group takes that layer out of it,
++            // just above the group.
++            let Some((&gidx, gparent)) = parent.split_last() else {
++                return Err(EngineError::Other("the active layer is not a group".into()));
++            };
++            let gparent = gparent.to_vec();
++            let layer = doc.layer_at_mut(parent).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(id))?.remove(idx);
++            let sib =
++                if gparent.is_empty() { &mut doc.layers } else { doc.layer_at_mut(&gparent).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(id))? };
++            sib.insert(gidx + 1, layer);
++            *active = Some(id);
++            return Ok(());
+         };
+         let children = group.children.clone();
+-        let (&idx, parent) = path.split_last().ok_or(EngineError::NoLayer(id))?;
+         let sib = if parent.is_empty() { &mut doc.layers } else { doc.layer_at_mut(parent).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(id))? };
+         sib.remove(idx);
+         let top = children.last().map(|l| l.id);
+@@ -981,13 +992,33 @@ pub fn specs() -> Vec<CommandSpec> {
+             "Ungroup Layers",
+             &["Layer"],
+             Some("Cmd+Shift+G"),
+-            r##"{"layer":id?}"##,
+-            |s| match active_layer(s)?.is_group() {
+-                true => Ok(()),
+-                false => Err("the active layer is not a group".into()),
++            r##"{"layer":id?} (a group: its layers take its place; HORIX: a layer inside a group comes out of it)"##,
++            |s| {
++                let d = s.active().ok_or("no document open")?;
++                let id = d.active_layer.ok_or("no active layer")?;
++                match d.doc.layer(id).is_some_and(Layer::is_group) || d.doc.path_of(id).is_some_and(|p| p.len() > 1) {
++                    true => Ok(()),
++                    false => Err("the active layer is not a group or in one".into()),
++                }
+             },
+             ungroup
+         ),
++        spec!(
++            "layer.deleteGroup",
++            "Delete Group",
++            &[],
++            None,
++            r##"{"mode":"groupOnly"|"contents","layer":id?} (HORIX: the answer to Delete on a group; the `layer`, else the selected layers: groups keep their layers, or lose them and stay empty; other layers are deleted)"##,
++            has_layer,
++            |s, p| {
++                let group_only = match p.get("mode").and_then(Value::as_str) {
++                    Some("groupOnly") => true,
++                    Some("contents") => false,
++                    _ => return Err(EngineError::BadParams { cmd: "layer.deleteGroup".into(), msg: "`mode` must be groupOnly or contents".into() }),
++                };
++                crate::layer_multi_cmds::delete_groups(s, p, group_only)
++            }
++        ),
+         spec!(
+             "layer.hideLayers",
+             "Hide Layers",
+@@ -1661,6 +1692,51 @@ mod tests {
+         assert_eq!(doc(&s).layer_count(), n - 1);
+     }
+ 
++    /// HORIX round 1 #5: Ungroup on a layer inside a group takes it out, just above the group.
++    #[test]
++    fn ungroup_on_a_child_takes_it_out() {
++        let mut s = session(8);
++        let a = active(&s).id;
++        s.execute("layer.groupLayers", json!({})).unwrap();
++        let g = active(&s).id;
++        s.execute("layer.select", json!({"layer": a.0})).unwrap();
++        assert!(s.is_enabled("layer.ungroupLayers"), "{:?}", s.disabled_reason("layer.ungroupLayers"));
++        s.execute("layer.ungroupLayers", json!({})).unwrap();
++        let d = doc(&s);
++        assert_eq!(d.path_of(a).unwrap().len(), 1);
++        assert!(d.layer(g).unwrap().children().unwrap().is_empty());
++        assert!(d.path_of(a).unwrap()[0] > d.path_of(g).unwrap()[0]);
++        assert_eq!(s.active().unwrap().active_layer, Some(a));
++        // A top-level layer that is not a group has nothing to ungroup.
++        assert!(!s.is_enabled("layer.ungroupLayers"));
++        s.execute("edit.undo", json!({})).unwrap();
++        assert_eq!(doc(&s).path_of(a).unwrap().len(), 2);
++    }
++
++    /// HORIX: the group-delete question's answers (Group Only, Contents Only).
++    #[test]
++    fn delete_group_only_or_its_contents() {
++        let top = |s: &Session| doc(s).layers.iter().map(|l| (l.is_group(), l.children().map_or(0, <[_]>::len))).collect::<Vec<_>>();
++        let mut s = session(8);
++        s.execute("layer.new.layer", json!({})).unwrap();
++        let ids: Vec<u64> = doc(&s).layers.iter().skip(1).map(|l| l.id.0).collect();
++        s.execute("layer.select", json!({"layer": ids[0]})).unwrap();
++        s.execute("layer.select", json!({"layer": ids[1], "mode": "add"})).unwrap();
++        s.execute("layer.groupLayers", json!({})).unwrap();
++        assert_eq!(top(&s), vec![(false, 0), (true, 2)]);
++        s.execute("layer.deleteGroup", json!({"mode": "groupOnly"})).unwrap();
++        assert_eq!(top(&s), vec![(false, 0), (false, 0), (false, 0)], "the layers stay, the group goes");
++        s.execute("edit.undo", json!({})).unwrap();
++        s.execute("layer.deleteGroup", json!({"mode": "contents"})).unwrap();
++        assert_eq!(top(&s), vec![(false, 0), (true, 0)], "an empty group stays");
++        s.execute("edit.undo", json!({})).unwrap();
++        let g = doc(&s).layers[1].id.0;
++        s.execute("layer.select", json!({"layer": doc(&s).layers[0].id.0})).unwrap();
++        s.execute("layer.deleteGroup", json!({"mode": "groupOnly", "layer": g})).unwrap();
++        assert_eq!(top(&s), vec![(false, 0), (false, 0), (false, 0)], "the `layer` param, not the selection");
++        assert!(s.execute("layer.deleteGroup", json!({"mode": "all"})).is_err());
++    }
++
+     #[test]
+     fn ungroup_restores_children_in_order() {
+         let mut s = session(8);
+diff --git a/crates/engine/src/layer_multi_cmds.rs b/crates/engine/src/layer_multi_cmds.rs
+index 80da3bd..e3dc93d 100644
+--- a/crates/engine/src/layer_multi_cmds.rs
++++ b/crates/engine/src/layer_multi_cmds.rs
+@@ -1330,6 +1330,46 @@ pub fn delete_selected(s: &mut Session) -> Result<Value> {
+     Ok(json!({"deleted": sel.len()}))
+ }
+ 
++/// HORIX: Delete on a group, after Photoshop's question: `group_only` keeps each group's layers
++/// (they take its place), otherwise they go and the emptied group stays. The [`targets`] that are
++/// not groups are deleted either way. One history step.
++pub fn delete_groups(s: &mut Session, p: &Value, group_only: bool) -> Result<Value> {
++    let sel = targets(s, p)?;
++    s.edit(if group_only { "Delete Group" } else { "Delete Group Contents" }, |doc, active| {
++        let mut keep = None;
++        let ids = top_level(doc, &sel);
++        let before = crate::clip_group::Before::read(doc, &ids);
++        for id in ids {
++            if !doc.layer(id).is_some_and(Layer::is_group) {
++                doc.remove(id).ok_or(EngineError::NoLayer(id))?;
++            } else if group_only {
++                let path = doc.path_of(id).ok_or(EngineError::NoLayer(id))?;
++                let (&idx, parent) = path.split_last().ok_or(EngineError::NoLayer(id))?;
++                let sib =
++                    if parent.is_empty() { &mut doc.layers } else { doc.layer_at_mut(parent).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(id))? };
++                let children = match sib.remove(idx).content {
++                    LayerContent::Group(g) => g.children,
++                    _ => Vec::new(),
++                };
++                keep = children.last().map(|l| l.id).or(keep);
++                for (k, l) in children.into_iter().enumerate() {
++                    sib.insert(idx + k, l);
++                }
++            } else {
++                doc.layer_mut(id).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(id))?.clear();
++                keep = Some(id);
++            }
++        }
++        crate::clip_group::settle(doc, &[], &before, false);
++        if doc.layers.is_empty() {
++            return Err(EngineError::Other("a document must keep at least one layer".into()));
++        }
++        *active = keep.filter(|k| doc.layer(*k).is_some()).or_else(|| doc.top_layer());
++        Ok(())
++    })?;
++    Ok(Value::Null)
++}
++
+ /// Duplicate Layer with several layers selected: each copy goes above its original and the
+ /// copies become the selection. Artboard copies go beside their boards unless `in_place`
+ /// ([`crate::artboard_cmds::place_copy`]). `label` names the history step (Layer via Copy reuses
+diff --git a/crates/text/src/layout.rs b/crates/text/src/layout.rs
+index 55f9e0a..700a3f0 100644
+--- a/crates/text/src/layout.rs
++++ b/crates/text/src/layout.rs
+@@ -216,6 +216,9 @@ pub struct TextLayout {
+     pub px_per_pt: f32,
+     /// Vertical type: line space is turned 90° clockwise into text space.
+     pub vertical: bool,
++    /// HORIX: paragraph (box) text that did not fit in the box and is hidden (Photoshop marks it
++    /// with a red "+" on the box's corner handle).
++    pub overflow: bool,
+ }
+ 
+ impl TextLayout {
+@@ -1039,6 +1042,7 @@ impl Layouter {
+             }
+             pending_space += ps.space_after_pt * k;
+         }
++        out.overflow = stop;
+         out
+     }
+ }
+diff --git a/crates/text/src/tests.rs b/crates/text/src/tests.rs
+index ad83475..c4f9000 100644
+--- a/crates/text/src/tests.rs
++++ b/crates/text/src/tests.rs
+@@ -270,6 +270,10 @@ fn box_text_wraps_inside_width() {
+     t.shape = TextShape::Box { x: 0.0, y: 0.0, width: 100.0, height: 30.0 };
+     let l2 = e.layout(&t, 72.0);
+     assert_eq!(l2.lines.len(), 2);
++    // HORIX: the hidden lines are reported (the overset-text mark).
++    assert!(l2.overflow && !l.overflow, "hidden lines are reported");
++    t.shape = TextShape::Point;
++    assert!(!e.layout(&t, 72.0).overflow, "point text never overflows");
+ }
+ 
+ #[test]
+diff --git a/crates/ui-egui/src/blur_handles.rs b/crates/ui-egui/src/blur_handles.rs
+new file mode 100644
+index 0000000..e6b2e66
+--- /dev/null
++++ b/crates/ui-egui/src/blur_handles.rs
+@@ -0,0 +1,726 @@
++//! HORIX (round 4 #3, round 5 #2): the Blur Gallery's other blurs get Photoshop's on-canvas
++//! controls too, beside upstream's Field Blur pins (`blur_pins`). While Tilt-Shift, Iris Blur,
++//! Spin Blur or Path Blur is open, its geometry is drawn on the image under the dialog and dragged
++//! there: Path Blur's arrow and its end and bend points, Tilt-Shift's focus and transition lines
++//! (and the dot that rotates them), the Iris and Spin ellipses with their size handles (and
++//! Iris's feather handle), each blur's centre pin and the ring that sets its blur (Spin: its arc).
++//! The handles edit the dialog's own fields (`centerX`, `radiusX`, `focus`, `startX`…, fractions
++//! of the filter's bounds as the engine reads them), so the sliders and the preview follow.
++//!
++//! Iris and Spin take several pins and Path Blur several paths: a click on an empty spot adds one
++//! (drag at once to place it), a click on one selects it (the sliders then edit it), Delete or
++//! Backspace removes the selected one (never the last), and a click on the selected path's
++//! segment adds a bend point. They travel as the command's `pins` / `paths`.
++
++use egui::{Color32, Pos2, Shape, Stroke, pos2, vec2};
++use serde_json::{Map, Value, json};
++
++use crate::PhotocraftApp;
++use crate::canvas::ViewXform;
++
++const PREFIX: &str = "filter.blurGallery.";
++const KINDS: [&str; 4] = ["tiltShift", "irisBlur", "spinBlur", "pathBlur"];
++/// The handle being dragged, and the one under the pointer (egui memory).
++const HELD: &str = "horix-blur-handle-held";
++const NEAR: &str = "horix-blur-handle-near";
++/// Screen radius of the blur ring.
++const RING_R: f32 = 30.0;
++/// More pins or paths than anyone places by hand (as `blur_pins::MAX_PINS`).
++const MAX_ITEMS: usize = 64;
++
++fn kind(fields: &Map<String, Value>) -> Option<&str> {
++    fields.get("__command").and_then(Value::as_str)?.strip_prefix(PREFIX).filter(|k| KINDS.contains(k))
++}
++
++pub fn owns(fields: &Map<String, Value>) -> bool {
++    kind(fields).is_some()
++}
++
++/// A freshly opened dialog: the filter's bounds (the selection's, else the canvas), and its
++/// fields as the first pin / path.
++pub fn init(app: &mut PhotocraftApp, fields: &mut Map<String, Value>) {
++    let bounds = app.session.active().map(|st| (st.doc.id, st.doc.bounds(), st.doc.selection.clone()));
++    if let Some((doc, canvas, selection)) = bounds {
++        let b = selection.map(|s| app.cached_bounds(u64::MAX - doc.0, &s)).filter(|b| !b.is_empty()).unwrap_or(canvas);
++        fields.insert("__bounds".into(), json!([b.x0, b.y0, b.x1, b.y1]));
++    }
++    if let Some(k) = kind(fields).map(str::to_owned) {
++        fields.remove("pins");
++        fields.remove("paths");
++        sync(&k, fields);
++    }
++}
++
++/// Where the dialog first opens: at the right edge, beside the image, as Photoshop docks its Blur
++/// Tools panel, so the controls under it stay in view.
++pub fn first_place(fields: &Map<String, Value>, ctx: &egui::Context) -> Option<egui::Vec2> {
++    owns(fields).then(|| vec2((ctx.content_rect().width() - 480.0).max(0.0), 96.0))
++}
++
++fn num(f: &Map<String, Value>, k: &str, d: f32) -> f32 {
++    f.get(k).and_then(Value::as_f64).filter(|v| v.is_finite()).map_or(d, |v| v as f32)
++}
++
++/// The filter's bounds: `[x0, y0, width, height]` in document pixels.
++#[derive(Clone, Copy)]
++struct Geo {
++    b: [f32; 4],
++}
++
++impl Geo {
++    fn of(f: &Map<String, Value>) -> Option<Self> {
++        let a = f.get("__bounds")?.as_array()?;
++        let v = |i: usize| a.get(i).and_then(Value::as_f64).map(|x| x as f32);
++        let (x0, y0, x1, y1) = (v(0)?, v(1)?, v(2)?, v(3)?);
++        (x1 > x0 && y1 > y0).then_some(Self { b: [x0, y0, x1 - x0, y1 - y0] })
++    }
++    /// The shorter side: radii and distances are fractions of it.
++    fn ss(&self) -> f32 {
++        self.b[2].min(self.b[3]).max(1.0)
++    }
++    /// Fractions → document pixels.
++    fn doc(&self, fx: f32, fy: f32) -> [f32; 2] {
++        [self.b[0] + fx * self.b[2], self.b[1] + fy * self.b[3]]
++    }
++    /// Document pixels → fractions.
++    fn frac(&self, p: [f32; 2]) -> [f32; 2] {
++        [(p[0] - self.b[0]) / self.b[2].max(1.0), (p[1] - self.b[1]) / self.b[3].max(1.0)]
++    }
++}
++
++/// A draggable point: its key and position (document pixels).
++type Handle = (String, [f32; 2]);
++
++/// The command's list parameter for kinds that take several pins or paths.
++fn list_key(kind: &str) -> Option<&'static str> {
++    match kind {
++        "irisBlur" | "spinBlur" => Some("pins"),
++        "pathBlur" => Some("paths"),
++        _ => None,
++    }
++}
++
++fn sel(f: &Map<String, Value>) -> usize {
++    f.get("__pin").and_then(Value::as_u64).unwrap_or(0) as usize
++}
++
++fn items(f: &Map<String, Value>, key: &str) -> Vec<Value> {
++    f.get(key).and_then(Value::as_array).cloned().unwrap_or_default()
++}
++
++/// The selected pin / path as the filter reads it, from the dialog's fields (a path keeps the
++/// bend points of `prev`).
++fn to_item(kind: &str, f: &Map<String, Value>, prev: Option<&Value>) -> Value {
++    let n = |k: &str, d: f32| json!(num(f, k, d));
++    match kind {
++        "irisBlur" => {
++            json!({"x": n("centerX", 0.5), "y": n("centerY", 0.5), "radiusX": n("radiusX", 0.35), "radiusY": n("radiusY", 0.25), "angle": n("angle", 0.0),
++            "roundness": n("roundness", 0.0), "feather": n("feather", 0.5), "blur": n("blur", 15.0)})
++        }
++        "spinBlur" => {
++            json!({"x": n("centerX", 0.5), "y": n("centerY", 0.5), "radiusX": n("radiusX", 0.3), "radiusY": n("radiusY", 0.3), "angle": n("angle", 0.0), "blurAngle": n("blurAngle", 15.0)})
++        }
++        _ => {
++            let mid: Vec<Value> = prev
++                .and_then(|p| p.get("points")?.as_array().cloned())
++                .map(|pts| if pts.len() > 2 { pts[1..pts.len() - 1].to_vec() } else { Vec::new() })
++                .unwrap_or_default();
++            let mut pts = vec![json!([num(f, "startX", 0.2), num(f, "startY", 0.5)])];
++            pts.extend(mid);
++            pts.push(json!([num(f, "endX", 0.8), num(f, "endY", 0.5)]));
++            json!({"points": pts, "speed": n("speed", 50.0), "taper": n("taper", 0.0)})
++        }
++    }
++}
++
++/// Load a pin / path into the dialog's fields (the sliders edit the selected one).
++fn load_item(kind: &str, item: &Value, f: &mut Map<String, Value>) {
++    let mut put = |k: &str, v: Option<&Value>| {
++        if let Some(v) = v {
++            f.insert(k.into(), v.clone());
++        }
++    };
++    if kind == "pathBlur" {
++        let pts = item.get("points").and_then(Value::as_array).cloned().unwrap_or_default();
++        if let (Some(a), Some(b)) = (pts.first(), pts.last()) {
++            put("startX", a.get(0));
++            put("startY", a.get(1));
++            put("endX", b.get(0));
++            put("endY", b.get(1));
++        }
++        put("speed", item.get("speed"));
++        put("taper", item.get("taper"));
++        return;
++    }
++    put("centerX", item.get("x"));
++    put("centerY", item.get("y"));
++    for k in ["radiusX", "radiusY", "angle", "roundness", "feather", "blur", "blurAngle"] {
++        put(k, item.get(k));
++    }
++}
++
++/// Keep the list parameter in step with the fields: made from them the first time, then the
++/// selected entry follows the sliders and handles.
++fn sync(kind: &str, f: &mut Map<String, Value>) {
++    let Some(key) = list_key(kind) else { return };
++    let mut list = items(f, key);
++    let s = sel(f).min(list.len().saturating_sub(1));
++    let item = to_item(kind, f, list.get(s));
++    if list.is_empty() {
++        list.push(item);
++    } else {
++        list[s] = item;
++    }
++    f.insert(key.into(), Value::Array(list));
++    f.insert("__pin".into(), json!(s));
++}
++
++fn path_points(f: &Map<String, Value>, i: usize) -> Vec<[f32; 2]> {
++    items(f, "paths")
++        .get(i)
++        .and_then(|p| p.get("points")?.as_array().cloned())
++        .map(|a| a.iter().filter_map(|q| Some([q.get(0)?.as_f64()? as f32, q.get(1)?.as_f64()? as f32])).collect())
++        .unwrap_or_default()
++}
++
++fn handles(kind: &str, f: &Map<String, Value>, g: &Geo) -> Vec<Handle> {
++    let c = g.doc(num(f, "centerX", 0.5), num(f, "centerY", 0.5));
++    let ss = g.ss();
++    let h = |k: &str, p: [f32; 2]| (k.to_string(), p);
++    match kind {
++        "pathBlur" => {
++            let pts = path_points(f, sel(f));
++            if pts.len() >= 2 {
++                pts.iter().enumerate().map(|(i, q)| (format!("p{i}"), g.doc(q[0], q[1]))).collect()
++            } else {
++                vec![h("p0", g.doc(num(f, "startX", 0.2), num(f, "startY", 0.5))), h("p1", g.doc(num(f, "endX", 0.8), num(f, "endY", 0.5)))]
++            }
++        }
++        "tiltShift" => {
++            let (s, co) = num(f, "angle", 0.0).to_radians().sin_cos();
++            let (n, d) = ([s, co], [co, -s]);
++            let (f0, f1) = (num(f, "focus", 0.1) * ss, (num(f, "focus", 0.1) + num(f, "transition", 0.15)) * ss);
++            let at = |k: f32, along: f32| [c[0] + n[0] * k + d[0] * along, c[1] + n[1] * k + d[1] * along];
++            vec![h("center", c), h("focus", at(f0, 0.0)), h("transition", at(f1, 0.0)), h("rotate", at(f0, 0.35 * ss))]
++        }
++        "irisBlur" | "spinBlur" => {
++            let iris = kind == "irisBlur";
++            let (s, co) = num(f, "angle", 0.0).to_radians().sin_cos();
++            let (rx, ry) = (num(f, "radiusX", if iris { 0.35 } else { 0.3 }) * ss, num(f, "radiusY", if iris { 0.25 } else { 0.3 }) * ss);
++            let mut v = vec![h("center", c), h("radiusX", [c[0] + co * rx, c[1] + s * rx]), h("radiusY", [c[0] - s * ry, c[1] + co * ry])];
++            if iris {
++                let fe = num(f, "feather", 0.5);
++                v.push(h("feather", [c[0] + co * rx * fe, c[1] + s * rx * fe]));
++            }
++            v
++        }
++        _ => vec![h("center", c)],
++    }
++}
++
++fn r3(v: f32) -> Value {
++    json!((v * 1000.0).round() / 1000.0)
++}
++
++/// Apply a drag of handle `h` to document point `p`.
++fn drag(kind: &str, h: &str, p: [f32; 2], f: &mut Map<String, Value>, g: &Geo) {
++    let fr = g.frac(p);
++    let (fx, fy) = (fr[0].clamp(0.0, 1.0), fr[1].clamp(0.0, 1.0));
++    let c = g.doc(num(f, "centerX", 0.5), num(f, "centerY", 0.5));
++    let (dx, dy) = (p[0] - c[0], p[1] - c[1]);
++    let ss = g.ss();
++    let (s, co) = num(f, "angle", 0.0).to_radians().sin_cos();
++    if kind == "pathBlur"
++        && let Some(i) = h.strip_prefix('p').and_then(|v| v.parse::<usize>().ok())
++    {
++        let n = path_points(f, sel(f)).len().max(2);
++        if i == 0 {
++            f.insert("startX".into(), r3(fx));
++            f.insert("startY".into(), r3(fy));
++        } else if i + 1 == n {
++            f.insert("endX".into(), r3(fx));
++            f.insert("endY".into(), r3(fy));
++        } else {
++            // A bend point lives only in the path list.
++            let s = sel(f);
++            if let Some(Value::Array(list)) = f.get_mut("paths")
++                && let Some(pts) = list.get_mut(s).and_then(|p| p.get_mut("points")).and_then(Value::as_array_mut)
++                && let Some(q) = pts.get_mut(i)
++            {
++                *q = json!([(fx * 1000.0).round() / 1000.0, (fy * 1000.0).round() / 1000.0]);
++            }
++        }
++        return;
++    }
++    match (kind, h) {
++        (_, "center") => {
++            f.insert("centerX".into(), r3(fx));
++            f.insert("centerY".into(), r3(fy));
++        }
++        ("tiltShift", "focus") => {
++            f.insert("focus".into(), r3(((dx * s + dy * co).abs() / ss).clamp(0.0, 1.0)));
++        }
++        ("tiltShift", "transition") => {
++            let t = (dx * s + dy * co).abs() / ss - num(f, "focus", 0.1);
++            f.insert("transition".into(), r3(t.clamp(0.01, 1.0)));
++        }
++        ("tiltShift", "rotate") => {
++            // The band runs along (cos a, −sin a): the angle that points it at the pointer, folded
++            // into −90…90 (a band has no direction).
++            let mut a = (-dy).atan2(dx).to_degrees();
++            if a > 90.0 {
++                a -= 180.0;
++            } else if a < -90.0 {
++                a += 180.0;
++            }
++            f.insert("angle".into(), json!(a.round()));
++        }
++        (_, "radiusX") => {
++            f.insert("radiusX".into(), r3(((dx * co + dy * s).abs() / ss).clamp(0.01, 1.0)));
++        }
++        (_, "radiusY") => {
++            f.insert("radiusY".into(), r3(((-dx * s + dy * co).abs() / ss).clamp(0.01, 1.0)));
++        }
++        ("irisBlur", "feather") => {
++            let rx = num(f, "radiusX", 0.35) * ss;
++            f.insert("feather".into(), r3(((dx * co + dy * s) / rx.max(1.0)).clamp(0.0, 0.99)));
++        }
++        _ => {}
++    }
++}
++
++/// The blur ring: (field, value of a full turn). Iris's sets its blur, Spin's its arc.
++fn ring(kind: &str) -> Option<(&'static str, f32)> {
++    match kind {
++        "irisBlur" | "tiltShift" => Some(("blur", 500.0)),
++        "spinBlur" => Some(("blurAngle", 360.0)),
++        _ => None,
++    }
++}
++
++/// Add a pin / path at document point `p` (a copy of the selected one), select it and return the
++/// handle a drag that started with the click should move.
++fn add_item(kind: &str, f: &mut Map<String, Value>, g: &Geo, p: [f32; 2], zoom: f32) -> Option<&'static str> {
++    let key = list_key(kind)?;
++    let mut list = items(f, key);
++    if list.len() >= MAX_ITEMS {
++        return None;
++    }
++    let fr = g.frac(p);
++    let (fx, fy) = (fr[0].clamp(0.0, 1.0), fr[1].clamp(0.0, 1.0));
++    let mut item = to_item(kind, f, None);
++    let grab = if kind == "pathBlur" {
++        let len = (120.0 / zoom.max(0.01) / g.b[2].max(1.0)).min(0.3);
++        item["points"] = json!([[fx, fy], [(fx + len).min(1.0), fy]]);
++        "p1"
++    } else {
++        item["x"] = json!(fx);
++        item["y"] = json!(fy);
++        "center"
++    };
++    list.push(item.clone());
++    f.insert("__pin".into(), json!(list.len() - 1));
++    f.insert(key.into(), Value::Array(list));
++    load_item(kind, &item, f);
++    Some(grab)
++}
++
++fn select_item(kind: &str, f: &mut Map<String, Value>, i: usize) {
++    let Some(key) = list_key(kind) else { return };
++    if let Some(item) = items(f, key).get(i).cloned() {
++        f.insert("__pin".into(), json!(i));
++        load_item(kind, &item, f);
++    }
++}
++
++/// Delete the selected pin / path (the last one stays).
++fn delete_item(kind: &str, f: &mut Map<String, Value>) -> bool {
++    let Some(key) = list_key(kind) else { return false };
++    let mut list = items(f, key);
++    if list.len() <= 1 {
++        return false;
++    }
++    let s = sel(f).min(list.len() - 1);
++    list.remove(s);
++    f.insert(key.into(), Value::Array(list));
++    select_item(kind, f, s.saturating_sub(1));
++    true
++}
++
++fn seg_dist(p: Pos2, a: Pos2, b: Pos2) -> f32 {
++    let ab = b - a;
++    let t = ((p - a).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
++    (a + ab * t).distance(p)
++}
++
++fn screen(xf: &ViewXform, p: [f32; 2]) -> Pos2 {
++    xf.to_screen(p[0], p[1])
++}
++
++fn item_centre(g: &Geo, it: &Value) -> [f32; 2] {
++    let v = |k: &str| it.get(k).and_then(Value::as_f64).unwrap_or(0.5) as f32;
++    g.doc(v("x"), v("y"))
++}
++
++/// Where the ring's handle sits: at the angle that shows the value (a quarter turn = a quarter
++/// of its full-turn value), from the top.
++fn ring_pos(kind: &str, f: &Map<String, Value>, c: Pos2) -> Option<Pos2> {
++    ring(kind).map(|(k, full)| {
++        let a = (num(f, k, 15.0) / full * 360.0 - 90.0).to_radians();
++        c + vec2(a.cos(), a.sin()) * RING_R
++    })
++}
++
++/// What the pointer at screen point `p` is on: a handle's key, `ring`, or nothing.
++fn near(kind: &str, f: &Map<String, Value>, g: &Geo, xf: &ViewXform, p: Pos2) -> Option<String> {
++    let hit = handles(kind, f, g).into_iter().map(|(k, q)| (k, screen(xf, q).distance(p))).filter(|(_, d)| *d <= 12.0).min_by(|a, b| a.1.total_cmp(&b.1));
++    if let Some((k, _)) = hit {
++        return Some(k);
++    }
++    let c = screen(xf, g.doc(num(f, "centerX", 0.5), num(f, "centerY", 0.5)));
++    ring_pos(kind, f, c).filter(|r| r.distance(p) <= 10.0).map(|_| "ring".to_string())
++}
++
++/// The pointer on the free image under the dialog: `over` is where it is, `press` where the
++/// primary button is held (`dialogs::free_press`), both in screen points. Returns whether the
++/// controls took it.
++pub fn canvas(app: &mut PhotocraftApp, ctx: &egui::Context, xf: &ViewXform, over: Pos2, press: Option<Pos2>) -> bool {
++    let Some(d) = app.ui.dialogs.last_mut().filter(|d| owns(&d.fields)) else { return false };
++    let f = &mut d.fields;
++    let Some(k) = kind(f).map(str::to_owned) else { return false };
++    let Some(g) = Geo::of(f) else { return false };
++    sync(&k, f);
++    let (held_id, near_id) = (egui::Id::new(HELD), egui::Id::new(NEAR));
++    let mut held: Option<String> = ctx.data(|m| m.get_temp(held_id));
++    let (start, down) = ctx.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down()));
++    let hover = near(&k, f, &g, xf, over);
++    if start
++        && held.is_none()
++        && let Some(at) = press
++    {
++        // A press on the image takes the keys from the dialog's fields (Delete is the pin's then).
++        ctx.memory_mut(|m| {
++            if let Some(id) = m.focused() {
++                m.surrender_focus(id);
++            }
++        });
++        held = near(&k, f, &g, xf, at);
++        if held.is_none()
++            && let Some(key) = list_key(&k)
++        {
++            // Another pin / path under the pointer selects it; a segment of the selected path
++            // gets a bend point there; elsewhere a new pin / path starts.
++            let list = items(f, key);
++            let s = sel(f);
++            let (mut other, mut bend) = (None, None);
++            for (i, it) in list.iter().enumerate() {
++                if k == "pathBlur" {
++                    let pts: Vec<Pos2> = path_points(f, i).iter().map(|q| screen(xf, g.doc(q[0], q[1]))).collect();
++                    for (j, w) in pts.windows(2).enumerate() {
++                        if seg_dist(at, w[0], w[1]) <= 8.0 {
++                            if i == s {
++                                bend = Some(j + 1);
++                            } else {
++                                other = Some(i);
++                            }
++                        }
++                    }
++                } else if i != s && screen(xf, item_centre(&g, it)).distance(at) <= 14.0 {
++                    other = Some(i);
++                }
++            }
++            let q = xf.to_doc(at);
++            let q = [q[0] as f32, q[1] as f32];
++            if let Some(i) = other {
++                select_item(&k, f, i);
++            } else if let Some(j) = bend {
++                let fr = g.frac(q);
++                if let Some(Value::Array(list)) = f.get_mut("paths")
++                    && let Some(pts) = list.get_mut(s).and_then(|p| p.get_mut("points")).and_then(Value::as_array_mut)
++                {
++                    pts.insert(j, json!([fr[0].clamp(0.0, 1.0), fr[1].clamp(0.0, 1.0)]));
++                }
++                held = Some(format!("p{j}"));
++            } else if (g.b[0]..=g.b[0] + g.b[2]).contains(&q[0]) && (g.b[1]..=g.b[1] + g.b[3]).contains(&q[1]) {
++                held = add_item(&k, f, &g, q, xf.zoom).map(str::to_string);
++            }
++        }
++    }
++    if !down {
++        held = None;
++    }
++    // Delete / ⌫ removes the selected pin or path, unless a text field has the keys.
++    if ctx.memory(|m| m.focused().is_none())
++        && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete) || i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace))
++    {
++        delete_item(&k, f);
++    }
++    if let (Some(h), Some(p)) = (held.as_deref(), press) {
++        if h == "ring" {
++            if let Some((key, full)) = ring(&k) {
++                let c = screen(xf, g.doc(num(f, "centerX", 0.5), num(f, "centerY", 0.5)));
++                let v = p - c;
++                let deg = (v.y.atan2(v.x).to_degrees() + 90.0).rem_euclid(360.0);
++                f.insert(key.into(), json!((deg / 360.0 * full).round()));
++            }
++        } else {
++            let q = xf.to_doc(p);
++            drag(&k, h, [q[0] as f32, q[1] as f32], f, &g);
++        }
++        ctx.request_repaint();
++    }
++    sync(&k, f);
++    ctx.set_cursor_icon(if held.is_some() {
++        egui::CursorIcon::Grabbing
++    } else if hover.is_some() {
++        egui::CursorIcon::Grab
++    } else if list_key(&k).is_some() {
++        // Photoshop's "add pin" pointer.
++        egui::CursorIcon::Crosshair
++    } else {
++        egui::CursorIcon::Default
++    });
++    ctx.data_mut(|m| {
++        match &held {
++            Some(h) => {
++                m.insert_temp(held_id, h.clone());
++            }
++            None => m.remove::<String>(held_id),
++        }
++        match &hover {
++            Some(h) => {
++                m.insert_temp(near_id, h.clone());
++            }
++            None => m.remove::<String>(near_id),
++        }
++    });
++    true
++}
++
++/// Preview proxies run at 1/`k` of the document: Path Blur's per-path speed (pixels) scales with
++/// them, as its single `speed` does (Iris pins' blur is scaled by `blur_pins::scale_for_proxy`).
++pub fn scale_for_proxy(params: &mut Value, k: u32) {
++    if k <= 1 {
++        return;
++    }
++    let Some(list) = params.get_mut("paths").and_then(Value::as_array_mut) else { return };
++    for path in list {
++        if let Some(v) = path.get("speed").and_then(Value::as_f64) {
++            path["speed"] = json!(v / f64::from(k));
++        }
++    }
++}
++
++fn line(painter: &egui::Painter, a: Pos2, b: Pos2, dashed: bool) {
++    let shadow = Stroke::new(3.0, Color32::from_black_alpha(140));
++    let white = Stroke::new(1.5, Color32::WHITE);
++    if dashed {
++        painter.extend(Shape::dashed_line(&[a, b], shadow, 8.0, 6.0));
++        painter.extend(Shape::dashed_line(&[a, b], white, 8.0, 6.0));
++    } else {
++        painter.line_segment([a, b], shadow);
++        painter.line_segment([a, b], white);
++    }
++}
++
++fn ellipse(painter: &egui::Painter, c: Pos2, rx: f32, ry: f32, angle: f32, dashed: bool) {
++    let (s, co) = angle.to_radians().sin_cos();
++    let pts: Vec<Pos2> = (0..=72)
++        .map(|i| {
++            let t = i as f32 / 72.0 * std::f32::consts::TAU;
++            let (u, v) = (t.cos() * rx, t.sin() * ry);
++            pos2(c.x + u * co - v * s, c.y + u * s + v * co)
++        })
++        .collect();
++    if dashed {
++        for w in pts.windows(2) {
++            line(painter, w[0], w[1], true);
++        }
++    } else {
++        painter.add(Shape::line(pts.clone(), Stroke::new(3.0, Color32::from_black_alpha(140))));
++        painter.add(Shape::line(pts, Stroke::new(1.5, Color32::WHITE)));
++    }
++}
++
++fn dot(painter: &egui::Painter, p: Pos2, r: f32, hot: bool) {
++    painter.circle_filled(p, r + 1.5, Color32::from_black_alpha(150));
++    painter.circle_filled(p, r, if hot { Color32::from_rgb(234, 153, 63) } else { Color32::WHITE });
++}
++
++/// Draw the open blur's controls over the image.
++pub fn draw(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform) {
++    let Some(d) = app.ui.dialogs.last().filter(|d| owns(&d.fields)) else { return };
++    let f = &d.fields;
++    let (Some(k), Some(g)) = (kind(f), Geo::of(f)) else { return };
++    let ctx = painter.ctx();
++    let held: Option<String> = ctx.data(|m| m.get_temp(egui::Id::new(HELD)));
++    let hover: Option<String> = ctx.data(|m| m.get_temp(egui::Id::new(NEAR)));
++    let hot = |key: &str| held.as_deref() == Some(key) || hover.as_deref() == Some(key);
++    let hs = handles(k, f, &g);
++    let ss = g.ss() * xf.zoom;
++    let c = screen(xf, g.doc(num(f, "centerX", 0.5), num(f, "centerY", 0.5)));
++    let s = sel(f);
++    // The other pins / paths, quieter.
++    if let Some(key) = list_key(k) {
++        for (i, it) in items(f, key).iter().enumerate() {
++            if i == s {
++                continue;
++            }
++            if k == "pathBlur" {
++                let pts: Vec<Pos2> = path_points(f, i).iter().map(|q| screen(xf, g.doc(q[0], q[1]))).collect();
++                for w in pts.windows(2) {
++                    line(painter, w[0], w[1], true);
++                }
++            } else {
++                let q = screen(xf, item_centre(&g, it));
++                painter.circle_stroke(q, 9.0, Stroke::new(3.0, Color32::from_black_alpha(150)));
++                painter.circle_stroke(q, 9.0, Stroke::new(1.5, Color32::from_gray(200)));
++            }
++        }
++    }
++    match k {
++        "pathBlur" => {
++            let pts: Vec<Pos2> = hs.iter().map(|(_, q)| screen(xf, *q)).collect();
++            for w in pts.windows(2) {
++                line(painter, w[0], w[1], false);
++            }
++            if let [.., a, b] = pts.as_slice() {
++                // The arrow head at the end: the blur's direction.
++                let v = (*b - *a).normalized();
++                let n = vec2(-v.y, v.x);
++                for side in [n, -n] {
++                    line(painter, *b, *b - v * 16.0 + side * 8.0, false);
++                }
++            }
++        }
++        "tiltShift" => {
++            let (sn, co) = num(f, "angle", 0.0).to_radians().sin_cos();
++            let (n, along) = (vec2(sn, co), vec2(co, -sn));
++            let r = painter.clip_rect();
++            let len = r.width().max(r.height()) * 2.0;
++            let f0 = num(f, "focus", 0.1) * ss;
++            let f1 = f0 + num(f, "transition", 0.15) * ss;
++            for (dist, dashed) in [(f0, false), (-f0, false), (f1, true), (-f1, true)] {
++                let o = c + n * dist;
++                line(painter, o - along * len, o + along * len, dashed);
++            }
++        }
++        _ => {
++            let iris = k == "irisBlur";
++            let (rx, ry) = (num(f, "radiusX", if iris { 0.35 } else { 0.3 }) * ss, num(f, "radiusY", if iris { 0.25 } else { 0.3 }) * ss);
++            let a = num(f, "angle", 0.0);
++            ellipse(painter, c, rx, ry, a, false);
++            if iris {
++                let fe = num(f, "feather", 0.5);
++                ellipse(painter, c, rx * fe, ry * fe, a, true);
++            }
++        }
++    }
++    if let Some(r) = ring_pos(k, f, c) {
++        // The blur ring, filled up to the value.
++        painter.circle_stroke(c, RING_R, Stroke::new(4.0, Color32::from_black_alpha(110)));
++        painter.circle_stroke(c, RING_R, Stroke::new(1.5, Color32::from_white_alpha(120)));
++        let end = (r - c).y.atan2((r - c).x);
++        let start = -std::f32::consts::FRAC_PI_2;
++        let span = (end - start).rem_euclid(std::f32::consts::TAU);
++        let arc: Vec<Pos2> = (0..=40)
++            .map(|i| {
++                let t = start + span * i as f32 / 40.0;
++                c + vec2(t.cos(), t.sin()) * RING_R
++            })
++            .collect();
++        painter.add(Shape::line(arc, Stroke::new(2.5, Color32::WHITE)));
++        dot(painter, r, 4.5, hot("ring"));
++    }
++    for (key, p) in &hs {
++        let at = screen(xf, *p);
++        if key == "center" {
++            // Photoshop's pin: a ring with a dot.
++            painter.circle_stroke(at, 9.0, Stroke::new(3.0, Color32::from_black_alpha(150)));
++            painter.circle_stroke(at, 9.0, Stroke::new(1.5, if hot(key) { Color32::from_rgb(234, 153, 63) } else { Color32::WHITE }));
++            dot(painter, at, 3.0, hot(key));
++        } else {
++            dot(painter, at, 5.0, hot(key));
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn fields(cmd: &str) -> Map<String, Value> {
++        let mut f = Map::new();
++        f.insert("__command".into(), json!(cmd));
++        f.insert("__bounds".into(), json!([0, 0, 400, 200]));
++        f
++    }
++
++    #[test]
++    fn handles_round_trip_through_drags() {
++        let g = Geo { b: [0.0, 0.0, 400.0, 200.0] };
++        // Path Blur: dragging the end point moves endX / endY.
++        let mut f = fields("filter.blurGallery.pathBlur");
++        drag("pathBlur", "p1", [300.0, 50.0], &mut f, &g);
++        assert_eq!((num(&f, "endX", 0.0), num(&f, "endY", 0.0)), (0.75, 0.25));
++        assert_eq!(handles("pathBlur", &f, &g)[1].1, [300.0, 50.0]);
++        // Tilt-Shift: the focus handle sits at the focus distance, and dragging it sets it.
++        let mut f = fields("filter.blurGallery.tiltShift");
++        drag("tiltShift", "focus", [200.0, 100.0 + 40.0], &mut f, &g);
++        assert!((num(&f, "focus", 0.0) - 0.2).abs() < 1e-3, "{f:?}");
++        let h = handles("tiltShift", &f, &g);
++        assert!((h[1].1[1] - 140.0).abs() < 0.5, "{h:?}");
++        // The rotate dot turns the band; a pointer straight up-right of the centre is 45°.
++        drag("tiltShift", "rotate", [250.0, 50.0], &mut f, &g);
++        assert_eq!(num(&f, "angle", 0.0), 45.0);
++        // Iris: the radius handles follow the rotated ellipse's axes.
++        let mut f = fields("filter.blurGallery.irisBlur");
++        drag("irisBlur", "radiusX", [200.0 + 100.0, 100.0], &mut f, &g);
++        assert!((num(&f, "radiusX", 0.0) - 0.5).abs() < 1e-3);
++        drag("irisBlur", "center", [100.0, 50.0], &mut f, &g);
++        assert_eq!((num(&f, "centerX", 0.0), num(&f, "centerY", 0.0)), (0.25, 0.25));
++    }
++
++    #[test]
++    fn several_pins_and_paths() {
++        let g = Geo { b: [0.0, 0.0, 400.0, 200.0] };
++        // Iris Blur: the fields become the first pin; a click elsewhere adds a second one,
++        // selected, whose blur the sliders then change without touching the first.
++        let mut f = fields("filter.blurGallery.irisBlur");
++        sync("irisBlur", &mut f);
++        assert_eq!(items(&f, "pins").len(), 1);
++        assert_eq!(add_item("irisBlur", &mut f, &g, [100.0, 50.0], 1.0), Some("center"));
++        f.insert("blur".into(), json!(40));
++        sync("irisBlur", &mut f);
++        let pins = items(&f, "pins");
++        assert_eq!((pins.len(), sel(&f)), (2, 1));
++        assert_eq!((pins[1]["x"].as_f64(), pins[1]["blur"].as_f64(), pins[0]["blur"].as_f64()), (Some(0.25), Some(40.0), Some(15.0)));
++        // Selecting the first loads it into the fields; Delete removes the selected pin, never
++        // the last one.
++        select_item("irisBlur", &mut f, 0);
++        assert_eq!(num(&f, "blur", 0.0), 15.0);
++        assert!(delete_item("irisBlur", &mut f));
++        assert!(!delete_item("irisBlur", &mut f));
++        assert_eq!(items(&f, "pins")[0]["blur"].as_f64(), Some(40.0));
++        // Path Blur: a bend point survives syncing and drags on its own.
++        let mut f = fields("filter.blurGallery.pathBlur");
++        sync("pathBlur", &mut f);
++        if let Some(Value::Array(l)) = f.get_mut("paths") {
++            l[0]["points"].as_array_mut().unwrap().insert(1, json!([0.5, 0.2]));
++        }
++        drag("pathBlur", "p1", [200.0, 160.0], &mut f, &g);
++        sync("pathBlur", &mut f);
++        let pts = path_points(&f, 0);
++        assert_eq!(pts.len(), 3);
++        assert_eq!(pts[1], [0.5, 0.8]);
++        assert_eq!(handles("pathBlur", &f, &g).len(), 3);
++        // Tilt-Shift has one band: no list.
++        let mut f = fields("filter.blurGallery.tiltShift");
++        sync("tiltShift", &mut f);
++        assert!(!f.contains_key("pins") && !f.contains_key("paths"));
++        assert_eq!(add_item("tiltShift", &mut f, &g, [10.0, 10.0], 1.0), None);
++        // Field Blur is upstream's `blur_pins`.
++        assert!(!owns(&fields("filter.blurGallery.fieldBlur")));
++        assert!(owns(&fields("filter.blurGallery.spinBlur")));
++    }
++}
+diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
+index 03ac923..cc26a21 100644
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -3217,7 +3217,8 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+         let refine_brushing =
+             primary && app.ui.dialogs.last().is_some_and(|d| crate::select_mask_view::owns(&d.fields) && crate::select_mask_view::brush_on(&d.fields));
+         // Field Blur's pins are placed and dragged on the image (`blur_pins`).
+-        let pinning = primary && app.ui.dialogs.last().is_some_and(|d| crate::blur_pins::owns(&d.fields));
++        // HORIX: and the other Blur Gallery blurs' controls (`blur_handles`).
++        let pinning = primary && app.ui.dialogs.last().is_some_and(|d| crate::blur_pins::owns(&d.fields) || crate::blur_handles::owns(&d.fields));
+         let hand = app.ui.tool == Tool::Hand && !picking && !range_picking && !refine_brushing && !pinning;
+         if let Some(d) = crate::dialogs::pan_delta(&ctx, rect, hand) {
+             let d = xf.unmap_vec(d) / (view.zoom / ppp);
+@@ -3247,7 +3248,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+             && let Some(p) = crate::dialogs::free_pointer_over(&ctx, rect)
+         {
+             let press = crate::dialogs::free_press(&ctx, rect);
+-            crate::blur_pins::canvas(app, &ctx, &xf, p, press);
++            if !crate::blur_pins::canvas(app, &ctx, &xf, p, press) {
++                crate::blur_handles::canvas(app, &ctx, &xf, p, press);
++            }
+         } else if refine_brushing
+             && !middle
+             && let Some(p) = crate::dialogs::free_pointer_over(&ctx, rect)
+@@ -3676,6 +3679,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+             painter.rect_stroke(img_rect, 0.0, Stroke::new(1.0, Color32::from_gray(20)), egui::StrokeKind::Outside);
+         }
+         crate::type_tool::draw_overlay(app, &painter, &xf);
++        crate::horix_ux::draw_overflow_hint(app, &painter, &xf);
+         crate::transform_tool::draw_overlay(app, &painter, &xf);
+         crate::cam_transform::draw(app, &painter, &xf);
+         crate::cam_preview::wake(app, painter.ctx());
+@@ -4456,6 +4460,7 @@ fn draw_tool_state(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform,
+     }
+     crate::crop_straighten::draw(app, painter, |p| xf.to_screen(p[0] as f32, p[1] as f32), hover);
+     crate::blur_pins::draw(app, painter, xf);
++    crate::blur_handles::draw(app, painter, xf);
+     if let Some(c) = app.ui.crop_rect {
+         let deg = crate::crop_ui::angle(app);
+         let shield = crate::crop_shield::current(app, painter.ctx());
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index ef09f1c..ff4cd08 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -157,7 +157,10 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+         // effects, extends down and right instead of re-centring.
+         let pinned: Option<egui::Vec2> = ctx.data(|m| m.get_temp(id));
+         let place = place_id(&d);
+-        let start = pinned.or_else(|| ctx.data_mut(|m| m.get_persisted::<egui::Vec2>(place))).or_else(|| crate::blur_pins::first_place(&d.fields, ctx));
++        let start = pinned
++            .or_else(|| ctx.data_mut(|m| m.get_persisted::<egui::Vec2>(place)))
++            .or_else(|| crate::blur_pins::first_place(&d.fields, ctx))
++            .or_else(|| crate::blur_handles::first_place(&d.fields, ctx));
+         let mut drag = egui::Vec2::ZERO;
+         let mut sizing = false;
+         let area = match start {
+@@ -240,6 +243,10 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+             crate::widgets::hairline(ui);
+             ui.add_space(8.0);
+             crate::field_tab::begin(ui.ctx());
++            // HORIX: P flips a previewing dialog between the result and the original (Photoshop).
++            if interactive {
++                crate::horix_ux::preview_key(ui.ctx(), &mut fields);
++            }
+             match d.kind {
+                 DialogKind::NewDocument => {
+                     if crate::new_doc_ui::body(app, ui, &mut fields) {
+@@ -288,6 +295,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+                 DialogKind::Command if crate::actions::owns_insert_stop(&fields) => crate::actions::insert_stop_body(ui, &mut fields),
+                 DialogKind::Command if crate::new_layer_ui::owns(&fields) => crate::new_layer_ui::body(ui, &mut fields),
+                 DialogKind::Command if crate::mask_trash_prompt::owns(&fields) => crate::mask_trash_prompt::body(ui, &fields),
++                DialogKind::Command if crate::group_delete_prompt::owns(&fields) => crate::group_delete_prompt::body(ui, &fields),
+                 DialogKind::Command if crate::rasterize_prompt::owns(&fields) => crate::rasterize_prompt::body(ui, &fields),
+                 DialogKind::Command if crate::duplicate_layer_ui::owns(&fields) => crate::duplicate_layer_ui::body(app, ui, &mut fields),
+                 DialogKind::Command if crate::stack_dialog::owns(&fields) => crate::stack_dialog::body(app, ui, &mut fields, d.id),
+@@ -398,6 +406,8 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+                                 fields.insert("choice".into(), json!("apply"));
+                             }
+                             hit
++                        } else if crate::group_delete_prompt::owns(&fields) {
++                            crate::group_delete_prompt::buttons(ui, &mut fields)
+                         } else if crate::rasterize_prompt::is_filter(&fields) {
+                             // Photoshop: Convert to Smart Object / Rasterize / Cancel (#4303).
+                             let rasterize = DialogButton::new(ButtonRole::Default, tl!("Rasterize"), 84.0);
+@@ -587,6 +597,7 @@ pub fn confirm(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
+         DialogKind::Command if crate::actions::owns_insert_stop(&d.fields) => crate::actions::insert_stop_confirm(app, &d.fields),
+         DialogKind::Command if crate::new_layer_ui::owns(&d.fields) => crate::new_layer_ui::confirm(app, &d.fields),
+         DialogKind::Command if crate::mask_trash_prompt::owns(&d.fields) => crate::mask_trash_prompt::confirm(app, &d.fields),
++        DialogKind::Command if crate::group_delete_prompt::owns(&d.fields) => crate::group_delete_prompt::confirm(app, &d.fields),
+         DialogKind::Command if crate::rasterize_prompt::owns(&d.fields) => crate::rasterize_prompt::confirm(app, &d.fields),
+         DialogKind::Command if crate::duplicate_layer_ui::owns(&d.fields) => crate::duplicate_layer_ui::confirm(app, &d.fields),
+         DialogKind::Command if crate::stack_dialog::owns(&d.fields) => crate::stack_dialog::confirm(app, &d.fields),
+diff --git a/crates/ui-egui/src/filter_dialog.rs b/crates/ui-egui/src/filter_dialog.rs
+index cf30429..e5eb810 100644
+--- a/crates/ui-egui/src/filter_dialog.rs
++++ b/crates/ui-egui/src/filter_dialog.rs
+@@ -448,7 +448,8 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
+     fields.insert("__label".into(), json!(spec.label));
+     fields.insert("__filter".into(), json!(true));
+     // Select and Mask previews in its view modes (`select_mask_view`), not as the command's result.
+-    if command.starts_with("filter.") || PREVIEWED.contains(&command) || command == crate::select_mask_view::COMMAND {
++    // HORIX: Select › Modify previews too.
++    if command.starts_with("filter.") || PREVIEWED.contains(&command) || command == crate::select_mask_view::COMMAND || command.starts_with("select.modify.") {
+         fields.insert("__preview".into(), json!(true));
+     }
+     for p in parse_spec(spec.params) {
+@@ -461,6 +462,9 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
+     if command == crate::blur_pins::COMMAND {
+         crate::blur_pins::init(app, &mut fields);
+     }
++    if crate::blur_handles::owns(&fields) {
++        crate::blur_handles::init(app, &mut fields);
++    }
+     if parse_spec(spec.params).iter().any(|p| p.kind == Kind::Document) {
+         // The document picker lists every open document (params refer to them by index).
+         let names: Vec<String> = app.session.documents().iter().map(|d| d.doc.name.clone()).collect();
+@@ -920,8 +924,15 @@ pub(crate) fn preview_document_for_target(
+     // Blur Gallery pins carry their blur in document pixels too.
+     if command.starts_with("filter.blurGallery.") {
+         crate::blur_pins::scale_for_proxy(&mut p, run_k);
++        crate::blur_handles::scale_for_proxy(&mut p, run_k);
+     }
+     s.execute(command, p).ok()?;
++    // HORIX: Select › Modify shows the selection it makes (red over what isn't selected).
++    if command.starts_with("select.modify.") {
++        let mut out = (*s.active()?.doc).clone();
++        crate::horix_ux::selection_overlay(&mut out);
++        return Some(crate::proxy::proxy_document(&out, reduce_k));
++    }
+     s.active().map(|d| crate::proxy::proxy_document(&d.doc, reduce_k))
+ }
+ 
+diff --git a/crates/ui-egui/src/group_delete_prompt.rs b/crates/ui-egui/src/group_delete_prompt.rs
+new file mode 100644
+index 0000000..bd4d1ad
+--- /dev/null
++++ b/crates/ui-egui/src/group_delete_prompt.rs
+@@ -0,0 +1,91 @@
++//! HORIX: deleting a group that has layers in it asks what goes, as in Photoshop ("Delete the group
++//! and its contents, or the group only?"), plus HORIX's Contents Only. Every way of deleting from
++//! the UI comes here: the Layers panel's trash button, Delete / ⌫ and Layer › Delete. Automation
++//! deletes at once.
++//!
++//! The prompt is an ordinary dialog: `ui.dialog.set` with `"choice"` (`all`, `groupOnly`,
++//! `contents`) then `ui.dialog.confirm` answers it, `ui.dialog.cancel` keeps everything.
++
++use photocraft_doc::LayerId;
++use serde_json::{Map, Value, json};
++
++use crate::PhotocraftApp;
++use crate::state::DialogKind;
++use crate::widgets::{ButtonRole, DialogButton};
++
++const MARK: &str = "__groupDelete";
++
++pub fn owns(fields: &Map<String, Value>) -> bool {
++    fields.contains_key(MARK)
++}
++
++/// `layer.delete` from the UI with a group that has layers among its targets: the prompt instead.
++pub fn intercept(app: &mut PhotocraftApp, command: &str, params: &Value) -> Option<Result<Value, String>> {
++    if app.automation_input || command != "layer.delete" {
++        return None;
++    }
++    let state = app.session.active()?;
++    let ids = match params.get("layer").and_then(Value::as_u64) {
++        Some(id) => vec![LayerId(id)],
++        None => {
++            let sel = state.selected_layers();
++            if sel.is_empty() { state.active_layer.into_iter().collect() } else { sel }
++        }
++    };
++    let group = ids.iter().filter_map(|id| state.doc.layer(*id)).find(|l| l.children().is_some_and(|c| !c.is_empty()))?;
++    let message = crate::i18n::fmt(tl!("Delete the group “{name}” and its contents, or the group only?"), &[("name", &group.name)]);
++    let layer = params.get("layer").cloned().unwrap_or(Value::Null);
++    let fields = json!({MARK: true, "__label": "Delete Group", "message": message, "document": state.doc.id.0,
++        "selected": state.selected_layers().iter().map(|id| id.0).collect::<Vec<_>>(), "layer": layer, "choice": "all"});
++    if app.ui.dialogs.iter().any(|d| owns(&d.fields)) {
++        return Some(Ok(json!({"confirmationPending": true})));
++    }
++    let id = app.ui.open_dialog(DialogKind::Command, fields.as_object().cloned().unwrap_or_default());
++    Some(Ok(json!({"dialog": id, "confirmationPending": true})))
++}
++
++pub fn body(ui: &mut egui::Ui, fields: &Map<String, Value>) {
++    let t = crate::theme::Tokens::get(ui.ctx());
++    ui.label(fields.get("message").and_then(Value::as_str).unwrap_or(tl!("Delete the group and its contents, or the group only?")));
++    ui.add_space(2.0);
++    ui.label(egui::RichText::new(tl!("Group Only keeps its layers in place; Contents Only keeps the empty group.")).color(t.text_dim).size(12.0));
++}
++
++/// The buttons: Group and Contents (the default, ↩), Cancel, Group Only and Contents Only. Sets
++/// `choice` and reports the answer as OK (`Default`) or `Cancel`.
++pub fn buttons(ui: &mut egui::Ui, fields: &mut Map<String, Value>) -> Option<ButtonRole> {
++    let all = DialogButton::new(ButtonRole::Default, tl!("Group and Contents"), 140.0);
++    let cancel = DialogButton::new(ButtonRole::Cancel, tl!("Cancel"), 84.0);
++    let group_only = DialogButton::new(ButtonRole::Alternate, tl!("Group Only"), 96.0);
++    let contents = DialogButton::new(ButtonRole::Apply, tl!("Contents Only"), 108.0);
++    let hit = crate::widgets::dialog_buttons(ui, &[all, cancel, group_only, contents])?;
++    let choice = match hit {
++        ButtonRole::Cancel => return Some(ButtonRole::Cancel),
++        ButtonRole::Default => "all",
++        ButtonRole::Alternate => "groupOnly",
++        ButtonRole::Apply => "contents",
++    };
++    fields.insert("choice".into(), json!(choice));
++    Some(ButtonRole::Default)
++}
++
++/// Runs the answer, unless the document or its selected layers changed meanwhile.
++pub fn confirm(app: &mut PhotocraftApp, fields: &Map<String, Value>) -> Result<Value, String> {
++    let state = app.session.active().ok_or(tl!("The document is closed"))?;
++    if fields.get("document").and_then(Value::as_u64) != Some(state.doc.id.0)
++        || fields.get("selected") != Some(&json!(state.selected_layers().iter().map(|id| id.0).collect::<Vec<_>>()))
++    {
++        return Err(tl!("The document or selected layers changed. Please request deletion again.").into());
++    }
++    let mut params = json!({});
++    if let Some(layer) = fields.get("layer").filter(|v| v.is_u64()) {
++        params["layer"] = layer.clone();
++    }
++    match fields.get("choice").and_then(Value::as_str).unwrap_or("all") {
++        "groupOnly" | "contents" => {
++            params["mode"] = fields["choice"].clone();
++            app.run_command("layer.deleteGroup", params)
++        }
++        _ => app.run_command("layer.delete", params),
++    }
++}
+diff --git a/crates/ui-egui/src/horix_ux.rs b/crates/ui-egui/src/horix_ux.rs
+new file mode 100644
+index 0000000..ded449b
+--- /dev/null
++++ b/crates/ui-egui/src/horix_ux.rs
+@@ -0,0 +1,179 @@
++//! HORIX's own UX fixes on top of PhotoCraft 0.9 (the team's bug rounds, apps/sg-ps/NEXT-STEPS.md):
++//! the Color panel's Eyedropper button, Properties coming forward for the shape / type / pen tools
++//! and layers, P for before / after in previewing dialogs, the overset-text mark, and Select ›
++//! Modify's live preview.
++
++use egui::{Color32, Pos2, Stroke, pos2};
++use photocraft_doc::{Document, LayerContent, LayerId};
++use photocraft_geom::Point;
++use serde_json::{Map, Value, json};
++
++use crate::PhotocraftApp;
++use crate::canvas::ViewXform;
++use crate::state::Tool;
++
++/// The Color panel's Eyedropper button (bug #5): picks the Eyedropper tool (I), so the next click
++/// on the canvas sets the foreground colour (⌥-click: the background).
++pub fn eyedropper_button(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
++    let on = app.ui.tool == Tool::Eyedropper;
++    if crate::icons::button(ui, "pipette", 22.0, on, tl!("Pick a color from the image (Eyedropper)")).clicked() {
++        app.ui.tool = Tool::Eyedropper;
++    }
++}
++
++/// Tools whose live options Properties shows (Photoshop: the shape's or the type's properties).
++pub fn properties_tool(tool: Tool) -> bool {
++    tool.is_type()
++        || matches!(
++            tool,
++            Tool::Rectangle
++                | Tool::EllipseShape
++                | Tool::Triangle
++                | Tool::Polygon
++                | Tool::Line
++                | Tool::CustomShape
++                | Tool::Pen
++                | Tool::FreeformPen
++                | Tool::CurvaturePen
++        )
++}
++
++/// Layers whose settings live in Properties: shape (Fill / Stroke), type (Character) and
++/// gradient fill layers.
++pub fn properties_layer(doc: &Document, id: LayerId) -> bool {
++    doc.layer(id)
++        .is_some_and(|l| matches!(l.content, LayerContent::Shape(_) | LayerContent::Text(_) | LayerContent::Fill(photocraft_doc::Fill::Gradient { .. })))
++}
++
++/// Bring Properties to the front, shown and expanded (as upstream does for a new adjustment layer).
++pub fn raise_properties(app: &mut PhotocraftApp) {
++    if app.ui.docking.is_some() {
++        let _ = crate::panel_docking::command(app, "window.panel.activate", &json!({"panel": "properties"}));
++    } else {
++        app.ui.dock_tabs.properties = 0;
++        crate::dock::reveal(app, crate::dock::Group::Properties);
++    }
++}
++
++/// What [`frame`] saw last: the tool, and the document and its active layer.
++#[derive(Clone, Copy, PartialEq)]
++struct Seen(Tool, Option<(photocraft_doc::DocId, Option<LayerId>)>);
++
++/// Once per frame (bug #5, round 1 #11): picking a shape, type or pen tool, or making a shape,
++/// type or gradient fill layer active, brings Properties forward, in every theme. Only the change
++/// does, so closing the panel afterwards sticks. Switching documents doesn't count. The panel moves
++/// once the pointer is up and a double-click can no longer follow, so the click that selected a
++/// layer row is never followed by a second one landing on a shifted dock.
++pub fn frame(app: &mut PhotocraftApp, ctx: &egui::Context) {
++    let (key, pending) = (egui::Id::new("horix-properties-seen"), egui::Id::new("horix-properties-pending"));
++    let doc = app.session.active().map(|st| (st.doc.id, st.active_layer));
++    let now = Seen(app.ui.tool, doc);
++    let before = ctx.data(|d| d.get_temp::<Seen>(key));
++    ctx.data_mut(|d| d.insert_temp(key, now));
++    if let Some(before) = before.filter(|b| *b != now) {
++        let tool_wants = before.0 != now.0 && properties_tool(now.0);
++        let layer_wants = match (before.1, now.1) {
++            (Some((d0, l0)), Some((d1, Some(l1)))) if d0 == d1 && l0 != Some(l1) => app.session.active().is_some_and(|st| properties_layer(&st.doc, l1)),
++            _ => false,
++        };
++        if tool_wants || layer_wants {
++            ctx.data_mut(|d| d.insert_temp(pending, true));
++        } else if before.0 != now.0 || before.1 != now.1 {
++            // Another tool or layer since: nothing left to show.
++            ctx.data_mut(|d| d.remove::<bool>(pending));
++        }
++    }
++    if !ctx.data(|d| d.get_temp::<bool>(pending).unwrap_or(false)) {
++        return;
++    }
++    let busy = ctx.input(|i| i.pointer.any_down() || i.pointer.time_since_last_click() < 0.35);
++    if busy {
++        ctx.request_repaint_after(std::time::Duration::from_millis(100));
++        return;
++    }
++    ctx.data_mut(|d| d.remove::<bool>(pending));
++    raise_properties(app);
++}
++
++/// Photoshop's P in a previewing dialog (Windows user #3): flips Preview between the result and
++/// the original. Not while a text field or a popup has the keys; Select and Mask keeps P for its
++/// own Show Original.
++pub fn preview_key(ctx: &egui::Context, fields: &mut Map<String, Value>) {
++    let Some(on) = fields.get("__preview").and_then(Value::as_bool) else { return };
++    if crate::select_mask_view::owns(fields) || ctx.memory(|m| m.focused().is_some()) || egui::Popup::is_any_open(ctx) {
++        return;
++    }
++    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::P)) {
++        fields.insert("__preview".into(), json!(!on));
++        ctx.request_repaint();
++    }
++}
++
++/// Photoshop's overset-text mark (round 1 #12): a red "+" in a square on the box's bottom-right
++/// handle, for paragraph text that does not fit in its box.
++pub fn overflow_mark(painter: &egui::Painter, at: Pos2) {
++    let red = Color32::from_rgb(214, 60, 50);
++    let r = egui::Rect::from_center_size(at, egui::vec2(13.0, 13.0));
++    painter.rect_filled(r, 0.0, Color32::WHITE);
++    painter.rect_stroke(r, 0.0, Stroke::new(1.5, red), egui::StrokeKind::Inside);
++    let s = Stroke::new(1.8, red);
++    painter.line_segment([pos2(r.left() + 3.5, r.center().y), pos2(r.right() - 3.5, r.center().y)], s);
++    painter.line_segment([pos2(r.center().x, r.top() + 3.5), pos2(r.center().x, r.bottom() - 3.5)], s);
++}
++
++/// Where the overset mark of type layer `id` goes (document points), when its text overflows.
++pub fn overflow_corner(app: &mut PhotocraftApp, id: LayerId) -> Option<[f32; 2]> {
++    let shape = app.session.active().and_then(|st| match &st.doc.layer(id)?.content {
++        LayerContent::Text(t) => Some(t.shape.clone()),
++        _ => None,
++    })?;
++    let photocraft_doc::text::TextShape::Box { x, y, width, height } = shape else { return None };
++    let (l, aff, _) = crate::type_tool::layout(app, id)?;
++    if !l.overflow {
++        return None;
++    }
++    let p = aff.apply(Point::new(f64::from(x + width), f64::from(y + height)));
++    Some([p.x as f32, p.y as f32])
++}
++
++/// The overset mark for the active paragraph type layer while it is not being edited (the editing
++/// frame draws its own), with the Type or Move tool, as Photoshop shows it.
++pub fn draw_overflow_hint(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewXform) {
++    if app.ui.text_edit.is_some() || !(app.ui.tool.is_type() || app.ui.tool == Tool::Move) {
++        return;
++    }
++    let Some(id) = app.session.active().and_then(|s| s.active_layer) else { return };
++    if let Some(p) = overflow_corner(app, id) {
++        overflow_mark(painter, xf.to_screen(p[0], p[1]));
++    }
++}
++
++/// Select › Modify previews the selection it makes (Windows user #2): Photoshop's red overlay at
++/// 50 % over what is not selected, as a top layer of the preview document.
++pub fn selection_overlay(doc: &mut Document) {
++    if doc.mode != photocraft_color::ColorMode::Rgb {
++        return;
++    }
++    let area = doc.bounds();
++    if area.is_empty() {
++        return;
++    }
++    let n = (area.width() as usize) * (area.height() as usize);
++    let selected: Vec<f32> = match &doc.selection {
++        Some(s) => {
++            let c = s.channels().max(1);
++            s.read_region(area).chunks_exact(c).map(|p| p[0].clamp(0.0, 1.0)).collect()
++        }
++        None => vec![1.0; n],
++    };
++    let mut px = Vec::with_capacity(n * 4);
++    for v in selected {
++        px.extend([1.0, 0.0, 0.0, 0.5 * (1.0 - v)]);
++    }
++    let fmt = photocraft_color::PixelFormat::new(photocraft_color::ColorMode::Rgb, doc.depth, true);
++    let mut l = photocraft_doc::Layer::raster("Selection preview", fmt);
++    if let Some(s) = l.surface_mut() {
++        s.write_region(area, &px);
++        doc.layers.push(l);
++    }
++}
+diff --git a/crates/ui-egui/src/horix_ux_tests.rs b/crates/ui-egui/src/horix_ux_tests.rs
+new file mode 100644
+index 0000000..1590b38
+--- /dev/null
++++ b/crates/ui-egui/src/horix_ux_tests.rs
+@@ -0,0 +1,532 @@
++//! HORIX's bug reports re-run on PhotoCraft 0.9 (apps/sg-ps/NEXT-STEPS.md), and the HORIX UX
++//! fixes that 0.9 still needed. Each test names the report it reproduces.
++
++use egui::{Key, Modifiers};
++use egui_kittest::Harness;
++use serde_json::json;
++
++use crate::PhotocraftApp;
++use crate::transform_undo_tests::{begin, drag, harness};
++
++fn quad(h: &Harness<'static, PhotocraftApp>) -> [[f64; 2]; 4] {
++    h.state().ui.transform.as_ref().expect("transforming").quad
++}
++
++fn key(h: &mut Harness<'static, PhotocraftApp>, m: Modifiers, k: Key) {
++    h.key_press_modifiers(m, k);
++    h.run_steps(2);
++}
++
++fn close(a: [[f64; 2]; 4], b: [[f64; 2]; 4]) -> bool {
++    a.iter().flatten().zip(b.iter().flatten()).all(|(x, y)| (x - y).abs() < 1e-6)
++}
++
++const RECT: [[f64; 2]; 4] = [[100.0, 100.0], [200.0, 100.0], [200.0, 160.0], [100.0, 160.0]];
++
++/// Bug round #1: "Undo skips a rotation". A rotation in an open Free Transform is the first thing
++/// ⌘Z takes back.
++#[test]
++fn undo_takes_back_a_free_transform_rotation() {
++    let mut h = harness();
++    begin(&mut h);
++    let q0 = quad(&h);
++    assert!(close(q0, RECT), "{q0:?}");
++    drag(&mut h, [q0[2][0] + 30.0, q0[2][1] + 30.0], [q0[2][0] - 10.0, q0[2][1] + 60.0]);
++    let r = quad(&h);
++    assert!((r[0][1] - r[1][1]).abs() > 1.0, "rotated: {r:?}");
++    key(&mut h, Modifiers::COMMAND, Key::Z);
++    assert!(close(quad(&h), q0), "⌘Z undid the rotation: {:?}", quad(&h));
++    // Nothing was committed to the document meanwhile.
++    key(&mut h, Modifiers::NONE, Key::Escape);
++    assert!(h.state().ui.transform.is_none());
++}
++
++/// Bug round #2: "Undo doesn't restore a move". A move inside the box is undone by ⌘Z, and after
++/// the commit ⌘Z restores the layer where it was.
++#[test]
++fn undo_restores_a_free_transform_move() {
++    let mut h = harness();
++    let bounds = |h: &Harness<'static, PhotocraftApp>| {
++        let st = h.state().session.active().unwrap();
++        st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap().content_bounds()
++    };
++    let before = bounds(&h);
++    begin(&mut h);
++    drag(&mut h, [125.0, 115.0], [185.0, 155.0]);
++    assert!(close(quad(&h), RECT.map(|p| [p[0] + 60.0, p[1] + 40.0])), "moved: {:?}", quad(&h));
++    key(&mut h, Modifiers::COMMAND, Key::Z);
++    assert!(close(quad(&h), RECT), "⌘Z undid the move: {:?}", quad(&h));
++    drag(&mut h, [125.0, 115.0], [185.0, 155.0]);
++    key(&mut h, Modifiers::NONE, Key::Enter);
++    assert!(h.state().ui.transform.is_none());
++    assert_eq!(bounds(&h).x0, before.x0 + 60);
++    key(&mut h, Modifiers::COMMAND, Key::Z);
++    assert_eq!(bounds(&h), before, "⌘Z after the commit restores the layer");
++}
++
++/// Bug round #3: "Placed image stays below objects after reordering". With the box open on the
++/// lower layer, Bring to Front shows it over the other layer at once (the preview follows the new
++/// order instead of freezing), and the commit keeps it on top.
++#[test]
++fn reordering_while_transforming_shows_the_new_order() {
++    let mut h = harness();
++    let lower = h.state().session.active().unwrap().active_layer.unwrap();
++    h.state_mut().run("layer.new.layer", json!({})).unwrap();
++    h.state_mut().run("select.rect", json!({"x": 120, "y": 110, "width": 60, "height": 40})).unwrap();
++    h.state_mut().run("edit.fill", json!({"color": "#0000ff"})).unwrap();
++    h.state_mut().run("select.deselect", json!({})).unwrap();
++    let upper = h.state().session.active().unwrap().active_layer.unwrap();
++    h.state_mut().run("layer.select", json!({"layer": lower.0})).unwrap();
++    h.run_steps(2);
++    begin(&mut h);
++    drag(&mut h, [125.0, 115.0], [135.0, 120.0]);
++    let hidden_upper = |h: &Harness<'static, PhotocraftApp>| {
++        let pv = h.state().transform_preview.as_ref().expect("preview");
++        !pv.doc.layer(upper).unwrap().visible
++    };
++    assert!(hidden_upper(&h), "the covering layer is drawn over the moving pixels, not in the document under them");
++    h.state_mut().run("layer.arrange.bringToFront", json!({})).unwrap();
++    h.run_steps(3);
++    assert!(h.state().ui.transform.is_some(), "the box stays open");
++    assert!(!hidden_upper(&h), "nothing covers the moving layer any more: the preview follows the new order");
++    key(&mut h, Modifiers::NONE, Key::Enter);
++    let st = h.state().session.active().unwrap();
++    assert_eq!(st.doc.layers.last().map(|l| l.id), Some(lower), "the transformed layer is on top");
++}
++
++/// Bug #6: Ctrl+C with an Arabic layout. egui-winit maps a key whose character isn't a Latin
++/// letter (ؤ on the C key) to its physical key, and turns ⌘C into a Copy event; the app turns
++/// that back into the ⌘C press its shortcut table matches.
++#[test]
++fn arabic_layout_letters_fall_back_to_the_physical_key() {
++    for arabic in ["ؤ", "ر", "ء", "ئ"] {
++        assert_eq!(Key::from_name(arabic), None, "{arabic} is not a key name, so egui-winit uses the physical key");
++    }
++    let ctx = egui::Context::default();
++    let mut raw = egui::RawInput { events: vec![egui::Event::ModifiersChanged(Modifiers::COMMAND), egui::Event::Copy, egui::Event::Cut], ..Default::default() };
++    crate::shortcuts::clipboard_keys(&ctx, false, &mut raw);
++    let keys: Vec<_> = raw
++        .events
++        .iter()
++        .filter_map(|e| if let egui::Event::Key { key, pressed: true, modifiers, .. } = e { Some((*key, modifiers.command)) } else { None })
++        .collect();
++    assert_eq!(keys, vec![(Key::C, true), (Key::X, true)]);
++    // The shortcut table matches the key, not its character.
++    let mut h = harness();
++    h.state_mut().run("select.rect", json!({"x": 100, "y": 100, "width": 20, "height": 20})).unwrap();
++    h.event(egui::Event::Key { key: Key::C, physical_key: Some(Key::C), pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
++    h.run_steps(2);
++    assert!(h.state().session.clipboard.is_some(), "⌘C copied");
++}
++
++/// Bug #6 (partial): Copy with a selection on a shape or type layer copies its pixels.
++#[test]
++fn copy_with_a_selection_on_shape_and_type_layers() {
++    let mut s = photocraft_engine::Session::new();
++    s.execute("file.new", json!({"width": 64, "height": 64})).unwrap();
++    s.execute("shape.create", json!({"kind": "rect", "rect": [10, 10, 20, 10], "fill": "#ff8800"})).unwrap();
++    s.execute("select.rect", json!({"x": 0, "y": 0, "width": 15, "height": 64})).unwrap();
++    assert!(s.is_enabled("edit.copy"), "{:?}", s.disabled_reason("edit.copy"));
++    s.execute("edit.copy", json!({})).unwrap();
++    s.execute("edit.paste", json!({})).unwrap();
++    let st = s.active().unwrap();
++    let l = st.doc.layer(st.active_layer.unwrap()).unwrap();
++    assert!(matches!(l.content, photocraft_doc::LayerContent::Raster(_)));
++    assert_eq!(l.surface().unwrap().content_bounds().width(), 5, "the selected part of the shape");
++    s.execute("type.create", json!({"text": "Hi", "size": 30, "x": 20, "y": 50})).unwrap();
++    s.execute("select.all", json!({})).unwrap();
++    assert!(s.is_enabled("edit.copy"), "{:?}", s.disabled_reason("edit.copy"));
++}
++
++/// The whole app in a window, like the user sees it (Pro theme, Color panel expanded).
++fn app_harness(s: photocraft_engine::Session) -> Harness<'static, PhotocraftApp> {
++    let mut h = Harness::builder().with_size(egui::vec2(1440.0, 1000.0)).with_max_steps(64).build_eframe(move |cc| {
++        PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
++        PhotocraftApp::new(s, crate::Services::default())
++    });
++    h.run_steps(6);
++    h
++}
++
++fn new_session() -> photocraft_engine::Session {
++    let mut s = photocraft_engine::Session::new();
++    s.execute("file.new", json!({"width": 200, "height": 120})).unwrap();
++    s
++}
++
++/// Bug #5: the Color panel has an Eyedropper button; it picks the Eyedropper tool.
++#[test]
++fn color_panel_eyedropper_button_picks_the_eyedropper() {
++    use egui_kittest::kittest::Queryable;
++    let mut h = app_harness(new_session());
++    let ctx = h.ctx.clone();
++    let (req, _rx) = crate::control::ControlRequest::new("ui.set", json!({"dock": {"collapsed": []}}));
++    crate::control::handle(h.state_mut(), &ctx, &req);
++    h.run_steps(4);
++    assert_ne!(h.state().ui.tool, crate::state::Tool::Eyedropper);
++    h.get_by_label("Pick a color from the image (Eyedropper)").click();
++    h.run_steps(3);
++    assert_eq!(h.state().ui.tool, crate::state::Tool::Eyedropper);
++}
++
++/// Bug #5 / round 1 #11: picking a shape, type or pen tool, or selecting a shape or type layer,
++/// brings Properties forward; other tools and layers leave the panels alone.
++#[test]
++fn properties_comes_forward_for_shape_type_and_pen() {
++    use crate::dock::Group;
++    use crate::state::Tool;
++    let ctx = egui::Context::default();
++    let mut s = new_session();
++    s.execute("layer.new.layer", json!({})).unwrap();
++    let pixel = s.active().unwrap().active_layer.unwrap();
++    s.execute("shape.create", json!({"kind": "rect", "rect": [10, 10, 40, 20], "fill": "#ff0000"})).unwrap();
++    let shape = s.active().unwrap().active_layer.unwrap();
++    s.execute("layer.select", json!({"layer": pixel.0})).unwrap();
++    let mut app = PhotocraftApp::new(s, crate::Services::default());
++    let hide = |app: &mut PhotocraftApp| {
++        app.ui.dock_tabs.properties = 1;
++        app.ui.dock.set_collapsed(Group::Properties, true);
++    };
++    let front = |app: &PhotocraftApp| app.ui.dock_tabs.properties == 0 && !app.ui.dock.is_collapsed(Group::Properties) && app.ui.panels.properties;
++    crate::horix_ux::frame(&mut app, &ctx);
++    hide(&mut app);
++    for (tool, wants) in [(Tool::Brush, false), (Tool::Rectangle, true), (Tool::Move, false), (Tool::Type, true), (Tool::Pen, true), (Tool::CurvaturePen, true)]
++    {
++        hide(&mut app);
++        app.ui.tool = tool;
++        crate::horix_ux::frame(&mut app, &ctx);
++        assert_eq!(front(&app), wants, "{tool:?}");
++    }
++    // The same tool again changes nothing: closing the panel sticks.
++    hide(&mut app);
++    crate::horix_ux::frame(&mut app, &ctx);
++    assert!(!front(&app));
++    app.ui.tool = Tool::Move;
++    crate::horix_ux::frame(&mut app, &ctx);
++    app.session.execute("layer.select", json!({"layer": shape.0})).unwrap();
++    crate::horix_ux::frame(&mut app, &ctx);
++    assert!(front(&app), "a shape layer selected");
++    hide(&mut app);
++    app.session.execute("layer.select", json!({"layer": pixel.0})).unwrap();
++    crate::horix_ux::frame(&mut app, &ctx);
++    assert!(!front(&app), "a pixel layer: left alone");
++}
++
++/// Windows user #3: P flips Preview in a previewing dialog; Select and Mask keeps P for its own
++/// Show Original.
++#[test]
++fn p_toggles_the_preview_of_the_open_dialog() {
++    let mut h2 = {
++        let mut app = PhotocraftApp::new(new_session(), crate::Services::default());
++        app.sync_views();
++        let mut h2 = Harness::builder().with_size(egui::vec2(1000.0, 700.0)).build_ui_state(
++            |ui, app: &mut PhotocraftApp| {
++                let ctx = ui.ctx().clone();
++                if !ctx.fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
++                    return;
++                }
++                crate::shortcuts::handle(app, &ctx);
++                egui::CentralPanel::default().show(ui, |ui| crate::canvas::document_area(app, ui));
++                crate::dialogs::show(app, &ctx);
++            },
++            app,
++        );
++        PhotocraftApp::setup_context(&h2.ctx, crate::theme::ThemeKind::ALL[0]);
++        h2.run_steps(4);
++        h2
++    };
++    h2.state_mut().ui.tool = crate::state::Tool::Move;
++    let d = crate::filter_dialog::open(h2.state_mut(), "filter.blur.gaussianBlur").unwrap();
++    h2.run_steps(3);
++    let preview = |h: &Harness<'static, PhotocraftApp>| h.state().ui.dialogs.iter().find(|x| x.id == d).unwrap().fields["__preview"].as_bool();
++    assert_eq!(preview(&h2), Some(true));
++    // The dialog opens on its first number: there P is typed (`5 pt`), not a shortcut.
++    key(&mut h2, Modifiers::NONE, Key::P);
++    assert_eq!(preview(&h2), Some(true), "a focused field keeps P");
++    h2.ctx.memory_mut(|m| {
++        if let Some(id) = m.focused() {
++            m.surrender_focus(id);
++        }
++    });
++    key(&mut h2, Modifiers::NONE, Key::P);
++    assert_eq!(preview(&h2), Some(false), "P shows the original");
++    assert_eq!(h2.state().ui.tool, crate::state::Tool::Move, "P didn't reach the tool shortcuts (Pen)");
++    key(&mut h2, Modifiers::NONE, Key::P);
++    assert_eq!(preview(&h2), Some(true), "P again shows the result");
++    let mut f = h2.state().ui.dialogs[0].fields.clone();
++    f.insert("__command".into(), json!(crate::select_mask_view::COMMAND));
++    let ctx = egui::Context::default();
++    ctx.input_mut(|i| i.events.push(egui::Event::Key { key: Key::P, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }));
++    crate::horix_ux::preview_key(&ctx, &mut f);
++    assert_eq!(f["__preview"], true, "Select and Mask keeps P");
++}
++
++/// Round 4 #1: Color Settings shows Ask When Opening as it is (off by default) and turns it on.
++#[test]
++fn color_settings_dialog_shows_ask_when_opening() {
++    let ctx = egui::Context::default();
++    let mut app = PhotocraftApp::new(new_session(), crate::Services::default());
++    let open = |app: &mut PhotocraftApp| {
++        let d = crate::prefs_ui::invoke(app, &ctx, "edit.colorSettings", &json!({})).unwrap().unwrap()["dialog"].as_u64().unwrap();
++        let v = app.ui.dialogs.iter().find(|x| x.id == d).unwrap().fields["askOnMismatch"].clone();
++        crate::dialogs::cancel(app, d).unwrap();
++        v
++    };
++    assert_eq!(open(&mut app), json!(false));
++    app.run("edit.colorSettings", json!({"askOnMismatch": true})).unwrap();
++    assert!(app.session.color.settings.ask_on_mismatch);
++    assert_eq!(open(&mut app), json!(true));
++}
++
++/// Round 4 #2: New Document › Color Profile reaches `file.new`; Working leaves the key out.
++#[test]
++fn new_document_dialog_has_a_color_profile() {
++    use egui_kittest::kittest::Queryable;
++    let mut h = app_harness(photocraft_engine::Session::new());
++    let ctx = h.ctx.clone();
++    crate::menus::invoke(h.state_mut(), &ctx, "file.new", json!({})).unwrap();
++    h.run_steps(4);
++    assert!(h.query_by_label("Color Profile").is_some(), "the dropdown is there");
++    let d = h.state().ui.dialogs.last().unwrap().id;
++    assert!(!h.state().ui.dialogs.last().unwrap().fields.contains_key("profile"), "Working by default");
++    h.state_mut().ui.dialog_mut(d).unwrap().fields.insert("profile".into(), json!("display-p3"));
++    h.run_steps(2);
++    crate::dialogs::confirm(h.state_mut(), d).unwrap();
++    let st = h.state().session.active().unwrap();
++    let p = photocraft_cms::Profile::parse(st.doc.icc_profile.as_ref().unwrap()).unwrap();
++    assert!(p.description.starts_with("Display P3"), "{}", p.description);
++}
++
++/// Round 1 #12: overset paragraph text has its mark's corner; text that fits has none.
++#[test]
++fn overset_text_has_a_mark() {
++    let mut s = new_session();
++    s.execute("type.create", json!({"text": "One two three four five six seven eight nine ten", "size": 20, "box": [10, 10, 80, 30]})).unwrap();
++    let over = s.active().unwrap().active_layer.unwrap();
++    s.execute("type.create", json!({"text": "Hi", "size": 12, "box": [10, 60, 100, 50]})).unwrap();
++    let fits = s.active().unwrap().active_layer.unwrap();
++    let mut app = PhotocraftApp::new(s, crate::Services::default());
++    let c = crate::horix_ux::overflow_corner(&mut app, over).expect("overset");
++    assert!((c[0] - 90.0).abs() < 0.5 && (c[1] - 40.0).abs() < 0.5, "{c:?}");
++    assert_eq!(crate::horix_ux::overflow_corner(&mut app, fits), None);
++}
++
++/// Round 1 #5: Ungroup is in a group's Layers context menu (not a pixel layer's).
++#[test]
++fn ungroup_is_in_the_group_context_menu() {
++    let mut s = new_session();
++    s.execute("layer.new.layer", json!({})).unwrap();
++    let pixel = s.active().unwrap().active_layer.unwrap();
++    s.execute("layer.groupLayers", json!({})).unwrap();
++    let st = s.active().unwrap();
++    let group = st.doc.layer(st.active_layer.unwrap()).unwrap();
++    let ids = |l: &photocraft_doc::Layer| crate::layer_menu_ui::entries(l, false, false).into_iter().flatten().map(|(_, id)| id).collect::<Vec<_>>();
++    assert!(ids(group).contains(&"layer.ungroupLayers"));
++    assert!(!ids(st.doc.layer(pixel).unwrap()).contains(&"layer.ungroupLayers"));
++}
++
++/// Deleting a group with layers in it asks: Group and Contents, Group Only or Contents Only,
++/// from the Delete key, Layer › Delete and the trash button; a pixel layer goes at once, and
++/// automation never asks.
++#[test]
++fn deleting_a_group_asks_what_goes() {
++    use egui_kittest::kittest::Queryable;
++    let mut s = new_session();
++    for _ in 0..2 {
++        s.execute("layer.new.layer", json!({})).unwrap();
++    }
++    let ids: Vec<u64> = s.active().unwrap().doc.layers.iter().skip(1).map(|l| l.id.0).collect();
++    s.execute("layer.select", json!({"layer": ids[0]})).unwrap();
++    s.execute("layer.select", json!({"layer": ids[1], "mode": "add"})).unwrap();
++    s.execute("layer.groupLayers", json!({})).unwrap();
++    let mut h = app_harness(s);
++    let top = |h: &Harness<'_, PhotocraftApp>| {
++        h.state().session.active().unwrap().doc.layers.iter().map(|l| (l.is_group(), l.children().map_or(0, <[_]>::len))).collect::<Vec<_>>()
++    };
++    let asking = |h: &Harness<'_, PhotocraftApp>| h.state().ui.dialogs.iter().any(|d| crate::group_delete_prompt::owns(&d.fields));
++    let delete_key = |h: &mut Harness<'_, PhotocraftApp>| {
++        h.key_press(Key::Delete);
++        h.run_steps(3);
++    };
++    assert_eq!(top(&h), vec![(false, 0), (true, 2)]);
++    delete_key(&mut h);
++    assert!(asking(&h), "asked: {}", h.state().ui.status);
++    assert_eq!(top(&h), vec![(false, 0), (true, 2)], "nothing deleted yet");
++    h.get_by_label("Group Only").click();
++    h.run_steps(3);
++    assert!(!asking(&h));
++    assert_eq!(top(&h), vec![(false, 0), (false, 0), (false, 0)], "the layers stayed, the group went");
++    h.state_mut().run("edit.undo", json!({})).unwrap();
++    h.run_steps(2);
++    let ctx = h.ctx.clone();
++    crate::menus::invoke(h.state_mut(), &ctx, "layer.delete", json!({})).unwrap();
++    h.run_steps(3);
++    h.get_by_label("Contents Only").click();
++    h.run_steps(3);
++    assert_eq!(top(&h), vec![(false, 0), (true, 0)], "an empty group stayed");
++    h.state_mut().run("edit.undo", json!({})).unwrap();
++    h.run_steps(2);
++    h.state_mut().run("layer.delete", json!({"__trash": true})).unwrap();
++    h.run_steps(3);
++    assert!(asking(&h), "the trash button asks too");
++    h.key_press(Key::Escape);
++    h.run_steps(3);
++    assert!(!asking(&h));
++    assert_eq!(top(&h), vec![(false, 0), (true, 2)], "Cancel keeps everything");
++    delete_key(&mut h);
++    h.get_by_label("Group and Contents").click();
++    h.run_steps(3);
++    assert_eq!(top(&h), vec![(false, 0)]);
++    // A pixel layer is deleted without asking; so is a group by automation.
++    h.state_mut().run("layer.new.layer", json!({})).unwrap();
++    h.run_steps(2);
++    delete_key(&mut h);
++    assert!(!asking(&h));
++    assert_eq!(top(&h), vec![(false, 0)]);
++    h.state_mut().run("layer.new.layer", json!({})).unwrap();
++    h.state_mut().run("layer.groupLayers", json!({})).unwrap();
++    h.state_mut().automation_input = true;
++    h.state_mut().run("layer.delete", json!({})).unwrap();
++    h.state_mut().automation_input = false;
++    assert_eq!(top(&h), vec![(false, 0)]);
++}
++
++/// Windows user #2: Select › Modify previews the selection it makes, red over the rest.
++#[test]
++fn select_modify_previews_its_selection() {
++    let mut s = new_session();
++    s.execute("select.rect", json!({"x": 50, "y": 40, "width": 40, "height": 40})).unwrap();
++    let mut app = PhotocraftApp::new(s, crate::Services::default());
++    let d = crate::filter_dialog::open(&mut app, "select.modify.expand").unwrap();
++    assert_eq!(app.ui.dialogs.iter().find(|x| x.id == d).unwrap().fields["__preview"], true);
++    let st = app.session.active().unwrap();
++    let out = crate::filter_dialog::preview_document(&st.doc, st.active_layer, "select.modify.expand", &json!({"radius": 10}), 1).unwrap();
++    let top = out.layers.last().unwrap();
++    assert_eq!(top.name, "Selection preview");
++    let alpha = |x: i32, y: i32| top.surface().unwrap().pixel(x, y)[3];
++    assert!(alpha(45, 60) < 0.01, "inside the expanded selection: clear");
++    assert!((alpha(20, 60) - 0.5).abs() < 0.01, "outside: half red");
++    assert_eq!(out.layers.len(), st.doc.layers.len() + 1);
++}
++
++/// A 400×300 document at 400 %, filling the window round the dialog, with Blur Gallery `cmd` open.
++fn blur_harness(cmd: &str) -> Harness<'static, PhotocraftApp> {
++    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
++    app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
++    app.sync_views();
++    app.ui.extras.rulers = false;
++    let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(
++        |ui, app: &mut PhotocraftApp| {
++            let ctx = ui.ctx().clone();
++            if !ctx.fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
++                return;
++            }
++            crate::shortcuts::handle(app, &ctx);
++            egui::CentralPanel::default().show(ui, |ui| crate::canvas::document_area(app, ui));
++            crate::dialogs::show(app, &ctx);
++        },
++        app,
++    );
++    PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ALL[0]);
++    h.run_steps(4);
++    let v = &mut h.state_mut().ui.views[0];
++    // The image left of the dialog, which opens at the right edge.
++    (v.zoom, v.center, v.fit_pending) = (1.0, [420.0, 150.0], false);
++    crate::filter_dialog::open(h.state_mut(), cmd).unwrap();
++    h.run_steps(4);
++    h
++}
++
++fn blur_fields(h: &Harness<'static, PhotocraftApp>) -> serde_json::Map<String, serde_json::Value> {
++    h.state().ui.dialogs.last().unwrap().fields.clone()
++}
++
++fn doc_to_screen(h: &Harness<'static, PhotocraftApp>, p: [f32; 2]) -> egui::Pos2 {
++    let app = h.state();
++    let v = &app.ui.views[0];
++    let xf = crate::canvas::ViewXform {
++        rect: crate::rulers::content_rect(app, app.last_canvas_rect),
++        zoom: v.zoom,
++        center: v.center,
++        flip: false,
++        rotation: v.rotation,
++        aspect: app.ui.view.display_aspect(),
++    };
++    xf.to_screen(p[0], p[1])
++}
++
++fn doc_drag(h: &mut Harness<'static, PhotocraftApp>, a: [f32; 2], b: [f32; 2]) {
++    let (a, b) = (doc_to_screen(h, a), doc_to_screen(h, b));
++    screen_drag(h, a, b);
++}
++
++fn screen_drag(h: &mut Harness<'static, PhotocraftApp>, a: egui::Pos2, b: egui::Pos2) {
++    use egui::{Event, PointerButton};
++    h.event(Event::PointerMoved(a));
++    h.run_steps(1);
++    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
++    h.run_steps(1);
++    for k in 1..=5 {
++        h.event(Event::PointerMoved(a + (b - a) * (k as f32 / 5.0)));
++        h.run_steps(1);
++    }
++    h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
++    h.run_steps(2);
++}
++
++fn f(m: &serde_json::Map<String, serde_json::Value>, k: &str) -> f64 {
++    m[k].as_f64().unwrap()
++}
++
++/// Round 4 #3, round 5 #2: Iris Blur's ellipse handle and centre pin drag on the image, the
++/// dialog's fields and its first pin follow; a click elsewhere adds a pin, Delete removes it.
++#[test]
++fn iris_blur_is_edited_on_the_image() {
++    let mut h = blur_harness("filter.blurGallery.irisBlur");
++    let fl = blur_fields(&h);
++    assert_eq!(fl["__bounds"], json!([0, 0, 400, 300]));
++    assert_eq!(fl["pins"].as_array().unwrap().len(), 1, "the fields are the first pin");
++    // The radius-X handle sits at centre + 0.35 × 300 px: drag it 30 px further out.
++    let (cx, cy) = (200.0, 150.0);
++    let rx = (f(&fl, "radiusX") * 300.0) as f32;
++    doc_drag(&mut h, [cx + rx, cy], [cx + rx + 30.0, cy]);
++    let fl = blur_fields(&h);
++    assert!((f(&fl, "radiusX") - (0.35 + 0.1)).abs() < 0.005, "{}", fl["radiusX"]);
++    assert_eq!(fl["pins"][0]["radiusX"], fl["radiusX"], "the pin follows");
++    // The centre pin moves the blur.
++    doc_drag(&mut h, [cx, cy], [cx - 40.0, cy + 30.0]);
++    let fl = blur_fields(&h);
++    assert!((f(&fl, "centerX") - 0.4).abs() < 0.005 && (f(&fl, "centerY") - 0.6).abs() < 0.005, "{} {}", fl["centerX"], fl["centerY"]);
++    // A click on an empty spot adds a second pin there, selected.
++    let at = doc_to_screen(&h, [30.0, 30.0]);
++    screen_drag(&mut h, at, at);
++    let fl = blur_fields(&h);
++    assert_eq!(fl["pins"].as_array().unwrap().len(), 2);
++    assert_eq!(fl["__pin"], 1);
++    assert!((f(&fl, "centerX") - 30.0 / 400.0).abs() < 0.005);
++    // Delete removes it (with the pointer over the image).
++    h.event(egui::Event::PointerMoved(at));
++    key(&mut h, Modifiers::NONE, Key::Delete);
++    assert_eq!(blur_fields(&h)["pins"].as_array().unwrap().len(), 1);
++    // OK applies the pins.
++    let d = h.state().ui.dialogs.last().unwrap().id;
++    crate::dialogs::confirm(h.state_mut(), d).unwrap();
++    assert!(h.state().ui.dialogs.is_empty());
++}
++
++/// Tilt-Shift's focus line and Path Blur's end point drag on the image.
++#[test]
++fn tilt_shift_and_path_blur_are_edited_on_the_image() {
++    let mut h = blur_harness("filter.blurGallery.tiltShift");
++    let fl = blur_fields(&h);
++    let focus = (f(&fl, "focus") * 300.0) as f32;
++    doc_drag(&mut h, [200.0, 150.0 + focus], [200.0, 150.0 + 60.0]);
++    assert!((f(&blur_fields(&h), "focus") - 0.2).abs() < 0.005, "{}", blur_fields(&h)["focus"]);
++    let mut h = blur_harness("filter.blurGallery.pathBlur");
++    let fl = blur_fields(&h);
++    let end = [(f(&fl, "endX") * 400.0) as f32, (f(&fl, "endY") * 300.0) as f32];
++    doc_drag(&mut h, end, [300.0, 75.0]);
++    let fl = blur_fields(&h);
++    assert!((f(&fl, "endX") - 0.75).abs() < 0.005 && (f(&fl, "endY") - 0.25).abs() < 0.005, "{} {}", fl["endX"], fl["endY"]);
++    assert_eq!(fl["paths"][0]["points"][1], json!([fl["endX"], fl["endY"]]), "the path follows");
++}
+diff --git a/crates/ui-egui/src/layer_menu_ui.rs b/crates/ui-egui/src/layer_menu_ui.rs
+index beb3e9b..d861c7e 100644
+--- a/crates/ui-egui/src/layer_menu_ui.rs
++++ b/crates/ui-egui/src/layer_menu_ui.rs
+@@ -58,6 +58,10 @@ pub fn entries(l: &Layer, multi: bool, has_selection: bool) -> Vec<Entry> {
+     if !multi {
+         v.push(Some((tl!("Group from Layers…"), "layer.groupLayers")));
+     }
++    // HORIX (round 1 #5): Ungroup in the context menu.
++    if !multi && l.is_group() {
++        v.push(Some((tl!("Ungroup Layers"), "layer.ungroupLayers")));
++    }
+     v.push(None);
+     v.push(Some((tl!("Quick Export As PNG"), "layer.quickExportAsPng")));
+     v.push(Some((tl!("Export As…"), "layer.exportAs")));
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index f5bdc6c..0c04336 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -28,6 +28,7 @@ pub mod artboard_ui;
+ pub(crate) mod background_redraw;
+ mod blend_keys;
+ pub(crate) mod blend_preview;
++pub mod blur_handles;
+ pub mod blur_pins;
+ mod brand;
+ pub(crate) mod brush_cursor;
+@@ -100,8 +101,10 @@ pub mod gallery_ui;
+ pub mod gpu_canvas;
+ pub mod gpu_status;
+ pub mod gradient_ui;
++pub mod group_delete_prompt;
+ pub mod guide_layout_ui;
+ pub mod hold_keys;
++pub mod horix_ux;
+ pub mod i18n;
+ mod icon_data;
+ pub mod icons;
+@@ -966,6 +969,10 @@ impl PhotocraftApp {
+ 
+     /// Run an engine command, reporting errors in the status bar.
+     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
++        // HORIX: a group with layers in it asks what goes (before the trash confirmation).
++        if let Some(result) = group_delete_prompt::intercept(self, id, &params) {
++            return result;
++        }
+         if let Some(result) = delete_layer_prompt::intercept(self, id, &params) {
+             return result;
+         }
+@@ -1722,6 +1729,7 @@ impl eframe::App for PhotocraftApp {
+             vector_ui::pen_commit(self, false);
+         }
+         transform_tool::end_if_left(self);
++        horix_ux::frame(self, ctx);
+         shape_stroke_ui::sync_editor(self, ctx);
+         self.collect_screenshots(ctx);
+         self.issue_screenshots(ctx);
+@@ -2529,6 +2537,9 @@ mod transform_fx_tests;
+ #[cfg(test)]
+ mod transform_undo_tests;
+ 
++#[cfg(test)]
++mod horix_ux_tests;
++
+ #[cfg(test)]
+ mod transform_type_tests;
+ 
+diff --git a/crates/ui-egui/src/new_doc_ui.rs b/crates/ui-egui/src/new_doc_ui.rs
+index 1b335ea..469f5e2 100644
+--- a/crates/ui-egui/src/new_doc_ui.rs
++++ b/crates/ui-egui/src/new_doc_ui.rs
+@@ -285,6 +285,36 @@ fn page_icon(ui: &egui::Ui, r: Rect, w: u32, h: u32, t: &Tokens) {
+     ui.painter().rect_stroke(page, 1.0, Stroke::new(1.2, t.text_dim), StrokeKind::Inside);
+ }
+ 
++/// HORIX: Advanced Options › Color Profile (Photoshop): the working space (the default; the
++/// document stays untagged and follows it) or a built-in profile of the colour mode, as
++/// `file.new`'s `profile`. A profile of another mode falls back to the working space.
++fn color_profile(app: &crate::PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Value>) {
++    ui.add_space(4.0);
++    small_label(ui, tl!("Color Profile"));
++    let mode = match get_s(f, "mode", "rgb").as_str() {
++        "gray" | "grayscale" => photocraft_color::ColorMode::Grayscale,
++        "cmyk" => photocraft_color::ColorMode::Cmyk,
++        "lab" => photocraft_color::ColorMode::Lab,
++        _ => photocraft_color::ColorMode::Rgb,
++    };
++    let working = format!("{}: {}", tl!("Working"), app.session.color.working(mode).description);
++    let mut opts: Vec<(String, &str)> = vec![("working".to_string(), working.as_str())];
++    let list = photocraft_engine::color_cmds::profiles_for_mode(mode);
++    opts.extend(list.iter().map(|(id, d)| (id.to_string(), *d)));
++    let mut prof = get_s(f, "profile", "working");
++    if !opts.iter().any(|(id, _)| *id == prof) {
++        prof = "working".into();
++        f.remove("profile");
++    }
++    if widgets::dropdown(ui, "nd-profile", &mut prof, &opts, 240.0) {
++        if prof == "working" {
++            f.remove("profile");
++        } else {
++            f.insert("profile".into(), json!(prof));
++        }
++    }
++}
++
+ /// The Background Contents menu's entry for a colour of the user's own ([`body`]).
+ const CUSTOM: &str = "custom";
+ /// Side of the Background Contents colour swatch.
+@@ -758,6 +788,7 @@ pub fn body(app: &mut crate::PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<Strin
+                 f.remove("backgroundColor");
+                 crate::color_picker_ui::request_field(f, "background", &crate::color_picker_ui::title_for(tl!("Background Contents")));
+             }
++            color_profile(app, ui, f);
+             save_preset(app, ui, f);
+         });
+     });
+diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
+index e20e374..253caed 100644
+--- a/crates/ui-egui/src/panels.rs
++++ b/crates/ui-egui/src/panels.rs
+@@ -3632,6 +3632,8 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+                 ui.data_mut(|d| d.insert_temp(key, (h.h, h.s)));
+             }
+         }
++        // HORIX (bug #5): an Eyedropper button beside the readout.
++        crate::horix_ux::eyedropper_button(app, ui);
+     });
+ }
+ 
+diff --git a/crates/ui-egui/src/path_selection_tests.rs b/crates/ui-egui/src/path_selection_tests.rs
+index 8f82e2a..1e954dc 100644
+--- a/crates/ui-egui/src/path_selection_tests.rs
++++ b/crates/ui-egui/src/path_selection_tests.rs
+@@ -157,6 +157,8 @@ fn thumbnail_selection_ctrl_click_shape_keeps_active_layer_and_supports_undo() {
+     assert!(selection(&h).is_none(), "Ctrl-click on a shape's name only selects the layer");
+     h.state_mut().run("layer.select", json!({"layer": active})).unwrap();
+     h.run_steps(2);
++    // HORIX: selecting the shape brought Properties forward, which moved the Layers rows.
++    let row = crate::layer_row_ui::recorded(&h.ctx).into_iter().find(|r| r.layer == shape).unwrap();
+     click(&mut h, egui::pos2(row.row.left() + 46.0, row.row.center().y), command());
+     assert_eq!(selection(&h), Some([40, 20, 60, 40]), "{}", h.state().ui.status);
+     assert_eq!(h.state().session.active().unwrap().active_layer, Some(photocraft_doc::LayerId(active)));
+diff --git a/crates/ui-egui/src/prefs_ui.rs b/crates/ui-egui/src/prefs_ui.rs
+index 21fbdd0..0f60c5d 100644
+--- a/crates/ui-egui/src/prefs_ui.rs
++++ b/crates/ui-egui/src/prefs_ui.rs
+@@ -852,6 +852,8 @@ pub fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &V
+                         dm.fields.insert(k.clone(), v.clone());
+                     }
+                 }
++                // HORIX: Ask When Opening is saved as `askOnOpenMismatch` (off by default).
++                dm.fields.insert("askOnMismatch".into(), json!(app.session.color.settings.ask_on_mismatch));
+                 dm.fields.insert("__note".into(), json!(note));
+             }
+             dialog(d)
+diff --git a/crates/ui-egui/src/type_tool.rs b/crates/ui-egui/src/type_tool.rs
+index 723a5a3..1db1d41 100644
+--- a/crates/ui-egui/src/type_tool.rs
++++ b/crates/ui-egui/src/type_tool.rs
+@@ -1029,6 +1029,10 @@ pub fn draw_overlay(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewX
+                 painter.rect_filled(r, 0.0, Color32::WHITE);
+                 painter.rect_stroke(r, 0.0, frame, egui::StrokeKind::Inside);
+             }
++            // HORIX: the overset-text mark on the bottom-right handle.
++            if l.overflow {
++                crate::horix_ux::overflow_mark(painter, c[2]);
++            }
+         }
+         _ => {
+             for ln in &l.lines {
