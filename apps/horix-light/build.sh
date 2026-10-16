@@ -3,7 +3,7 @@
 #
 # Usage: apps/horix-light/build.sh [lightcraft-source.tar.gz]
 #   default source: archive/lightcraft/lightcraft-source-0.8.0.tar.gz
-# Needs: Rust >= 1.95 with the wasm32-unknown-unknown target, wasm-bindgen-cli (version in Cargo.lock), python3 with Pillow, zip.
+# Needs: Rust >= 1.95 with the wasm32-unknown-unknown target, wasm-bindgen-cli (version in Cargo.lock), python3, zip.
 # Output: deploy/horix-light/horix-light-<version>-web.zip (a static site; any URL path works).
 set -euo pipefail
 

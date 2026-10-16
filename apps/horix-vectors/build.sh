@@ -3,7 +3,7 @@
 #
 # Usage: apps/horix-vectors/build.sh [vectorcraft-source.tar.gz]
 #   default source: archive/vectorcraft/vectorcraft-source-0.11.0.tar.gz
-# Needs: Rust >= 1.95 with the wasm32-unknown-unknown target, trunk, python3 with Pillow, zip.
+# Needs: Rust >= 1.95 with the wasm32-unknown-unknown target, trunk, python3, zip.
 # Output: deploy/horix-vectors/horix-vectors-<version>-web.zip (a static site; any URL path works).
 set -euo pipefail
 

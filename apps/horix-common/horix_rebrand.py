@@ -12,7 +12,6 @@ licences require the original copyright lines to stay.
 import base64
 import re
 import sys
-from io import BytesIO
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -102,25 +101,28 @@ def hexrgb(v: int) -> str:
     return f"0x{v:06x}"
 
 
+def png_size(path: Path) -> tuple[int, int]:
+    """Width and height from a PNG's IHDR chunk (no image library: the build runs `python3 -I`)."""
+    head = path.read_bytes()[:24]
+    if head[:8] != b"\x89PNG\r\n\x1a\n" or head[12:16] != b"IHDR":
+        fail(f"{path}: not a PNG")
+    return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+
+
 def replace_icons(root: Path, icon_dir: Path, upstream_dir: str) -> int:
     """Overwrite every upstream app icon with the HORIX one of the same kind and size, so every
-    place that embeds or packages the icon (title bar, About, installers) shows HORIX."""
-    from PIL import Image
-
-    src = {int(p.stem.split("-")[1]): p for p in icon_dir.glob("icon-*.png")}
+    place that embeds or packages the icon (title bar, About, installers) shows HORIX. Each PNG
+    size upstream uses must exist in `icon_dir` (tools/make_icons.py writes them)."""
     n = 0
     for p in sorted((root / upstream_dir).rglob("*")):
         if not p.is_file():
             continue
         if p.suffix == ".png":
-            with Image.open(p) as im:
-                w, h = im.size
-            best = min(src, key=lambda s: (s < max(w, h), abs(s - max(w, h))))
-            with Image.open(src[best]) as im:
-                img = im.convert("RGBA")
-                if (w, h) != img.size:
-                    img = img.resize((w, h), Image.LANCZOS)
-                img.save(p, optimize=True)
+            w, h = png_size(p)
+            src = icon_dir / f"icon-{max(w, h)}.png"
+            if w != h or not src.is_file():
+                fail(f"{p.relative_to(root)}: no HORIX icon of {w}x{h}")
+            p.write_bytes(src.read_bytes())
         elif p.suffix == ".svg":
             p.write_bytes((icon_dir / ("favicon.svg" if "small" in p.name else "icon.svg")).read_bytes())
         elif p.suffix == ".ico":

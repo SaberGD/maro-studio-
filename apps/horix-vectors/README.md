@@ -26,11 +26,10 @@
 
 ## البناء
 
-المتطلبات: Rust ≥ 1.95، والـtarget بتاع wasm، و`trunk`، وPython 3 ومعاه Pillow، و`zip`.
+المتطلبات: Rust ≥ 1.95، والـtarget بتاع wasm، و`trunk`، وPython 3، و`zip`.
 
 ```sh
 rustup target add wasm32-unknown-unknown
-pip install pillow
 apps/horix-vectors/build.sh        # يطلع deploy/horix-vectors/horix-vectors-<version>-web.zip
 ```
 

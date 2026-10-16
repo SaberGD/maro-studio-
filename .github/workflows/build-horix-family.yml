@@ -41,9 +41,6 @@ jobs:
           rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
           rustup default stable
 
-      - name: Pillow (icons) and zip
-        run: python3 -m pip install --user --quiet pillow
-
       - name: Brotli (pre-compressed WebAssembly)
         run: command -v brotli >/dev/null || sudo apt-get install -y --no-install-recommends brotli
 
