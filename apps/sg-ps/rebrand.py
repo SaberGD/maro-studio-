@@ -156,18 +156,30 @@ def menus(root: Path) -> None:
 def title_bar(root: Path) -> None:
     # The title-bar Discord button goes; in the browser a "desktop apps" button takes its place.
     edit(root, "crates/ui-egui/src/panels.rs", [(
-        """                        // Always one click away: the community Discord.
+        """                    // The community Discord, one click away while the bar has room for it
+                    // (narrow windows drop it first; it is also Help › Discord).
+                    if ui.available_width() >= DISCORD_ROOM {
                         let discord = egui::Button::image_and_text(
                             icons::image("message-square", 14.0, t.text_dim),
                             egui::RichText::new(tl!("Discord")).color(t.text_dim).size(12.0),
                         )
                         .frame(false);
-                        if ui.add(discord).on_hover_text(format!("Join the ArtCraft Discord ({})", crate::links::DISCORD)).clicked() {
+                        if ui
+                            .add(discord)
+                            .on_hover_text({
+                                let template = "Join the ArtCraft Discord ({url})";
+                                crate::i18n::fmt(tl!(template), &[("url", crate::links::DISCORD)])
+                            })
+                            .clicked()
+                        {
                             crate::links::open(app, ui.ctx(), crate::links::DISCORD);
                         }
+                    }
 """,
-        """                        // HORIX (web): the Windows / macOS apps, one click away.
+        """                    // HORIX (web): the Windows / macOS apps, one click away while the bar has room.
+                    if ui.available_width() >= DISCORD_ROOM {
                         crate::links::desktop_title_button(app, ui);
+                    }
 """)])
 
 
@@ -257,7 +269,7 @@ pub fn url_for("""),
         # The official lockup in place of the typed title: logo, descriptor, a short red rule, "BY SABER GROUP".
         ("""            ui.horizontal(|ui| {
                 let title = ui.painter().layout_no_wrap(tl!("PhotoCraft").into(), crate::theme::semibold(38.0), t.text);
-                let by = ui.painter().layout_no_wrap("open source".into(), egui::FontId::proportional(13.0), t.text_faint);
+                let by = ui.painter().layout_no_wrap(tl!("open source").into(), egui::FontId::proportional(13.0), t.text_faint);
                 let total = title.size().x + by.size().x + 10.0;
                 ui.add_space(((card.width() - total) / 2.0).max(0.0));
                 let (r, _) = ui.allocate_exact_size(title.size(), Sense::hover());
@@ -298,25 +310,27 @@ def theme(root: Path) -> None:
     edit(root, rel, [
         # HORIX uses the complete Pro shell, recoloured with the quieter Studio palette.  The
         # legacy Studio shell remains deserializable for compatibility but is hidden and migrated.
-        ("    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas (default).\n    #[default]\n    ProMedium,\n    Studio,",
-         "    /// HORIX's complete editor shell.\n    #[default]\n    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas.\n    ProMedium,\n    /// Legacy compatibility only; old Studio preferences migrate to HORIX Dark.\n    Studio,"),
-        ('pub const ALL: [ThemeKind; 5] = [ThemeKind::Pro, ThemeKind::ProMedium, ThemeKind::Studio, ThemeKind::StudioLight, ThemeKind::Classic];',
-         'pub const ALL: [ThemeKind; 4] = [ThemeKind::Pro, ThemeKind::ProMedium, ThemeKind::StudioLight, ThemeKind::Classic];'),
+        ("    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas (default).\n    #[default]\n    ProMedium,",
+         "    #[default]\n    Pro,\n    /// Photoshop's default (second) interface brightness: #535353 panels, #282828 canvas.\n    ProMedium,"),
         ('ThemeKind::Pro => "Pro (Dark)",', 'ThemeKind::Pro => "HORIX (Dark)",'),
         ('ThemeKind::Studio => "Studio (Dark)",', 'ThemeKind::Studio => "HORIX (Legacy)",'),
         ('"pro" | "prodark" | "photoshop" | "dark" =>', '"pro" | "prodark" | "photoshop" | "dark" | "horix" | "horixpro" =>'),
-        ('"studio" | "studiodark" => Some(ThemeKind::Studio),',
-         '"studio" | "studiodark" => Some(ThemeKind::Pro),'),
-        ('unwrap_or_else(|| Tokens::for_kind(ThemeKind::Studio))',
-         'unwrap_or_else(|| Tokens::for_kind(ThemeKind::Pro))'),
+        ('"studio" | "studiodark" => Some(ThemeKind::Studio),', '"studio" | "studiodark" => Some(ThemeKind::Pro),'),
+        ('unwrap_or_else(|| Tokens::for_kind(ThemeKind::Studio))', 'unwrap_or_else(|| Tokens::for_kind(ThemeKind::Pro))'),
         ('assert_eq!(ThemeKind::from_name("studio"), Some(ThemeKind::Studio));',
          'assert_eq!(ThemeKind::from_name("studio"), Some(ThemeKind::Pro));\n'
          '        assert!(!ThemeKind::ALL.contains(&ThemeKind::Studio));'),
     ])
-    # The fully featured Pro shell gets the exact visual palette of the preferred Studio theme.
-    # Keep `pro: true`, plus opaque tab/row colours, because those drive the complete panel UI.
+    # Studio leaves the selectable list (structural: the list length is upstream's to change).
     path = root / rel
     text = path.read_text(encoding="utf-8")
+    m = re.search(r"pub const ALL: \[ThemeKind; (\d+)\] = \[\n((?:        ThemeKind::\w+,\n)+)    \];", text)
+    if not m or "        ThemeKind::Studio,\n" not in m.group(2):
+        sys.exit("rebrand: theme.rs: ThemeKind::ALL list not found")
+    kinds = m.group(2).replace("        ThemeKind::Studio,\n", "")
+    text = text[:m.start()] + f"pub const ALL: [ThemeKind; {int(m.group(1)) - 1}] = [\n{kinds}    ];" + text[m.end():]
+    # The fully featured Pro shell gets the exact visual palette of the preferred Studio theme.
+    # Keep `pro: true`, plus opaque tab/row colours, because those drive the complete panel UI.
     start = text.index("            ThemeKind::Pro => Tokens {")
     end = text.index("            ThemeKind::Studio => Tokens {")
     horix = """            ThemeKind::Pro => Tokens {
@@ -350,73 +364,61 @@ def theme(root: Path) -> None:
                 radius_lg: 12.0,
                 bevel: false,
                 pro: true,
+                round_chips: false,
                 tab_strip: Color32::from_rgb(20, 20, 21),
                 row_selected: Color32::from_rgb(44, 44, 48),
+                histogram_bg: Color32::from_rgb(14, 14, 15),
+                histogram_level: 225,
+                caption_close: Color32::from_rgb(214, 60, 50),
+                caption_close_text: Color32::WHITE,
+                scrim: Color32::from_black_alpha(110),
             },
 """
     text = text[:start] + horix + text[end:]
-    s0 = text.index("            ThemeKind::Studio => Tokens {")
-    s1 = text.index("            ThemeKind::StudioLight => Tokens {")
-    studio = text[s0:s1]
-    for old, new in (
-        ("accent: Color32::from_rgb(139, 124, 246),", "accent: Color32::from_rgb(234, 153, 63),"),
-        ("accent_soft: Color32::from_rgba_unmultiplied(139, 124, 246, 46),", "accent_soft: Color32::from_rgba_unmultiplied(234, 153, 63, 46),"),
-        ("accent_border: Color32::from_rgba_unmultiplied(160, 148, 255, 110),", "accent_border: Color32::from_rgba_unmultiplied(234, 153, 63, 120),"),
-        ("accent_text: Color32::from_rgb(214, 208, 255),", "accent_text: Color32::from_rgb(246, 200, 148),"),
-        ("primary_bg: Color32::from_rgb(246, 246, 248),", "primary_bg: Color32::from_rgb(243, 239, 232),"),
-        ("primary_text: Color32::from_rgb(12, 12, 14),", "primary_text: Color32::from_rgb(20, 19, 20),"),
-        ("text: Color32::from_rgb(236, 236, 240),", "text: Color32::from_rgb(243, 239, 232),"),
-    ):
-        if studio.count(old) != 1:
-            sys.exit(f"rebrand: theme.rs Studio tokens: expected text not found: {old}")
-        studio = studio.replace(old, new)
-    path.write_text(text[:s0] + studio + text[s1:], encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
     # Display face for headlines: Barlow Condensed ExtraBold (OFL), falling back to Inter.
     shutil.copyfile(HERE / "assets/fonts/BarlowCondensed-ExtraBold.ttf", root / "crates/ui-egui/src/horix_display.ttf")
     edit(root, rel, [
-        ('    add(&mut fonts, "JetBrainsMono", photocraft_text::fonts::JETBRAINS_MONO_REGULAR);\n',
-         '    add(&mut fonts, "JetBrainsMono", photocraft_text::fonts::JETBRAINS_MONO_REGULAR);\n'
-         '    add(&mut fonts, "HorixDisplay", include_bytes!("horix_display.ttf").as_slice());\n'),
-        ('for (fam, primary) in [("medium", "Inter-Medium"), ("semibold", "Inter-SemiBold")] {',
-         'for (fam, primary) in [("medium", "Inter-Medium"), ("semibold", "Inter-SemiBold"), ("display", "HorixDisplay")] {'),
+        ('    let mono = add(&mut fonts, "JetBrainsMono", photocraft_text::fonts::JETBRAINS_MONO_REGULAR.as_slice());\n',
+         '    let mono = add(&mut fonts, "JetBrainsMono", photocraft_text::fonts::JETBRAINS_MONO_REGULAR.as_slice());\n'
+         '    let display = add(&mut fonts, "HorixDisplay", include_bytes!("horix_display.ttf").as_slice());\n'),
+        ('for (fam, primary) in [("medium", medium), ("semibold", semibold)] {',
+         'for (fam, primary) in [("medium", medium), ("semibold", semibold), ("display", display)] {'),
         ("pub fn mono(size: f32) -> FontId {",
          "/// HORIX: the brand's display face (condensed, heavy) for headlines.\n"
          "pub fn display(size: f32) -> FontId {\n    FontId::new(size, FontFamily::Name(\"display\".into()))\n}\n"
          "pub fn mono(size: f32) -> FontId {"),
     ])
-    edit(root, "crates/engine/src/prefs.rs", [
-        ('Classic = "classic" } default ProMedium);', 'Classic = "classic" } default Pro);'),
+    # Preferences: HORIX (Pro) is the default dark theme; `studio` still loads (old files) but is
+    # no longer offered, and maps to HORIX.
+    prefs = "crates/engine/src/prefs.rs"
+    edit(root, prefs, [
+        ('SoftDark = "softDark", SoftLight = "softLight" } default ProMedium);', 'SoftDark = "softDark", SoftLight = "softLight" } default Pro);'),
+        ('BreezeDark = "breezeDark", SoftDark = "softDark" } default ProMedium);', 'BreezeDark = "breezeDark", SoftDark = "softDark" } default Pro);'),
         ("            theme: Theme::ProMedium,", "            theme: Theme::Pro,"),
-        ('choice!(Theme { Pro = "pro", ProMedium = "proMedium", Studio = "studio", StudioLight = "studioLight", Classic = "classic" } default Pro);',
-         'choice!(Theme { Pro = "pro", ProMedium = "proMedium", Studio = "studio", StudioLight = "studioLight", Classic = "classic" } default Pro);\n'
-         '// HORIX: `studio` remains deserializable for old files, but is no longer selectable.\n'
-         'const HORIX_THEME_NAMES: &[&str] = &["pro", "proMedium", "studioLight", "classic"];'),
-        ('        "interface.theme" => Theme::NAMES,', '        "interface.theme" => HORIX_THEME_NAMES,'),
+        ("            dark_theme: DarkTheme::ProMedium,", "            dark_theme: DarkTheme::Pro,"),
+        ('        "interface.theme" => Theme::NAMES,', '        "interface.theme" => &HORIX_THEME_NAMES,'),
+        ('        "interface.darkTheme" => DarkTheme::NAMES,', '        "interface.darkTheme" => &HORIX_DARK_THEME_NAMES,'),
     ])
+    path = root / prefs
+    text = path.read_text(encoding="utf-8")
+    for enum, const in (("Theme", "HORIX_THEME_NAMES"), ("DarkTheme", "HORIX_DARK_THEME_NAMES")):
+        m = re.search(rf"^choice!\({enum} \{{ (.*?) \}} default Pro\);$", text, re.M)
+        if not m:
+            sys.exit(f"rebrand: prefs.rs: choice!({enum} ...) not found")
+        names = [v for v in re.findall(r'= "(\w+)"', m.group(1)) if v != "studio"]
+        decl = f"\n// HORIX: `studio` remains deserializable for old files, but is no longer selectable.\nconst {const}: [&str; {len(names)}] = [{', '.join(repr(n).replace(chr(39), chr(34)) for n in names)}];"
+        text = text[:m.end()] + decl + text[m.end():]
+    path.write_text(text, encoding="utf-8")
     edit(root, "crates/ui-egui/src/state.rs", [
         ("            theme: crate::theme::ThemeKind::ProMedium,", "            theme: crate::theme::ThemeKind::Pro,"),
     ])
     edit(root, "crates/ui-egui/src/prefs_ui.rs", [
-        # Existing desktop and web preferences can still contain `studio`.  Load it into the new
-        # HORIX shell, then the normal preference sync writes `pro` back on the next frame.
-        ("        Theme::Studio => ThemeKind::Studio,", "        Theme::Studio => ThemeKind::Pro,"),
-        ("        ThemeKind::Studio => Theme::Studio,", "        ThemeKind::Studio => Theme::Pro,"),
-        ("    #[test]\n    fn preferences_persist_through_services_and_theme_follows() {",
-         "    #[test]\n"
-         "    fn legacy_studio_preference_migrates_to_horix_shell() {\n"
-         "        let session = photocraft_engine::Session::new();\n"
-         "        let mut saved: Value = serde_json::from_str(&session.prefs_to_json()).unwrap();\n"
-         "        saved[\"interface\"][\"theme\"] = json!(\"studio\");\n"
-         "        let (mut app, store) = app_with_saved(Some(serde_json::to_string(&saved).unwrap()));\n"
-         "        let ctx = egui::Context::default();\n"
-         "        tick(&mut app, &ctx);\n"
-         "        tick(&mut app, &ctx);\n"
-         "        assert_eq!(app.ui.theme, ThemeKind::Pro);\n"
-         "        assert_eq!(app.session.prefs().interface.theme, Theme::Pro);\n"
-         "        assert_eq!(stored(&store)[\"interface\"][\"theme\"], \"pro\");\n"
-         "    }\n\n"
-         "    #[test]\n"
-         "    fn preferences_persist_through_services_and_theme_follows() {"),
+        # Existing preferences can still contain `studio`: load it into the HORIX shell.
+        ("            DarkTheme::Studio => ThemeKind::Studio,", "            DarkTheme::Studio => ThemeKind::Pro,"),
+        # HORIX first in the Dark Theme list; Studio no longer offered.
+        ('    ("proMedium", ThemeKind::ProMedium),\n    ("pro", ThemeKind::Pro),\n    ("studio", ThemeKind::Studio),\n',
+         '    ("pro", ThemeKind::Pro),\n    ("proMedium", ThemeKind::ProMedium),\n'),
     ])
 
 
@@ -430,8 +432,8 @@ def full_tool_options(root: Path) -> None:
     path = root / rel
     text = path.read_text(encoding="utf-8")
     n = text.count(" if t.pro => ")
-    if n != 8:
-        sys.exit(f"rebrand: {rel}: expected 8 Pro-only option arms, found {n}")
+    if n < 1:
+        sys.exit(f"rebrand: {rel}: no Pro-only option arms found")
     text = text.replace(" if t.pro => ", " if FULL_TOOL_OPTIONS => ")
     marker = "pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {"
     if marker not in text:
@@ -519,15 +521,15 @@ PLAIN_SUBJECT_OLD = r'''    let mut trimap = vec![PR_BG; w * h];
         }
     }
     if !any_fg {
-        return None;
+        return Ok(None);
     }
-    let (fg, bg) = grabcut::grabcut(&img, &mut trimap, 6)?;
+    let Some((fg, bg)) = grabcut::grabcut_with(&img, &mut trimap, 6, ctl)? else { return Ok(None) };
     let low: Vec<bool> = trimap.iter().map(|v| *v == PR_FG || *v == grabcut::FG).collect();
     let low = super::clean_mask(&low, w, h, 0.2, 0.05);
     if !low.iter().any(|v| *v) {
-        return None;
+        return Ok(None);
     }
-    super::finish_region(sampler, canvas, step, &low, w, h, Some((&fg, &bg)))
+    super::finish_region_with(sampler, canvas, step, &low, w, h, Some((&fg, &bg)), ctl)
 }
 '''
 
@@ -555,7 +557,7 @@ PLAIN_SUBJECT = r'''    // SG - PS: on a plain background (studio white, a flat 
     let mut bg_like = vec![false; w * h];
     let mut reach = vec![false; w * h];
     if plain {
-        let bgm = Gmm::fit(&subsample(&ring_px, 20_000), 3, DEFAULT_REG)?;
+        let Some(bgm) = Gmm::fit(&subsample(&ring_px, 20_000), 3, DEFAULT_REG) else { return Ok(None) };
         let nl: Vec<f32> = img.px.iter().map(|p| bgm.neg_log(*p)).collect();
         let mut ring_nl: Vec<f32> = (0..w * h).filter(|i| on_ring(*i)).map(|i| nl[i]).collect();
         ring_nl.sort_by(f32::total_cmp);
@@ -596,9 +598,9 @@ PLAIN_SUBJECT = r'''    // SG - PS: on a plain background (studio white, a flat 
         }
     }
     if !any_fg {
-        return None;
+        return Ok(None);
     }
-    let (fg, bg) = grabcut::grabcut(&img, &mut trimap, 6)?;
+    let Some((fg, bg)) = grabcut::grabcut_with(&img, &mut trimap, 6, ctl)? else { return Ok(None) };
     let low: Vec<bool> = trimap.iter().map(|v| *v == PR_FG || *v == grabcut::FG).collect();
     // Islands on a plain background are parts of the subject (a hand past a dark wrist).
     let mut low = super::clean_mask(&low, w, h, if plain { 0.02 } else { 0.2 }, 0.05);
@@ -615,11 +617,11 @@ PLAIN_SUBJECT = r'''    // SG - PS: on a plain background (studio white, a flat 
         }
     }
     if !low.iter().any(|v| *v) {
-        return None;
+        return Ok(None);
     }
-    let r = super::finish_region(sampler, canvas, step, &low, w, h, Some((&fg, &bg)))?;
+    let Some(r) = super::finish_region_with(sampler, canvas, step, &low, w, h, Some((&fg, &bg)), ctl)? else { return Ok(None) };
     // Soft edges where the background is plain enough to estimate them.
-    Some(if plain { matte_edges(sampler, canvas, r) } else { r })
+    Ok(Some(if plain { matte_edges(sampler, canvas, r) } else { r }))
 }
 
 /// Border colour spread (RMS, 0..1 RGB) under which the background counts as plain.
@@ -1059,42 +1061,25 @@ WAITLIST_SCRIPT = """  <div id="sgps_wl" dir="rtl" hidden>
 
 
 def device_fonts(root: Path) -> None:
-    """Fonts installed on the computer, in the browser build (upstream only reads them on desktop)."""
+    """Fonts installed on the computer, in the browser build (upstream only reads them on desktop).
+    Registering a font moves upstream's shared font generation, so the font menus refresh."""
     edit(root, "crates/ui-egui/src/type_tool.rs", [(
-        """/// Font families (bundled + system), cached for the process.
-pub fn families() -> &'static [String] {
-    static FAMILIES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-    FAMILIES.get_or_init(|| photocraft_text::shared().lock().map(|mut e| e.fonts.families()).unwrap_or_default())
-}""",
-        """/// SG - PS: bumped whenever fonts are added while the app runs (device fonts in the browser).
-pub static FONTS_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-/// SG - PS: set by Type > Load Device Fonts; the web shell picks it up and asks the browser.
+        "/// Font families: bundled, system, and those the host serves",
+        """/// HORIX: set by Type > Load Device Fonts; the web shell picks it up and asks the browser.
 pub static DEVICE_FONTS_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// SG - PS: registers a font file (TTF/OTF/TTC) while the app runs. Returns its family names.
+/// HORIX: registers a font file (TTF/OTF/TTC) while the app runs. Returns its family names.
 pub fn register_font(bytes: Vec<u8>) -> Vec<String> {
-    let names = photocraft_text::shared().lock().map(|mut e| e.fonts.register_font_data(bytes)).unwrap_or_default();
-    FONTS_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    names
+    photocraft_text::shared().lock().map(|mut e| e.fonts.register_font_data(bytes)).unwrap_or_default()
 }
 
-/// Font families (bundled + system + device fonts added at run time). Rebuilt when fonts are added.
-pub fn families() -> &'static [String] {
-    static FAMILIES: std::sync::Mutex<(u64, &'static [String])> = std::sync::Mutex::new((u64::MAX, &[]));
-    let generation = FONTS_GENERATION.load(std::sync::atomic::Ordering::Relaxed);
-    let mut cached = FAMILIES.lock().unwrap_or_else(|e| e.into_inner());
-    if cached.0 != generation {
-        let list = photocraft_text::shared().lock().map(|mut e| e.fonts.families()).unwrap_or_default();
-        *cached = (generation, Box::leak(list.into_boxed_slice()));
-    }
-    cached.1
-}""")])
+/// Font families: bundled, system, and those the host serves""")])
     edit(root, "crates/ui-egui/src/menus.rs", [
-        ('    ("edit.search", "Search…", &["Edit"], Some("Cmd+K")),',
-         '    ("edit.search", "Search…", &["Edit"], Some("Cmd+K")),\n'
+        ('    ("edit.search", "Search…", &["Edit"], Some("Cmd+F")),',
+         '    ("edit.search", "Search…", &["Edit"], Some("Cmd+F")),\n'
          '    ("type.loadDeviceFonts", "Load Device Fonts…", &["Type"], None),'),
-        ('"file.open" | "file.exit" | "file.clearRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,',
-         '"file.open" | "file.exit" | "file.clearRecent" | "help.about" | "help.systemInfo" | "edit.search" | "type.loadDeviceFonts" => true,'),
+        ('| "help.about" | "help.systemInfo" | "edit.search" => true,',
+         '| "help.about" | "help.systemInfo" | "edit.search" | "type.loadDeviceFonts" => true,'),
         ("""    if let Some(url) = crate::links::url_for(id) {
         return Ok(crate::links::open(app, ctx, url));
     }""", """    if let Some(url) = crate::links::url_for(id) {
@@ -1107,17 +1092,17 @@ pub fn families() -> &'static [String] {
     }"""),
     ])
     edit(root, "apps/photocraft-web/src/web.rs", [
-        ("""        self.app.logic(ctx, frame);
-    }""", """        if photocraft_ui_egui::type_tool::DEVICE_FONTS_REQUESTED.swap(false, std::sync::atomic::Ordering::Relaxed) {
+        ("""        self.serve_fonts(ctx);
+        self.app.logic(ctx, frame);""", """        self.serve_fonts(ctx);
+        if photocraft_ui_egui::type_tool::DEVICE_FONTS_REQUESTED.swap(false, std::sync::atomic::Ordering::Relaxed) {
             call_page("sgpsLoadDeviceFonts", None);
         }
         let waitlist = photocraft_ui_egui::links::WAITLIST_REQUEST.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(product) = waitlist {
             call_page("sgpsOpenWaitlist", Some(&product));
         }
-        self.app.logic(ctx, frame);
-    }"""),
-        ("fn query() -> String {", """/// SG - PS: calls `window[name](arg)` defined by the page (index.html), if it exists.
+        self.app.logic(ctx, frame);"""),
+        ("fn query() -> String {", """/// HORIX: calls `window[name](arg)` defined by the page (index.html), if it exists.
 fn call_page(name: &str, arg: Option<&str>) {
     use wasm_bindgen::JsCast;
     let Some(window) = web_sys::window() else { return };
@@ -1131,7 +1116,7 @@ fn call_page(name: &str, arg: Option<&str>) {
     }
 }
 
-/// SG - PS: registers a font file read by the page (Local Font Access API). Returns the family
+/// HORIX: registers a font file read by the page (Local Font Access API). Returns the family
 /// names, one per line.
 #[wasm_bindgen::prelude::wasm_bindgen]
 pub fn sgps_register_font(bytes: Vec<u8>) -> String {
@@ -1143,70 +1128,6 @@ fn query() -> String {"""),
     edit(root, "apps/photocraft-web/index.html", [("</body>", FONTS_SCRIPT + "</body>")])
     whatsapp = WHATSAPP.split("?")[0]
     edit(root, "apps/photocraft-web/index.html", [("</body>", WAITLIST_SCRIPT.replace("__WHATSAPP__", whatsapp) + "</body>")])
-
-
-def font_warmup(root: Path) -> None:
-    """Desktop: scan the computer's fonts in the background from launch, never on the UI thread.
-
-    Upstream scans every installed font the first time the Type tool needs a font list. On Windows
-    (hundreds of font files, several large CJK ones, the antivirus opening each) that took long
-    enough for Windows to mark the app "Not Responding" when the Type tool was picked. The scan now
-    starts in a thread when the app opens; until it is done the Type tool lists the bundled fonts
-    instead of waiting, and the full list appears by itself when the scan finishes."""
-    edit(root, "crates/ui-egui/src/type_tool.rs", [(
-        """/// Font families (bundled + system + device fonts added at run time). Rebuilt when fonts are added.
-pub fn families() -> &'static [String] {
-    static FAMILIES""",
-        """/// HORIX: the installed fonts are scanned in a background thread from launch (desktop).
-static FONT_SCAN_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-static FONT_SCAN_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// HORIX: starts scanning the computer's fonts without blocking the UI. Call once at launch.
-pub fn warm_up_fonts() {
-    use std::sync::atomic::Ordering::Relaxed;
-    if FONT_SCAN_STARTED.swap(true, Relaxed) {
-        return;
-    }
-    let spawned = std::thread::Builder::new().name("horix-fonts".into()).spawn(|| {
-        let _ = photocraft_text::shared(); // the slow part: every installed font, once
-        FONT_SCAN_DONE.store(true, Relaxed);
-        FONTS_GENERATION.fetch_add(1, Relaxed);
-    });
-    if spawned.is_err() {
-        FONT_SCAN_DONE.store(true, Relaxed); // no thread: the first use scans, as upstream
-    }
-}
-
-/// HORIX: true while the background scan runs; the Type tool then uses the bundled fonts.
-pub fn fonts_loading() -> bool {
-    use std::sync::atomic::Ordering::Relaxed;
-    FONT_SCAN_STARTED.load(Relaxed) && !FONT_SCAN_DONE.load(Relaxed)
-}
-
-/// HORIX: the bundled fonts only (instant), for the moments the full list is not ready yet.
-fn bundled_engine() -> &'static std::sync::Mutex<photocraft_text::TextEngine> {
-    static ENGINE: std::sync::OnceLock<std::sync::Mutex<photocraft_text::TextEngine>> = std::sync::OnceLock::new();
-    ENGINE.get_or_init(|| std::sync::Mutex::new(photocraft_text::TextEngine::new()))
-}
-
-/// Font families (bundled + system + device fonts added at run time). Rebuilt when fonts are added.
-pub fn families() -> &'static [String] {
-    if fonts_loading() {
-        static BUNDLED: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-        return BUNDLED.get_or_init(|| bundled_engine().lock().map(|mut e| e.fonts.families()).unwrap_or_default());
-    }
-    static FAMILIES""")])
-    edit(root, "crates/ui-egui/src/type_tool.rs", [(
-        """    let faces = photocraft_text::shared().lock().map(|mut e| e.fonts.faces(family)).unwrap_or_default();""",
-        """    let engine = if fonts_loading() { bundled_engine() } else { photocraft_text::shared() };
-    let faces = engine.lock().map(|mut e| e.fonts.faces(family)).unwrap_or_default();""")])
-    edit(root, "apps/photocraft/src/main.rs", [(
-        """    let result = eframe::run_native(
-""",
-        """    // HORIX: scan the installed fonts in the background now, not when the Type tool is picked.
-    photocraft_ui_egui::type_tool::warm_up_fonts();
-    let result = eframe::run_native(
-""")])
 
 
 def web_page_behaviour(root: Path) -> None:
@@ -1450,14 +1371,14 @@ def desktop(root: Path) -> None:
     ) + "\n"
     (root / "crates/ui-egui/src/horix_licenses.txt").write_text(licence_text, encoding="utf-8")
     edit(root, "crates/ui-egui/src/dialogs.rs", [
-        ('                    ui.weak("Built on open-source software (MIT / Apache-2.0). Licence texts ship with the app.");',
-         '                    ui.weak("Built on open-source software. Required licence texts are included in the app.");\n'
-         '                    ui.add_space(6.0);\n'
-         '                    ui.collapsing("Open-source licences", |ui| {\n'
-         '                        egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {\n'
-         '                            ui.add(egui::Label::new(egui::RichText::new(include_str!("horix_licenses.txt")).font(crate::theme::mono(10.0))).selectable(true));\n'
-         '                        });\n'
-         '                    });'),
+        ('            ui.weak("Built on open-source software (MIT / Apache-2.0). Licence texts ship with the app.");',
+         '            ui.weak("Built on open-source software. Required licence texts are included in the app.");\n'
+         '            ui.add_space(6.0);\n'
+         '            ui.collapsing("Open-source licences", |ui| {\n'
+         '                egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {\n'
+         '                    ui.add(egui::Label::new(egui::RichText::new(include_str!("horix_licenses.txt")).font(crate::theme::mono(10.0))).selectable(true));\n'
+         '                });\n'
+         '            });'),
     ])
     edit(root, "apps/photocraft/src/main.rs", [
         ('const APP_ID: &str = "ai.storyteller.photocraft";', 'const APP_ID: &str = "com.sabergroup.sgps";'),
@@ -1465,102 +1386,16 @@ def desktop(root: Path) -> None:
 
 
 def web_place(root: Path) -> None:
-    """File > Place Embedded in the browser. Upstream greys it out on the web (it reads a path) and
-    the web file picker is asynchronous, so the picked file would open as a new document. The
-    picker request is now tagged, and a tagged file is placed into the active document."""
+    """File > Place Embedded in the browser. Upstream's picker is asynchronous on every platform
+    and places the picked bytes, but the command is still greyed out where there is no file system
+    (`native_doc`); with an open document it works on the web too."""
     edit(root, "crates/engine/src/file_cmds.rs", [(
-        """            r##"{"path":str,"scale":%? (default: fit when larger than the canvas),"fit":bool=true,"center":[x,y]?}"##,
+        """(default: Preferences > General > Always Create Smart Objects When Placing),"center":[x,y]?}"##,
             native_doc,
             |s, p| place(s, p, false)""",
-        """            r##"{"path":str,"scale":%? (default: fit when larger than the canvas),"fit":bool=true,"center":[x,y]?}"##,
+        """(default: Preferences > General > Always Create Smart Objects When Placing),"center":[x,y]?}"##,
             has_doc,
             |s, p| place(s, p, false)""")])
-    edit(root, "crates/ui-egui/src/view_cmds.rs", [
-        ("/// Engine commands that get a dialog or file picker here when invoked without parameters.",
-         """/// SG - PS: set just before File > Place opens the (asynchronous) web file picker, so the web
-/// shell tags the picked file and the app places it instead of opening it as a document.
-pub static PLACE_NEXT_PICK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-/// Prefix the web shell puts on the name of a file picked for Place.
-pub const PLACE_TAG: &str = "\\u{1}sgps-place:";
-
-/// Engine commands that get a dialog or file picker here when invoked without parameters."""),
-        ("""        "file.placeEmbedded" | "file.placeLinked" => {
-            let (name, bytes) = app.services.pick_open.as_mut().and_then(|f| f())?;""",
-         """        "file.placeEmbedded" | "file.placeLinked" => {
-            PLACE_NEXT_PICK.store(true, std::sync::atomic::Ordering::Relaxed);
-            let picked = app.services.pick_open.as_mut().and_then(|f| f());
-            let Some((name, bytes)) = picked else {
-                // The web picker answers later through the inbox (see PLACE_TAG).
-                return Some(Ok(Value::Null));
-            };
-            PLACE_NEXT_PICK.store(false, std::sync::atomic::Ordering::Relaxed);"""),
-    ])
-    edit(root, "crates/ui-egui/src/lib.rs", [(
-        """        for (name, bytes) in arrived {
-            if let Err(e) = self.open_bytes(&name, &bytes) {""",
-        """        for (name, bytes) in arrived {
-            if let Some(name) = name.strip_prefix(view_cmds::PLACE_TAG) {
-                // SG - PS: a file picked by File > Place Embedded (web): place it, don't open it.
-                if let Err(e) = photocraft_engine::file_cmds::place_bytes(&mut self.session, name, bytes, None, &serde_json::json!({})) {
-                    self.open_failed(name, &e.to_string());
-                }
-                self.sync_views();
-                continue;
-            }
-            if let Err(e) = self.open_bytes(&name, &bytes) {""")])
-    edit(root, "apps/photocraft-web/src/web.rs", [(
-        """        pick_open: Some(Box::new(move || {
-            let inbox = open_inbox.clone();
-            let ctx = ctx.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                let Some(file) = rfd::AsyncFileDialog::new().add_filter("All Formats", OPEN_EXTS).pick_file().await else {
-                    return;
-                };
-                let bytes = file.read().await;
-                inbox.lock().unwrap_or_else(|e| e.into_inner()).push((file.file_name(), bytes));""",
-        """        pick_open: Some(Box::new(move || {
-            let inbox = open_inbox.clone();
-            let ctx = ctx.clone();
-            // SG - PS: read the Place flag now (a cancelled picker must not leave it set).
-            let place = photocraft_ui_egui::view_cmds::PLACE_NEXT_PICK.swap(false, std::sync::atomic::Ordering::Relaxed);
-            wasm_bindgen_futures::spawn_local(async move {
-                let Some(file) = rfd::AsyncFileDialog::new().add_filter("All Formats", OPEN_EXTS).pick_file().await else {
-                    return;
-                };
-                let bytes = file.read().await;
-                let name = if place { format!("{}{}", photocraft_ui_egui::view_cmds::PLACE_TAG, file.file_name()) } else { file.file_name() };
-                inbox.lock().unwrap_or_else(|e| e.into_inner()).push((name, bytes));""")])
-
-
-def proportional_edges(root: Path) -> None:
-    """Free Transform: edge handles keep the proportions like the corners (Shift stretches one
-    axis), so scaling from any handle never distorts the layer by accident."""
-    edit(root, "crates/ui-egui/src/transform_tool.rs", [(
-        """            let map = |a: f64, b: f64| {
-                let (x, y) = h.apply(a, b);
-                [x, y]
-            };
-            s.quad = [map(r[0], r[1]), map(r[2], r[1]), map(r[2], r[3]), map(r[0], r[3])];""",
-        """            // SG - PS: edges scale proportionally too, about the box centre (or the reference
-            // point with Alt) on the other axis; Shift stretches one axis as before.
-            if matches!(g.hit, Hit::Edge(_)) && !mods.shift {
-                if mv.0 || mv.1 {
-                    let k = (r[3] - r[1]).abs();
-                    let c = if mods.alt { pu } else { 0.5 };
-                    r[0] = c - c * k;
-                    r[2] = c + (1.0 - c) * k;
-                } else {
-                    let k = (r[2] - r[0]).abs();
-                    let c = if mods.alt { pv } else { 0.5 };
-                    r[1] = c - c * k;
-                    r[3] = c + (1.0 - c) * k;
-                }
-            }
-            let map = |a: f64, b: f64| {
-                let (x, y) = h.apply(a, b);
-                [x, y]
-            };
-            s.quad = [map(r[0], r[1]), map(r[2], r[1]), map(r[2], r[3]), map(r[0], r[3])];""")])
 
 
 def drop_old_translations(root: Path) -> int:
@@ -1591,27 +1426,18 @@ def check(root: Path) -> None:
         print("rebrand: remaining brand strings (check they are test-only):\n" + "\n".join(bad))
 
 
-TRANSFORM_GUARD = """        // SG - PS: an open Free Transform never stays pending behind other edits. Undo takes back
-        // the pending rotate / scale / move (the last thing the user did) instead of the step
-        // before it; any other document command applies the transform first, so it gets its own
-        // history step and the canvas stops showing the frozen transform preview.
-        if let Some(t) = self.ui.transform.as_ref() {
-            if id == "edit.undo" {
-                let changed = match &t.warp {
-                    Some(w) => !w.is_identity(),
-                    None => t.quad != [[t.rect[0], t.rect[1]], [t.rect[2], t.rect[1]], [t.rect[2], t.rect[3]], [t.rect[0], t.rect[3]]],
-                };
-                transform_tool::cancel(self);
-                if changed || !self.session.is_enabled("edit.undo") {
-                    return Ok(serde_json::json!(true));
-                }
-            } else if !["tools.", "view.", "window.", "help."].iter().any(|p| id.starts_with(p))
-                && photocraft_engine::commands::find(id).is_some_and(|c| c.journal)
-            {
-                transform_tool::commit(self);
-            }
-        }
-"""
+def selection_quality(root: Path) -> None:
+    """Spend more pixels on native Select Subject (the classic fallback when the AI can't load).
+    Quick Selection is upstream's rewrite (0.9.0, measured against Photoshop): left as it is."""
+    edit(root, "crates/algo/src/segment/subject.rs", [(
+        "/// Working-resolution budget (pixels).\npub const WORK_PX: usize = 110_000;",
+        "/// The browser keeps the conservative budget; native HORIX resolves finer subject boundaries.\n"
+        "#[cfg(target_arch = \"wasm32\")]\n"
+        "pub const WORK_PX: usize = 110_000;\n"
+        "#[cfg(not(target_arch = \"wasm32\"))]\n"
+        "pub const WORK_PX: usize = 220_000;",
+    )])
+
 
 CRASH_SCRIPT = """  <script>
     // SG - PS: if the app stops (an internal error or the browser running out of memory), say so
@@ -1663,46 +1489,9 @@ CRASH_SCRIPT = """  <script>
 """
 
 
-def selection_quality(root: Path) -> None:
-    """Spend more pixels on native selections and refine Quick Selection edges by default."""
-    edit(root, "crates/algo/src/segment/quick.rs", [
-        (
-            "/// Default working-resolution budget (pixels) for a stroke.\npub const WORK_PX: usize = 160_000;",
-            "/// Keep browser work bounded, while native HORIX uses a denser edge map for cleaner selections.\n"
-            "#[cfg(target_arch = \"wasm32\")]\n"
-            "pub const WORK_PX: usize = 160_000;\n"
-            "#[cfg(not(target_arch = \"wasm32\"))]\n"
-            "pub const WORK_PX: usize = 280_000;",
-        ),
-        (
-            "Raster-scan approximation (two forward/backward sweeps,",
-            "Raster-scan approximation (three forward/backward sweeps,",
-        ),
-        ("    for _ in 0..2 {", "    for _ in 0..3 {"),
-    ])
-    edit(root, "crates/algo/src/segment/subject.rs", [(
-        "/// Working-resolution budget (pixels).\npub const WORK_PX: usize = 110_000;",
-        "/// The browser keeps the conservative budget; native HORIX resolves finer subject boundaries.\n"
-        "#[cfg(target_arch = \"wasm32\")]\n"
-        "pub const WORK_PX: usize = 110_000;\n"
-        "#[cfg(not(target_arch = \"wasm32\"))]\n"
-        "pub const WORK_PX: usize = 220_000;",
-    )])
-    edit(root, "crates/ui-egui/src/state.rs", [("            enhance_edge: false,", "            enhance_edge: true,")])
-
-
 def stability(root: Path) -> None:
-    """Free Transform never stays pending behind other edits; crash safety on the web and desktop."""
-    edit(root, "crates/ui-egui/src/lib.rs", [(
-        "        let suppress_events = self.automation_input && self.session.prefs().script_events.enabled;",
-        TRANSFORM_GUARD + "        let suppress_events = self.automation_input && self.session.prefs().script_events.enabled;",
-    )])
-    edit(root, "crates/ui-egui/src/menus.rs", [(
-        '        "select.transformSelection" => app.ui.transform.is_none() && app.session.is_enabled("select.transformSelection"),',
-        '        "select.transformSelection" => app.ui.transform.is_none() && app.session.is_enabled("select.transformSelection"),\n'
-        '        // SG - PS: Undo cancels an open Free Transform even with no history yet (see `run`).\n'
-        '        "edit.undo" if app.ui.transform.is_some() => true,',
-    )])
+    """Crash safety on the web and desktop. (Upstream 0.9 commits an open Free Transform before other
+    edits and deletes the layer on Delete, which HORIX used to patch in here.)"""
     edit(root, "crates/engine/src/prefs.rs", [
         # The browser has at most 4 GiB for the app: History must trim itself well before that.
         ("""    pub fn history_budget_bytes(&self) -> usize {
@@ -1718,17 +1507,6 @@ def stability(root: Path) -> None:
         ("            autosave_minutes: 10,", "            autosave_minutes: 3,"),
     ])
     edit(root, "apps/photocraft-web/index.html", [("</body>", CRASH_SCRIPT.replace("__WHATSAPP__", WHATSAPP) + "</body>")])
-    # Delete / Backspace with no selection deletes the active layer(s), as in Photoshop; with a
-    # selection it still clears the selected pixels. Edit > Clear in the menu is unchanged.
-    edit(root, "crates/ui-egui/src/shortcut_dispatch.rs", [(
-        "pub fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str) {\n",
-        "pub fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str) {\n"
-        "    let id = if id == \"edit.clear\" && app.ui.transform.is_none() && app.session.active().is_some_and(|d| d.doc.selection.is_none()) {\n"
-        "        \"layer.delete\"\n"
-        "    } else {\n"
-        "        id\n"
-        "    };\n",
-    )])
 
 
 def apply_patches(root: Path) -> None:
@@ -1766,12 +1544,10 @@ def main() -> None:
     web(root)
     web_page_behaviour(root)
     device_fonts(root)
-    font_warmup(root)
     n = rename_everywhere(root)
     drop_old_translations(root)
     desktop(root)
     web_place(root)
-    proportional_edges(root)
     selection_quality(root)
     stability(root)
     apply_patches(root)
