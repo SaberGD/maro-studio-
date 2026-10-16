@@ -10,3 +10,7 @@ coverage/
 vendor/
 .sgps-build/
 deploy/sg-ps/*.zip
+.horix-build/
+deploy/horix-vectors/*.zip
+deploy/horix-light/*.zip
+__pycache__/

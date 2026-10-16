@@ -8,6 +8,16 @@
 
 [PhotoCraft](https://github.com/storytold/photocraft) محرر صور مفتوح المصدر (MIT OR Apache-2.0) بيشتغل في المتصفح (WebAssembly)، وكل فعل فيه عبارة عن command من registry واحد (500+ أمر) متاح من CLI وJSON-lines server وMCP. ده بالظبط اللي محتاجينه علشان مارو يتحكم في الأداة. VectorCraft وEffectCraft هييجوا بعد ما تجربة الصور تثبت (Phase 5 و6).
 
+## عيلة HORIX
+
+| البرنامج | بديل | مبني على | المكان |
+|---|---|---|---|
+| HORIX | Photoshop | PhotoCraft 0.3.0 | [`apps/sg-ps/`](apps/sg-ps/README.md) |
+| Horix Vectors | Illustrator | VectorCraft 0.11.0 | [`apps/horix-vectors/`](apps/horix-vectors/README.md) |
+| Horix Light | Lightroom | LightCraft 0.8.0 | [`apps/horix-light/`](apps/horix-light/README.md) |
+
+كلهم بنفس الطريقة: الكود الأصلي محفوظ في `archive/`، و`rebrand.py` بيغيّر الاسم واللوجو والألوان والروابط وقت البناء. الأدوات المشتركة بين Horix Vectors وHorix Light في `apps/horix-common/`.
+
 ## التشغيل المحلي
 
 المتطلبات: Node.js 20+ (مُجرّب على 22) و npm 10.
