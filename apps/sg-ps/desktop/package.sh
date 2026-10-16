@@ -97,6 +97,10 @@ case "$OS" in
     ZIP="$OUT/HORIX-$VERSION-windows-x64-portable.zip"
     rm -f "$ZIP"
     (cd "$WORK/pkg" && 7z a -tzip -mx=9 "$ZIP" HORIX >/dev/null)
+    # HORIX Launcher's package: the same files at the top of the zip (it runs horix.exe from there).
+    LZIP="$OUT/horix-$VERSION-windows-x64-portable.zip"
+    rm -f "$LZIP"
+    (cd "$PKG" && 7z a -tzip -mx=9 "$LZIP" . >/dev/null)
     "$PY" -I - "$ZIP" <<'PYEOF'
 import sys
 import zipfile
@@ -161,6 +165,18 @@ PYEOF
     ZIP="$OUT/HORIX-$VERSION-macos-universal.zip"
     rm -f "$ZIP"
     (cd "$WORK/pkg" && ditto -c -k --keepParent "HORIX.app" "$ZIP")
+    # HORIX Launcher's package: a disk image with HORIX.app (and an Applications shortcut).
+    STAGE="$WORK/pkg/dmg"
+    rm -rf "$STAGE" && mkdir -p "$STAGE"
+    ditto "$WORK/pkg/HORIX.app" "$STAGE/HORIX.app"
+    ln -s /Applications "$STAGE/Applications"
+    DMG="$OUT/horix-$VERSION-macos-universal.dmg"
+    rm -f "$DMG"
+    for attempt in 1 2 3; do
+      hdiutil create -quiet -fs HFS+ -format UDZO -volname "HORIX $VERSION" -srcfolder "$STAGE" "$DMG" && break
+      sleep $((attempt * 5))
+    done
+    [ -f "$DMG" ] || { echo "error: hdiutil could not build $DMG" >&2; exit 1; }
     ;;
   *)
     echo "usage: package.sh windows|macos" >&2

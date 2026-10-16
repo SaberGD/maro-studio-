@@ -67,18 +67,40 @@ done < <(find "$SITE/$FOLDER" -type f ! -path "$SITE/$FOLDER/index.html" -print0
 upload "$SITE/$FOLDER/index.html" "${prefix}index.html"
 
 # The page must serve this build, and the WebAssembly must arrive whole as application/wasm.
+# Up to 10 minutes: a new subdomain's DNS and certificate can take a few minutes.
 ok=""
-for _ in $(seq 1 24); do
+for _ in $(seq 1 120); do
   if [[ "$(curl -fsS -A "$UA" -H "Cache-Control: no-cache" "https://$DOMAIN/?v=$RANDOM" 2>/dev/null || true)" == *"$BUILD"* ]]; then ok=1; break; fi
   sleep 5
 done
-[ -n "$ok" ] || { echo "error: https://$DOMAIN/ did not serve build $BUILD after 2 minutes" >&2; exit 1; }
+[ -n "$ok" ] || { echo "error: https://$DOMAIN/ did not serve build $BUILD after 10 minutes" >&2; exit 1; }
+# Every kind of browser must get the WebAssembly intact: fetch it as a Brotli browser, a gzip-only
+# one and one without compression, decode, and compare with the build. If the host mangles the
+# pre-compressed copies, put back .htaccess without them (bigger downloads, but working) and fail.
+wasm_ok() {
+  local tmp ce ct
+  tmp="$(mktemp -d)"
+  curl -fsS -A "$UA" -H "Accept-Encoding: $2" -D "$tmp/h" -o "$tmp/body" "https://$DOMAIN/$1?v=$RANDOM" || return 1
+  ce="$(tr -d '\r' < "$tmp/h" | awk 'tolower($1)=="content-encoding:" {print tolower($2)}' | tail -1)"
+  ct="$(tr -d '\r' < "$tmp/h" | awk 'tolower($1)=="content-type:" {print tolower($2)}' | tail -1)"
+  case "$ce" in
+    br) brotli -d -c "$tmp/body" > "$tmp/wasm" || return 1 ;;
+    gzip) gzip -d -c "$tmp/body" > "$tmp/wasm" || return 1 ;;
+    ""|identity) cp "$tmp/body" "$tmp/wasm" ;;
+    *) return 1 ;;
+  esac
+  [[ "$ct" == application/wasm* ]] || return 1
+  cmp -s "$tmp/wasm" "$SITE/$FOLDER/$1" || return 1
+  echo "  wasm ok for Accept-Encoding '$2': ${ce:-none}, $(size "$tmp/body") bytes on the wire"
+}
 for w in $(cd "$SITE/$FOLDER" && find . -name '*.wasm' | sed 's#^\./##'); do
-  tmp="$(mktemp)"
-  ct="$(curl -fsS -A "$UA" -H "Accept-Encoding: identity" -o "$tmp" -w '%{content_type}' "https://$DOMAIN/$w?v=$RANDOM")"
-  [[ "$ct" == application/wasm* ]] || { echo "error: $w is served as '$ct', not application/wasm" >&2; exit 1; }
-  cmp -s "$tmp" "$SITE/$FOLDER/$w" || { echo "error: $w on the server differs from the build" >&2; exit 1; }
-  rm -f "$tmp"
-  echo "  wasm ok: $w"
+  for enc in "gzip, deflate, br" "gzip" "identity"; do
+    if ! wasm_ok "$w" "$enc"; then
+      echo "error: $w is not served correctly for Accept-Encoding '$enc'; restoring .htaccess without pre-compression" >&2
+      sed '/^# >>> compressed-wasm/,/^# <<< compressed-wasm/d' "$SITE/$FOLDER/.htaccess" > "$SITE/htaccess-plain"
+      upload "$SITE/htaccess-plain" "${prefix}.htaccess"
+      exit 1
+    fi
+  done
 done
 echo "live: https://$DOMAIN/ (build $BUILD)"

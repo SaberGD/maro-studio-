@@ -1,0 +1,27 @@
+# >>> compressed-wasm (deploy.sh removes this block if the host does not serve it correctly)
+<IfModule mod_rewrite.c>
+  RewriteCond %{HTTP:Accept-Encoding} \bbr\b
+  RewriteCond %{REQUEST_FILENAME}.br -f
+  RewriteRule ^(.+\.wasm)$ $1.br [L,E=no-gzip:1,E=HORIX_ENC:br]
+  RewriteCond %{HTTP:Accept-Encoding} \bgzip\b
+  RewriteCond %{REQUEST_FILENAME}.gz -f
+  RewriteRule ^(.+\.wasm)$ $1.gz [L,E=no-gzip:1,E=HORIX_ENC:gzip]
+</IfModule>
+<FilesMatch "\.wasm\.br$">
+  ForceType application/wasm
+  <IfModule mod_headers.c>
+    Header set Content-Encoding br
+  </IfModule>
+</FilesMatch>
+<FilesMatch "\.wasm\.gz$">
+  ForceType application/wasm
+  <IfModule mod_headers.c>
+    Header set Content-Encoding gzip
+  </IfModule>
+</FilesMatch>
+<IfModule mod_headers.c>
+  <FilesMatch "\.wasm(\.br|\.gz)?$">
+    Header append Vary Accept-Encoding
+  </FilesMatch>
+</IfModule>
+# <<< compressed-wasm

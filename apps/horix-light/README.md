@@ -26,17 +26,16 @@
 
 ## البناء
 
-المتطلبات: Rust ≥ 1.95، والـtarget بتاع wasm، و`wasm-bindgen-cli` بنفس الإصدار اللي في `Cargo.lock`، وPython 3 ومعاه Pillow، و`zip`.
+المتطلبات: Rust ≥ 1.95، والـtarget بتاع wasm، و`wasm-bindgen-cli` بنفس الإصدار اللي في `Cargo.lock`، وPython 3، و`zip`.
 
 ```sh
 rustup target add wasm32-unknown-unknown
-pip install pillow
 apps/horix-light/build.sh        # يطلع deploy/horix-light/horix-light-<version>-web.zip
 ```
 
 الـzip فيه فولدر `horix-light/`، وده موقع static يشتغل على أي دومين وأي مسار (فيه `.htaccess` لـApache/Hostinger).
 
-`.github/workflows/build-horix-family.yml` بيبني النسخة دي مع Horix Vectors على GitHub مع أي تعديل، وبيحفظ الـzip كـartifact. وعلى الفرع الافتراضي بينشرها على الدومين بتاعها (`apps/horix-common/deploy-static.sh`، بنفس secret `HOSTINGER_API_TOKEN` بتاع HORIX).
+`.github/workflows/build-horix-family.yml` بيبني النسخة دي مع Horix Vectors على GitHub مع أي تعديل، وبيحفظ الـzip كـartifact. وعلى الفرع الافتراضي بينشرها على الدومين بتاعها (`apps/horix-common/deploy-static.sh`، بنفس secret `HOSTINGER_API_TOKEN` بتاع HORIX). أول نشر بيعمل الـsubdomain نفسه على Hostinger (`apps/horix-common/ensure-subdomain.sh`) جوه فولدر في `horix.live`، ويطلب له شهادة SSL.
 
 ## التحديث لإصدار جديد
 
