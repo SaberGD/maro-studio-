@@ -1326,12 +1326,26 @@ def rename_everywhere(root: Path) -> int:
 
 def desktop(root: Path) -> None:
     """The native desktop app (Windows/macOS): HORIX icons, Saber names, own data folder."""
-    icons = HERE / "assets" / "desktop"
-    app_icon = root / "assets/app-icon"
-    shutil.copyfile(icons / "horix-1024.png", app_icon / "photocraft-1024.png")
-    shutil.copyfile(icons / "horix.ico", app_icon / "photocraft.ico")
-    shutil.copyfile(icons / "horix.icns", app_icon / "photocraft.icns")
-    shutil.copyfile(icons / "horix-256.png", app_icon / "hicolor/256x256/apps/ai.storyteller.photocraft.png")
+    # Every upstream app icon becomes HORIX's, by kind and size (assets/app-icon/, made from
+    # assets/desktop/horix-1024.png): the title-bar mark (brand.rs), installers, the window icon.
+    icons = HERE / "assets" / "app-icon"
+    replaced = 0
+    for f in sorted((root / "assets/app-icon").rglob("*")):
+        size = re.search(r"(\d+)x\1|-(\d+)\.png$", f.as_posix())
+        if f.suffix == ".png" and size:
+            src = icons / f"icon-{size.group(1) or size.group(2)}.png"
+        elif f.suffix in (".ico", ".icns"):
+            src = icons / f"icon{f.suffix}"
+        elif f.suffix == ".svg":
+            src = icons / "icon.svg"
+        else:
+            continue
+        if not src.is_file():
+            sys.exit(f"rebrand: no HORIX icon for {f.relative_to(root)}")
+        shutil.copyfile(src, f)
+        replaced += 1
+    if replaced < 5:
+        sys.exit(f"rebrand: assets/app-icon: only {replaced} icons replaced")
     edit(root, "apps/photocraft/build.rs", [
         ('.set("CompanyName", "Learning Machines LLC")', '.set("CompanyName", "Saber Group Academy")'),
         ('.set("OriginalFilename", "photocraft.exe")', '.set("OriginalFilename", "HORIX.exe")'),
