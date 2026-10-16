@@ -54,7 +54,11 @@ def links(root: Path) -> None:
         ('("app.website", "LightCraft Website"', '("app.website", "Download the Desktop App (Windows / Mac)"'),
     ])
     hx.edit(root, "crates/ui-egui/src/panels/dialogs.rs", [
-        ('"MIT OR Apache-2.0. Fonts: {} (OFL). Icons: original."', '"By Saber Group. Built on open-source software (MIT OR Apache-2.0). Fonts: {} (OFL)."'),
+        # tr_format! only takes the format strings its catalog knows, so the licence line stays
+        # and the Saber Group line goes above it.
+        ('                            ui.label(crate::i18n::tr_format!(\n                                "MIT OR Apache-2.0. Fonts: {} (OFL). Icons: original.",',
+         '                            ui.label(crate::i18n::tr("By Saber Group. Built on open-source software."));\n'
+         '                            ui.label(crate::i18n::tr_format!(\n                                "MIT OR Apache-2.0. Fonts: {} (OFL). Icons: original.",'),
     ])
 
 
