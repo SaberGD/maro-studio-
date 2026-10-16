@@ -33,6 +33,13 @@ if [ -f "$SITE/index.html.br" ]; then
   if command -v brotli >/dev/null 2>&1; then brotli -q 11 -f -k "$SITE/index.html"; else rm -f "$SITE/index.html.br"; fi
 fi
 cp "$WORK/src/packaging/web/.htaccess" "$WORK/src/packaging/web/_headers" "$SITE/"
+# Pre-compressed WebAssembly (the host does not compress it on the fly), served by .htaccess to
+# browsers that accept it; deploy-static.sh checks each encoding and drops the block if needed.
+for w in "$SITE"/*.wasm; do
+  [ -f "$w.gz" ] || gzip -9 -k -f "$w"
+  if [ ! -f "$w.br" ] && command -v brotli >/dev/null 2>&1; then brotli -q 11 -f -k "$w"; fi
+done
+{ echo; cat "$HERE/../horix-common/htaccess-compressed-wasm"; } >> "$SITE/.htaccess"
 # Licence obligations: the licence texts and the third-party notices, as plain files.
 cp "$WORK/src/LICENSE-MIT" "$WORK/src/LICENSE-APACHE" "$WORK/src/NOTICE" "$SITE/"
 cp "$HERE/assets/app-icon/favicon.svg" "$SITE/horix-vectors-icon.svg"
