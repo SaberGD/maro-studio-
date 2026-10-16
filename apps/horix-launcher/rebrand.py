@@ -37,7 +37,7 @@ APPS = [
     ("horix", "HORIX", "Image editing with AI", [[0xd6, 0x3c, 0x32], [0xb0, 0x2e, 0x25], [0xff, 0x8a, 0x70]], "https://horix.live", "horix-v"),
     ("horix-vectors", "Horix Vectors", "Vector illustration", [[0xea, 0x99, 0x3f], [0x9a, 0x5a, 0x12], [0xf2, 0xb3, 0x6e]],
      "https://vectors.horix.live", "horix-vectors-v"),
-    ("horix-light", "Horix Light", "Photo library and raw development", [[0xf3, 0xef, 0xe8], [0x6a, 0x64, 0x5e], [0xf3, 0xef, 0xe8]],
+    ("horix-light", "Horix Light", "Photo library and raw development", [[0x4a, 0x44, 0x40], [0x4a, 0x44, 0x40], [0xd8, 0xd0, 0xc6]],
      "https://light.horix.live", "horix-light-v"),
 ]
 
@@ -166,6 +166,9 @@ def names(root: Path) -> None:
         ('Self::ArtCraftApi => "ArtCraft API"', 'Self::ArtCraftApi => "HORIX feed"'),
         ('Self::Feed => "ArtCraft"', 'Self::Feed => "HORIX"'),
         ("Install and update the Craft App Suite", "Install and update the HORIX apps"),
+        ("Craft App Suite", "HORIX Apps"),
+        ("Craft Apps", "HORIX apps"),
+        ("Craft App", "HORIX app"),
     ])
     hx.edit(root, "crates/core/src/feed.rs", [
         ('pub const FEED_URL: &str = "https://api.storyteller.ai/v1/craft_apps/release_info";', f'pub const FEED_URL: &str = "{FEED_URL}";'),
