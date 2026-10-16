@@ -1,0 +1,175 @@
+# HORIX Launcher (apps/horix-launcher, rebranded craft-launcher).
+# - Web: on every change, builds the browser launcher (lists the HORIX apps with the right download
+#   for the visitor) and publishes it at https://horix.si/launcher/.
+# - Desktop: when apps/horix-launcher/VERSION changes (or by hand), builds the Windows portable zip
+#   and the macOS DMG, publishes them as release horix-launcher-v<VERSION> with SHA256SUMS.txt
+#   (the names and checksums the launcher reads to update itself), then refreshes the feed.
+# Needs the repository secret HOSTINGER_API_TOKEN.
+name: HORIX Launcher
+
+on:
+  workflow_dispatch:
+    inputs:
+      desktop:
+        description: "Build and release the desktop launcher too"
+        type: boolean
+        default: true
+  push:
+    paths:
+      - "apps/horix-launcher/**"
+      - "apps/horix-common/**"
+      - "archive/craft-launcher/**"
+      - ".github/workflows/horix-launcher.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: horix-launcher-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      desktop: ${{ steps.c.outputs.desktop }}
+      version: ${{ steps.c.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: c
+        run: |
+          v="$(tr -d '[:space:]' < apps/horix-launcher/VERSION)"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          desktop=false
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            desktop="${{ inputs.desktop }}"
+          elif [ "${{ github.ref_name }}" = "${{ github.event.repository.default_branch }}" ] \
+            && ! git diff --quiet HEAD~1 HEAD -- apps/horix-launcher/VERSION 2>/dev/null; then
+            desktop=true
+          fi
+          # A version that is already released is never rebuilt over.
+          if [ "$desktop" = true ] && gh release view "horix-launcher-v$v" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::notice::horix-launcher-v$v is already released; bump apps/horix-launcher/VERSION for a new one"
+            desktop=false
+          fi
+          echo "desktop=$desktop" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.horix-target-launcher-web
+      HORIX_BUILD_ID: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust with the WebAssembly target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+      - name: trunk and brotli
+        run: |
+          curl -fsSL https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-x86_64-unknown-linux-gnu.tar.gz | sudo tar -xz -C /usr/local/bin trunk
+          command -v brotli >/dev/null || sudo apt-get install -y --no-install-recommends brotli
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .horix-target-launcher-web
+          key: horix-launcher-web-${{ hashFiles('archive/craft-launcher/*.tar.gz') }}-${{ hashFiles('apps/horix-launcher/**', 'apps/horix-common/**') }}
+          restore-keys: horix-launcher-web-${{ hashFiles('archive/craft-launcher/*.tar.gz') }}-
+      - name: Build
+        run: apps/horix-launcher/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: horix-launcher-web
+          path: deploy/horix-launcher/*.zip
+          retention-days: 30
+      - name: Publish at horix.si/launcher/
+        if: github.ref_name == github.event.repository.default_branch
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+          HOSTINGER_USERNAME: ${{ vars.HOSTINGER_USERNAME || 'u570689065' }}
+          UPLOAD_DOMAIN: ${{ vars.HORIX_DOWNLOAD_DOMAIN || 'horix.si' }}
+          UPLOAD_DIR: launcher
+        run: |
+          zip="$(ls -t deploy/horix-launcher/*.zip | head -1)"
+          apps/horix-common/deploy-static.sh "$zip" horix-launcher "$UPLOAD_DOMAIN/launcher"
+
+  desktop:
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows
+          - os: macos-latest
+            target: macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.horix-target-launcher
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          if [ "${{ matrix.target }}" = macos ]; then rustup target add aarch64-apple-darwin x86_64-apple-darwin; fi
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .horix-target-launcher
+          key: horix-launcher-${{ matrix.target }}-${{ hashFiles('archive/craft-launcher/*.tar.gz') }}-${{ hashFiles('apps/horix-launcher/**', 'apps/horix-common/**') }}
+          restore-keys: horix-launcher-${{ matrix.target }}-${{ hashFiles('archive/craft-launcher/*.tar.gz') }}-
+      - name: Build and package
+        run: apps/horix-launcher/desktop/package.sh ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: horix-launcher-${{ matrix.target }}
+          path: deploy/horix-launcher-desktop/*
+          retention-days: 30
+
+  release:
+    needs: [changes, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: horix-launcher-*
+          path: dist
+          merge-multiple: true
+      - name: Publish release horix-launcher-v${{ needs.changes.outputs.version }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.changes.outputs.version }}
+        run: |
+          cd dist
+          rm -f *-web.zip
+          ls -l
+          sha256sum horix-launcher-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release create "horix-launcher-v$V" horix-launcher-* SHA256SUMS.txt \
+            --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "HORIX Launcher $V" \
+            --notes "HORIX Launcher: install, update and open HORIX, Horix Vectors and Horix Light.
+
+          Windows: download horix-launcher-$V-windows-x64-portable.zip, unzip it, and run horix-launcher.exe. On the first run Windows may show \"Windows protected your PC\": click More info > Run anyway.
+
+          macOS (Apple Silicon and Intel): open horix-launcher-$V-macos-universal.dmg and drag HORIX Launcher into Applications. On the first run: System Settings > Privacy & Security > Open Anyway."
+
+  feed:
+    needs: release
+    uses: ./.github/workflows/horix-feed.yml
+    secrets: inherit

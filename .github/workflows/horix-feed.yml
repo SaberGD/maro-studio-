@@ -1,0 +1,52 @@
+# Publishes HORIX Launcher's release feed, https://horix.si/launcher/release_info.json: the newest
+# release of every HORIX app (tags horix-v*, horix-vectors-v*, horix-light-v*, horix-launcher-v*),
+# read from this repository's GitHub releases by apps/horix-launcher/feed/make_feed.py. Launchers
+# read it to learn about updates at once, without GitHub's request limit. It runs after each
+# release workflow, every 6 hours (the launcher trusts an entry for 24), and by hand.
+# Needs the repository secret HOSTINGER_API_TOKEN.
+name: HORIX Launcher feed
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  schedule:
+    - cron: "17 */6 * * *"
+  push:
+    branches: [claude/nice-shannon-7w6xo5]
+    paths:
+      - "apps/horix-launcher/feed/**"
+      - ".github/workflows/horix-feed.yml"
+
+concurrency:
+  group: horix-feed
+  cancel-in-progress: false
+
+jobs:
+  feed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps
+
+      - name: Build release_info.json
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -I apps/horix-launcher/feed/make_feed.py out/release_info.json
+
+      - name: Publish on horix.si
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+          HOSTINGER_USERNAME: ${{ vars.HOSTINGER_USERNAME || 'u570689065' }}
+          DOMAIN: ${{ vars.HORIX_DOWNLOAD_DOMAIN || 'horix.si' }}
+        run: |
+          apps/horix-common/upload-file.sh out/release_info.json "$DOMAIN" launcher/release_info.json
+          # The live copy must be the one just built.
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+          for _ in $(seq 1 12); do
+            if curl -fsS -A "$UA" -H "Cache-Control: no-cache" "https://$DOMAIN/launcher/release_info.json?v=$RANDOM" -o live.json && cmp -s live.json out/release_info.json; then
+              echo "live: https://$DOMAIN/launcher/release_info.json"; exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::https://$DOMAIN/launcher/release_info.json is not the feed just published"; exit 1

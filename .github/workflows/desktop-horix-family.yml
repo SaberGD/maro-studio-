@@ -1,0 +1,126 @@
+# Desktop builds of Horix Vectors and Horix Light (Windows portable zip, macOS DMG), released as
+# horix-vectors-v<v> / horix-light-v<v> with SHA256SUMS.txt: the names HORIX Launcher installs and
+# updates from. <v> is apps/horix-<app>/VERSION plus the run number (0.1.12). Runs when a VERSION
+# file changes on the default branch, or by hand (Actions > Desktop Horix Vectors and Horix Light).
+name: Desktop Horix Vectors and Horix Light
+
+on:
+  workflow_dispatch:
+    inputs:
+      apps:
+        description: "Which apps"
+        type: choice
+        options: [both, vectors, light]
+        default: both
+  push:
+    branches: [claude/nice-shannon-7w6xo5]
+    paths:
+      - "apps/horix-vectors/VERSION"
+      - "apps/horix-light/VERSION"
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.p.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: p
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            case "${{ inputs.apps }}" in both) apps='["vectors","light"]' ;; *) apps='["${{ inputs.apps }}"]' ;; esac
+          else
+            list=()
+            for a in vectors light; do
+              git diff --quiet HEAD~1 HEAD -- "apps/horix-$a/VERSION" 2>/dev/null || list+=("\"$a\"")
+            done
+            apps="[$(IFS=,; echo "${list[*]}")]"
+          fi
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+          echo "apps: $apps"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.apps != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.plan.outputs.apps) }}
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      HORIX_BUILD_NUMBER: ${{ github.run_number }}
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.horix-target-${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          if [ "$RUNNER_OS" = macOS ]; then rustup target add aarch64-apple-darwin x86_64-apple-darwin; fi
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .horix-target-${{ matrix.app }}
+          key: horix-desktop-${{ matrix.app }}-${{ runner.os }}-${{ hashFiles(format('apps/horix-{0}/**', matrix.app), 'apps/horix-common/**') }}
+          restore-keys: horix-desktop-${{ matrix.app }}-${{ runner.os }}-
+      - name: Build and package
+        run: apps/horix-common/desktop-package.sh ${{ matrix.app }} ${{ runner.os == 'macOS' && 'macos' || 'windows' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: horix-${{ matrix.app }}-desktop-${{ runner.os }}
+          path: deploy/horix-${{ matrix.app }}-desktop/*
+          retention-days: 30
+
+  release:
+    needs: [plan, build]
+    if: ${{ !cancelled() && needs.plan.outputs.apps != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.plan.outputs.apps) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: horix-${{ matrix.app }}-desktop-*
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          V="$(tr -d '[:space:]' < apps/horix-${{ matrix.app }}/VERSION).${{ github.run_number }}"
+          NAME="$([ ${{ matrix.app }} = vectors ] && echo 'Horix Vectors' || echo 'Horix Light')"
+          cd dist
+          files=(*.zip *.dmg)
+          [ ${#files[@]} -gt 0 ] || { echo "::error::nothing was built"; exit 1; }
+          sha256sum -- "${files[@]}" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release create "horix-${{ matrix.app }}-v$V" "${files[@]}" SHA256SUMS.txt \
+            --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "$NAME $V" \
+            --notes "$NAME $V for Windows and macOS. Easiest: install it from HORIX Launcher, which keeps it up to date.
+
+          Windows: unzip horix-${{ matrix.app }}-$V-windows-x64-portable.zip and run horix-${{ matrix.app }}.exe (More info > Run anyway on the first run).
+          macOS: open the .dmg and drag $NAME into Applications (System Settings > Privacy & Security > Open Anyway on the first run)."
+
+  feed:
+    needs: release
+    if: ${{ !cancelled() }}
+    uses: ./.github/workflows/horix-feed.yml
+    secrets: inherit
