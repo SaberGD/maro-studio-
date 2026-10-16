@@ -31,6 +31,8 @@ jobs:
       run:
         shell: bash
     env:
+      # HORIX's version is apps/sg-ps/VERSION plus this build number (0.1.57).
+      HORIX_BUILD_NUMBER: ${{ github.run_number }}
       CARGO_TARGET_DIR: ${{ github.workspace }}/.sgps-target
       SGPS_WORK: ${{ github.workspace }}/.sgps-build
     steps:
@@ -67,7 +69,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: sg-ps-desktop-${{ matrix.target }}
-          path: deploy/sg-ps-desktop/*.zip
+          path: |
+            deploy/sg-ps-desktop/*.zip
+            deploy/sg-ps-desktop/*.dmg
           retention-days: 30
 
   release:
@@ -86,11 +90,11 @@ jobs:
           path: dist
           merge-multiple: true
 
+      # horix-v<version>: the tag HORIX Launcher reads (apps/horix-launcher/feed/make_feed.py).
       - name: Release tag
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          case "$TAG" in desktop-v*) ;; *) TAG="desktop-build-${{ github.run_number }}" ;; esac
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          VERSION="$(tr -d '[:space:]' < apps/sg-ps/VERSION).${{ github.run_number }}"
+          echo "TAG=horix-v$VERSION" >> "$GITHUB_ENV"
 
       # The public download page (sabergroupacademy.com/downloads/) serves these files.
       - name: Publish on engsaber.space
@@ -105,7 +109,12 @@ jobs:
         run: |
           ls -l dist
           ls dist/*.zip >/dev/null 2>&1 || { echo "::error::no desktop zip was built"; exit 1; }
-          gh release create "$TAG" dist/*.zip \
+          # Checksums of every file: HORIX Launcher verifies its downloads against them.
+          # (A platform that failed to build is simply absent: nullglob drops its pattern.)
+          shopt -s nullglob
+          (cd dist && sha256sum -- *.zip *.dmg > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          files=(dist/*.zip dist/*.dmg dist/SHA256SUMS.txt)
+          gh release create "$TAG" "${files[@]}" \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
             --title "HORIX Desktop ($TAG)" \
@@ -114,3 +123,9 @@ jobs:
           Windows: download HORIX-...-windows-x64-portable.zip, unzip it, and run HORIX.exe. On the first run Windows may show \"Windows protected your PC\": click More info > Run anyway.
 
           macOS (Apple Silicon and Intel): download HORIX-...-macos-universal.zip, unzip it, and drag \"HORIX\" into Applications. On the first run macOS says it could not verify the app (it is not notarized yet): click Done, then System Settings > Privacy & Security > Open Anyway next to HORIX, and enter your password."
+
+  # HORIX Launcher learns about the new release at once.
+  feed:
+    needs: release
+    uses: ./.github/workflows/horix-feed.yml
+    secrets: inherit
