@@ -141,6 +141,44 @@ def web(root: Path) -> None:
     ])
 
 
+def web_prefs(root: Path) -> None:
+    """Preferences in the browser: upstream's web build keeps none, so Brightness (and every other
+    preference) went back to the default on the next visit. They now live in localStorage, read at
+    start and written whenever they change, as the desktop app keeps its preferences file."""
+    hx.edit(root, "apps/vectorcraft-web/Cargo.toml", [("log = { workspace = true }\n", "log = { workspace = true }\nserde_json = { workspace = true }\n")])
+    hx.edit(root, "Cargo.lock", [(' "rfd",\n "vectorcraft-engine",\n "vectorcraft-format",\n "vectorcraft-text",\n "vectorcraft-ui-egui",\n "wasm-bindgen",',
+                                  ' "rfd",\n "serde_json",\n "vectorcraft-engine",\n "vectorcraft-format",\n "vectorcraft-text",\n "vectorcraft-ui-egui",\n "wasm-bindgen",')])
+    hx.edit(root, "apps/vectorcraft-web/src/web.rs", [
+        ("                    None => VectorcraftApp::new(Session::new(), services),\n",
+         "                    None => {\n                        let mut app = VectorcraftApp::new(Session::new(), services);\n"
+         "                        restore_prefs(&mut app);\n                        app\n                    }\n"),
+        ("                Ok(Box::new(WebShell { app: Some(app), host, canvas: page, loss }))",
+         "                let saved_prefs = app.session.prefs.clone();\n"
+         "                Ok(Box::new(WebShell { app: Some(app), host, canvas: page, loss, saved_prefs }))"),
+        ("    canvas: web_sys::HtmlCanvasElement,\n    loss: GraphicsLoss,\n}\n",
+         "    canvas: web_sys::HtmlCanvasElement,\n    loss: GraphicsLoss,\n"
+         "    /// The preferences last written to the browser's storage.\n    saved_prefs: vectorcraft_engine::Prefs,\n}\n"),
+        ("        app.logic(ctx);\n    }\n",
+         "        app.logic(ctx);\n"
+         "        if app.session.prefs != self.saved_prefs {\n"
+         "            self.saved_prefs = app.session.prefs.clone();\n"
+         "            if let Ok(s) = local_storage() {\n"
+         "                // Best effort, as the desktop preferences file: a full or blocked storage keeps the old copy.\n"
+         "                let _ = s.set_item(PREFS_KEY, &app.session.prefs.to_json().to_string());\n"
+         "            }\n        }\n    }\n"),
+        ('const RECOVERY_PREFIX: &str = "vectorcraft-recovery/";\n',
+         'const RECOVERY_PREFIX: &str = "vectorcraft-recovery/";\n'
+         'const PREFS_KEY: &str = "horix-vectors/prefs";\n\n'
+         "/// The preferences saved by an earlier visit, applied the way the desktop app applies its file.\n"
+         "fn restore_prefs(app: &mut VectorcraftApp) {\n"
+         "    let saved = local_storage().ok().and_then(|s| s.get_item(PREFS_KEY).ok().flatten());\n"
+         "    if let Some(prefs) = saved.and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()) {\n"
+         "        app.ui.engine_prefs = prefs;\n"
+         "        vectorcraft_ui_egui::prefs_dialog::restore(app);\n"
+         "    }\n}\n"),
+    ])
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -150,6 +188,7 @@ def main() -> None:
     links(root)
     theme(root)
     web(root)
+    web_prefs(root)
     dropped = hx.drop_branded_translations_tsv(root, "crates/ui-egui/src/i18n/*.tsv")
     n = hx.rename(root, CODE + [WEB], "VectorCraft", APP_NAME)
     icons = hx.replace_icons(root, HERE / "assets/app-icon", "assets/app-icon")
