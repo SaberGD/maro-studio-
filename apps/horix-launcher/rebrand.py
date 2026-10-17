@@ -68,6 +68,12 @@ def catalog(root: Path) -> None:
         ("    pub fn website(&self) -> String {\n        format!(\"https://getartcraft.com/apps/{}\", self.id)\n    }",
          f"    pub fn website(&self) -> String {{\n        match self.id {{\n{sites}\n            _ => \"{hx.DOWNLOADS_PAGE}\".into(),\n        }}\n    }}"),
         ('pub const WEBSITE_URL: &str = "https://getartcraft.com";', f'pub const WEBSITE_URL: &str = "{hx.SABER_SITE}";'),
+        # HORIX's Mac app has been com.sabergroup.sgps since 0.1 (its settings and permissions are
+        # keyed to it); the launcher only takes a bundle with the id it expects, so "the disk image
+        # doesn't contain the app" until it expects that one. Vectors and Light keep upstream's scheme.
+        ("    pub fn bundle_id(&self) -> String {\n        format!(\"ai.storyteller.{}\", self.id)\n    }",
+         "    pub fn bundle_id(&self) -> String {\n        if self.id == \"horix\" {\n            return \"com.sabergroup.sgps\".into();\n        }\n"
+         "        format!(\"ai.storyteller.{}\", self.id)\n    }"),
         ('pub const GITHUB_OWNER: &str = "storytold";', 'pub const GITHUB_OWNER: &str = "SaberGD";'),
         ('pub const GITHUB_URL: &str = "https://github.com/storytold";', f'pub const GITHUB_URL: &str = "{hx.WHATSAPP}";'),
         ('pub const DISCORD_URL: &str = "https://discord.gg/artcraft";', f'pub const DISCORD_URL: &str = "{hx.FACEBOOK}";'),

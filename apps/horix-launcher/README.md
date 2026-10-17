@@ -23,7 +23,7 @@
 
 | البرنامج | رقم الإصدار | بيتنشر لما |
 |---|---|---|
-| HORIX Launcher | `apps/horix-launcher/VERSION` (1.0.0) | يتغير الرقم ده (`horix-launcher.yml`) |
+| HORIX Launcher | `apps/horix-launcher/VERSION` (1.0.1) | يتغير الرقم ده (`horix-launcher.yml`) |
 | HORIX | `apps/sg-ps/VERSION` + رقم البناء | يشتغل `desktop-sg-ps.yml` |
 | Horix Vectors / Light | `apps/horix-<app>/VERSION` + رقم البناء | يتغير الرقم أو يشتغل `desktop-horix-family.yml` |
 
