@@ -95,7 +95,7 @@ apps/sg-ps/build.sh                # يطلع deploy/sg-ps/sg-ps-<version>-hosti
 
 ## نسخ الديسكتوب (ويندوز وماك)
 
-`.github/workflows/desktop-sg-ps.yml` بيبني البرنامج على أجهزة ويندوز وماك حقيقية عند GitHub، وبينزّل الملفين في صفحة **Releases** في الريبو:
+`.github/workflows/desktop-sg-ps.yml` بيبني البرنامج على أجهزة ويندوز وماك حقيقية عند GitHub، وبينزّل الملفات في صفحة **Releases** في الريبو. ومن هناك HORIX Launcher بيسطّبها ويحدّثها؛ وصفحة horix.si بتعرض الـLauncher بس (الملفات ما بقتش بتترفع على engsaber.space):
 - **ويندوز:** `HORIX-<version>-windows-x64.zip`. الحزمة النظيفة فيها `HORIX.exe` و`README.txt` فقط. فكّها وشغّل البرنامج من غير تثبيت؛ وضع Portable مدمج في النسخة، وبيعمل `HORIX-Data` جنب البرنامج تلقائيًا لحفظ الإعدادات.
 - **ماك:** `HORIX-<version>-macos-universal.zip` فيه `HORIX.app`، وبيشتغل على أجهزة Apple Silicon وIntel. اسحبه لـApplications.
 

@@ -61,7 +61,7 @@ cp "$HERE/hosting/waitlist.php" "$APP/waitlist.php"
 # HORIX AI selection: MobileSAM (first Quick / Object Selection) and IS-Net fp16 (first Select Subject).
 # -E, not -I: the web model needs onnx from the user site-packages (CI installs it with pip --user).
 python3 -E "$HERE/ai/fetch.py" "$APP/models" web
-# Desktop download page; the zips themselves live on engsaber.space/sgps-downloads/.
+# Download page (horix.si): HORIX Launcher, whose downloads are GitHub Releases.
 DL="$WORK/site/downloads"
 cp -R "$HERE/hosting/download" "$DL"
 "$PYTHON" -c 'import sys; p, b = sys.argv[1:3]; t = open(p, encoding="utf-8").read(); open(p, "w", encoding="utf-8").write(t.replace("<head>", "<head>\n  <meta name=\"horix-build\" content=\"" + b + "\">", 1))' "$DL/index.html" "$BUILD_ID"
