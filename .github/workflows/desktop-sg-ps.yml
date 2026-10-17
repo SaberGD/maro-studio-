@@ -1,6 +1,6 @@
-# Builds the HORIX desktop app for Windows (portable zip) and macOS (universal .app in a zip),
-# publishes both on engsaber.space/sgps-downloads/ (the download page at
-# sabergroupacademy.com/downloads/ links there) and keeps a copy as a GitHub Release. Run it from
+# Builds the HORIX desktop app for Windows (portable zip) and macOS (universal .app in a zip) and
+# publishes them as a GitHub Release, which HORIX Launcher installs from (horix.si offers only the
+# launcher). Run it from
 # the Actions tab (Run workflow), or push a tag named desktop-v* (for example desktop-v0.3.0).
 name: Desktop HORIX
 
@@ -78,7 +78,7 @@ jobs:
   release:
     needs: build
     # Publish whatever built: a Windows build that could not run (no hosted minutes) must not hold
-    # back the Mac one. publish.sh keeps the previous entry for a platform that has no new zip.
+    # back the Mac one.
     if: ${{ !cancelled() }}
     runs-on: ${{ vars.HORIX_RUNNER == 'mac' && fromJSON('["self-hosted", "horix-mac"]') || 'ubuntu-latest' }}
     steps:
@@ -97,13 +97,7 @@ jobs:
           VERSION="$(tr -d '[:space:]' < apps/sg-ps/VERSION).${{ github.run_number }}"
           echo "TAG=horix-v$VERSION" >> "$GITHUB_ENV"
 
-      # The public download page (sabergroupacademy.com/downloads/) serves these files.
-      - name: Publish on engsaber.space
-        env:
-          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
-        run: apps/sg-ps/desktop/publish.sh dist "$TAG"
-
-      # Archive copy on GitHub (the repository is private: only members can download these).
+      # The release HORIX Launcher installs and updates from (the repository is public).
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
