@@ -38,11 +38,14 @@ jobs:
             [ -n "$f" ] && apps/horix-common/upload-file.sh "out/$f" "$DOMAIN" "mac/$f"
           done < changed.txt
           apps/horix-common/upload-file.sh out/latest.json "$DOMAIN" mac/latest.json
-          # What visitors get (a browser user agent: the host's bot protection answers curl with 403).
+          # What visitors get, for each file this run uploaded: the whole file, uncompressed (the host
+          # sends no Content-Length for these and ignores ranges, so its size is only known by reading it).
+          # A browser user agent: the host's bot protection answers curl with 403.
           UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
-          python3 -c 'import json,sys; [print(e["file"], e["size"]) for e in json.load(open(sys.argv[1])).values()]' out/latest.json |
-          while read -r name want; do
-            got="$(curl -fsSI -A "$UA" "https://$DOMAIN/mac/$name?v=$RANDOM" | tr -d '\r' | awk 'tolower($1)=="content-length:" {print $2}' | tail -1)"
-            [ "$got" = "$want" ] || { echo "::error::https://$DOMAIN/mac/$name serves ${got:-nothing}, expected $want bytes"; exit 1; }
-            echo "live: https://$DOMAIN/mac/$name ($got bytes)"
-          done
+          while read -r f; do
+            [ -n "$f" ] || continue
+            want="$(stat -c%s "out/$f")"
+            got="$(curl -fsS -A "$UA" -H "Accept-Encoding: identity" -o /dev/null -w '%{size_download}' "https://$DOMAIN/mac/$f?v=$RANDOM" || echo 0)"
+            [ "$got" = "$want" ] || { echo "::error::https://$DOMAIN/mac/$f serves $got bytes, expected $want"; exit 1; }
+            echo "live: https://$DOMAIN/mac/$f ($got bytes)"
+          done < changed.txt
