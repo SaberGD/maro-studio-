@@ -54,6 +54,24 @@ def edit(root: Path, rel: str, pairs: list[tuple[str, str]]) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+EXE_VERSION = """\
+    // HORIX: the release's version (HORIX_VERSION, set by the desktop build) as the exe's, which
+    // HORIX Launcher checks against the release it installed; upstream's package version otherwise.
+    println!("cargo:rerun-if-env-changed=HORIX_VERSION");
+    if let Ok(v) = std::env::var("HORIX_VERSION") {
+        res.set("ProductVersion", &v).set("FileVersion", &v);
+    }
+"""
+WINRES = "    let mut res = winresource::WindowsResource::new();\n"
+
+
+def exe_version(root: Path, rel: str) -> None:
+    """The Windows exe's ProductVersion is the release's (HORIX_VERSION from the desktop build),
+    not upstream's package version: HORIX Launcher rolls back a portable install whose exe reports
+    another version than the release it downloaded."""
+    edit(root, rel, [(WINRES, WINRES + EXE_VERSION)])
+
+
 def files(root: Path, globs: list[str]) -> list[Path]:
     out: list[Path] = []
     for g in globs:

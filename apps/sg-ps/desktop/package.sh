@@ -85,6 +85,8 @@ case "$OS" in
     # This build is portable by design. The app creates HORIX-Data beside the executable without
     # needing a visible marker file in the download package.
     export HORIX_PORTABLE=1
+    # HORIX.exe reports this version, which HORIX Launcher checks after unpacking (rebrand.py).
+    export HORIX_VERSION="$VERSION"
     (cd "$WORK/src" && cargo build --release --locked -p photocraft --target "$T")
     PKG="$WORK/pkg/HORIX"
     mkdir -p "$PKG"
