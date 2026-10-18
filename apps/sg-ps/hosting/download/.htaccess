@@ -1,6 +1,8 @@
 # horix.si/: the HORIX download page (HORIX Launcher for Windows; the Mac apps in mac/).
 DirectoryIndex index.html
 Options -Indexes
+# The Mac disk images in mac/ download as files (the host would send them as text/plain).
+AddType application/x-apple-diskimage .dmg
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteCond %{HTTPS} !=on
@@ -16,5 +18,8 @@ Options -Indexes
   </FilesMatch>
   <FilesMatch "\.(woff2|webp|svg)$">
     Header set Cache-Control "public, max-age=86400"
+  </FilesMatch>
+  <FilesMatch "\.dmg$">
+    Header set Content-Disposition "attachment"
   </FilesMatch>
 </IfModule>
