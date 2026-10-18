@@ -2,7 +2,9 @@
 # - Web: on every change, builds the browser launcher (lists the HORIX apps with the right download
 #   for the visitor) and publishes it at https://horix.si/launcher/.
 # - Desktop: when apps/horix-launcher/VERSION changes (or by hand), builds the Windows portable zip
-#   and the macOS DMG, publishes them as release horix-launcher-v<VERSION> with SHA256SUMS.txt
+#   (Windows only: on the Mac the HORIX apps are downloaded one by one from horix.si, since the
+#   launcher installs only Developer ID-signed Mac apps), publishes it as release
+#   horix-launcher-v<VERSION> with SHA256SUMS.txt
 #   (the names and checksums the launcher reads to update itself), then refreshes the feed.
 # Needs the repository secret HOSTINGER_API_TOKEN.
 name: HORIX Launcher
@@ -109,8 +111,6 @@ jobs:
         include:
           - os: windows-latest
             target: windows
-          - os: macos-latest
-            target: macos
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     defaults:
@@ -167,7 +167,7 @@ jobs:
 
           Windows: download horix-launcher-$V-windows-x64-portable.zip, unzip it, and run horix-launcher.exe. On the first run Windows may show \"Windows protected your PC\": click More info > Run anyway.
 
-          macOS (Apple Silicon and Intel): open horix-launcher-$V-macos-universal.dmg and drag HORIX Launcher into Applications. On the first run: System Settings > Privacy & Security > Open Anyway."
+          On the Mac, download each app from https://horix.si/ instead."
 
   feed:
     needs: release

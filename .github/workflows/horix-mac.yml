@@ -1,0 +1,48 @@
+# The Mac downloads on https://horix.si/mac/: each HORIX app's newest disk image (HORIX.dmg,
+# Horix-Vectors.dmg, Horix-Light.dmg) and latest.json, which the download page reads. HORIX Launcher
+# is Windows only, so this is how Mac users get the apps. Runs after each desktop release, or by
+# hand; an app whose version is already there is not uploaded again.
+# Needs the repository secret HOSTINGER_API_TOKEN.
+name: HORIX Mac downloads
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: horix-mac
+  cancel-in-progress: false
+
+jobs:
+  mac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps
+
+      - name: Newest Mac disk images
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DOMAIN: ${{ vars.HORIX_DOWNLOAD_DOMAIN || 'horix.si' }}
+        run: python3 -I apps/horix-common/mac_downloads.py out "https://$DOMAIN/mac/latest.json?v=$RANDOM" > changed.txt
+
+      - name: Publish on horix.si/mac/
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+          HOSTINGER_USERNAME: ${{ vars.HOSTINGER_USERNAME || 'u570689065' }}
+          DOMAIN: ${{ vars.HORIX_DOWNLOAD_DOMAIN || 'horix.si' }}
+        run: |
+          # The disk images first, latest.json last: the page never points at a half upload.
+          while read -r f; do
+            [ -n "$f" ] && apps/horix-common/upload-file.sh "out/$f" "$DOMAIN" "mac/$f"
+          done < changed.txt
+          apps/horix-common/upload-file.sh out/latest.json "$DOMAIN" mac/latest.json
+          # What visitors get (a browser user agent: the host's bot protection answers curl with 403).
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+          python3 -c 'import json,sys; [print(e["file"], e["size"]) for e in json.load(open(sys.argv[1])).values()]' out/latest.json |
+          while read -r name want; do
+            got="$(curl -fsSI -A "$UA" "https://$DOMAIN/mac/$name?v=$RANDOM" | tr -d '\r' | awk 'tolower($1)=="content-length:" {print $2}' | tail -1)"
+            [ "$got" = "$want" ] || { echo "::error::https://$DOMAIN/mac/$name serves ${got:-nothing}, expected $want bytes"; exit 1; }
+            echo "live: https://$DOMAIN/mac/$name ($got bytes)"
+          done
