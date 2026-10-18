@@ -92,6 +92,10 @@
     .card.mine .tag { display: inline-block; }
     .req { color: var(--muted); font-size: 14px; margin: 0 0 22px; }
     .card .btn { align-self: flex-start; }
+    .mac-apps { display: grid; gap: 10px; }
+    .mac-apps .btn { align-self: stretch; justify-content: space-between; }
+    .mac-size { font-weight: 400; font-size: 13px; color: var(--muted); }
+    .card.mine .mac-apps .btn-line .mac-size { color: var(--chrome); opacity: .7; }
     .card .btn-line:hover { border-color: var(--amber); }
     .card.mine .btn-line { background: var(--ivory); border-color: var(--ivory); color: var(--chrome); }
     .card.mine .btn-line:hover { background: var(--amber); border-color: var(--amber); }
@@ -185,7 +189,7 @@
           <div>
             <p class="eyebrow">HORIX LAUNCHER</p>
             <h1>كل برامج <bdi class="lat">HORIX</bdi><br>على جهازك</h1>
-            <p class="lead">حمّل <bdi>HORIX Launcher</bdi> مرة واحدة، ومنه سطّب <bdi>HORIX</bdi> و <bdi>Horix Vectors</bdi> و <bdi>Horix Light</bdi> وافتحهم. وأول ما ينزل تحديث جديد بيبلغك، وتحدّث بدوسة واحدة.</p>
+            <p class="lead">على ويندوز حمّل <bdi>HORIX Launcher</bdi> مرة واحدة، ومنه سطّب <bdi>HORIX</bdi> و <bdi>Horix Vectors</bdi> و <bdi>Horix Light</bdi> وافتحهم، وأول ما ينزل تحديث بيبلغك. وعلى الماك حمّل البرنامج اللي عاوزه على طول.</p>
           </div>
           <figure class="shot">
             <div class="bar"><i></i><i></i><i></i></div>
@@ -195,7 +199,7 @@
         <div class="download-head">
           <p class="kicker">DOWNLOAD</p>
           <h2>اختار نسخة جهازك</h2>
-          <p class="sub">ملف واحد صغير، من غير صلاحيات أدمن. وبعدها اختار البرامج اللي عاوزها من جوه الـ<bdi>Launcher</bdi>.</p>
+          <p class="sub">من غير صلاحيات أدمن ولا خطوات تسطيب طويلة.</p>
         </div>
         <div class="platforms">
           <article class="card" id="windows">
@@ -219,12 +223,16 @@
               <h3>ماك</h3>
               <span class="tag">جهازك</span>
             </div>
-            <p class="req"><bdi>macOS 11</bdi> أو أحدث · <bdi>Apple Silicon</bdi> و <bdi>Intel</bdi><span data-launcher-size="macos"></span></p>
-            <a class="btn btn-line" data-launcher-file="macos" href="https://github.com/SaberGD/maro-studio-/releases/download/horix-launcher-v1.0.0/horix-launcher-1.0.0-macos-universal.dmg">تحميل لماك</a>
+            <p class="req"><bdi>macOS 11</bdi> أو أحدث · <bdi>Apple Silicon</bdi> و <bdi>Intel</bdi> · حمّل البرنامج اللي عاوزه</p>
+            <div class="mac-apps">
+              <a class="btn btn-line" data-mac="horix" href="mac/HORIX.dmg"><bdi>HORIX</bdi><span class="mac-size" data-mac-size="horix"></span></a>
+              <a class="btn btn-line" data-mac="horix-vectors" href="mac/Horix-Vectors.dmg"><bdi>Horix Vectors</bdi><span class="mac-size" data-mac-size="horix-vectors"></span></a>
+              <a class="btn btn-line" data-mac="horix-light" href="mac/Horix-Light.dmg"><bdi>Horix Light</bdi><span class="mac-size" data-mac-size="horix-light"></span></a>
+            </div>
             <ol class="steps">
-              <li><span>افتح الملف واسحب <b><bdi>HORIX Launcher</bdi></b> لفولدر <b><bdi>Applications</bdi></b>.</span></li>
+              <li><span>افتح الملف واسحب البرنامج لفولدر <b><bdi>Applications</bdi></b>.</span></li>
               <li><span>أول مرة بس: لو ماك منعه، افتح <b><bdi>System Settings</bdi></b> ← <b><bdi>Privacy &amp; Security</bdi></b> ودوس <b><bdi>Open Anyway</bdi></b>.</span></li>
-              <li><span>اختار البرنامج اللي عاوزه ودوس <b>تسطيب</b>.</span></li>
+              <li><span>عشان التحديثات: ارجع للصفحة دي ونزّل النسخة الجديدة.</span></li>
             </ol>
           </article>
         </div>
@@ -341,7 +349,7 @@
         .then(function (d) {
           var rel = d && d.release_info && d.release_info.apps['horix-launcher'] && d.release_info.apps['horix-launcher'].latest_release;
           if (!rel) return;
-          var ends = { windows: '-windows-x64-portable.zip', macos: '-macos-universal.dmg' };
+          var ends = { windows: '-windows-x64-portable.zip' };
           Object.keys(ends).forEach(function (k) {
             var a = rel.assets.filter(function (x) { return x.name.slice(-ends[k].length) === ends[k]; })[0];
             if (!a) return;
@@ -351,6 +359,20 @@
             });
           });
           document.getElementById('version').textContent = 'HORIX Launcher ' + rel.version + ' · ' + rel.published_at.slice(0, 10);
+        })
+        .catch(function () {});
+      // Mac: each app's disk image on this site (mac/latest.json: version, file and size per app).
+      fetch('mac/latest.json', { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d) return;
+          Object.keys(d).forEach(function (id) {
+            var f = d[id];
+            document.querySelectorAll('[data-mac="' + id + '"]').forEach(function (el) { el.href = 'mac/' + f.file + '?v=' + encodeURIComponent(f.version); });
+            document.querySelectorAll('[data-mac-size="' + id + '"]').forEach(function (el) {
+              el.textContent = f.version + ' · ' + (f.size / 1048576).toFixed(0) + ' ميجا';
+            });
+          });
         })
         .catch(function () {});
     })();

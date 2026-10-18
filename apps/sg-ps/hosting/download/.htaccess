@@ -1,4 +1,4 @@
-# horix.si/: the HORIX desktop download page (the zips are on engsaber.space).
+# horix.si/: the HORIX download page (HORIX Launcher for Windows; the Mac apps in mac/).
 DirectoryIndex index.html
 Options -Indexes
 <IfModule mod_rewrite.c>

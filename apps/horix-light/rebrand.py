@@ -137,6 +137,7 @@ def main() -> None:
     links(root)
     theme(root)
     web(root)
+    hx.exe_version(root, "apps/lightcraft/build.rs")
     dropped = drop_branded_translations_json(root)
     n = hx.rename(root, CODE + [WEB], "LightCraft", APP_NAME)
     icons = hx.replace_icons(root, HERE / "assets/app-icon", "assets/app-icon")

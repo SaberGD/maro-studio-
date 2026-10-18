@@ -124,3 +124,10 @@ jobs:
     if: ${{ !cancelled() }}
     uses: ./.github/workflows/horix-feed.yml
     secrets: inherit
+
+  # The Mac disk image on horix.si/mac/ too (HORIX Launcher is Windows only).
+  mac:
+    needs: release
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    uses: ./.github/workflows/horix-mac.yml
+    secrets: inherit

@@ -46,6 +46,8 @@ case "$OS" in
     T=x86_64-pc-windows-msvc
     # Static C runtime, as upstream: runs without the Visual C++ redistributable.
     export CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS="-C target-feature=+crt-static"
+    # The exe reports this version, which HORIX Launcher checks after unpacking (horix_rebrand.exe_version).
+    export HORIX_VERSION="$VERSION"
     (cd "$WORK/src" && cargo build --release --locked -p "$UP" --target "$T")
     DIR="$WORK/pkg/win"
     mkdir -p "$DIR"

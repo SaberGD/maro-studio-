@@ -189,6 +189,7 @@ def main() -> None:
     theme(root)
     web(root)
     web_prefs(root)
+    hx.exe_version(root, "apps/vectorcraft/build.rs")
     dropped = hx.drop_branded_translations_tsv(root, "crates/ui-egui/src/i18n/*.tsv")
     n = hx.rename(root, CODE + [WEB], "VectorCraft", APP_NAME)
     icons = hx.replace_icons(root, HERE / "assets/app-icon", "assets/app-icon")

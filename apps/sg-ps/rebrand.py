@@ -1550,6 +1550,22 @@ def version(root: Path) -> None:
     )])
 
 
+
+def exe_version(root: Path) -> None:
+    """HORIX.exe reports the release's version (HORIX_VERSION from desktop/package.sh), not
+    PhotoCraft's 0.9.0: HORIX Launcher rolls back a portable install whose exe reports another
+    version than the release it downloaded."""
+    winres = "    let mut res = winresource::WindowsResource::new();\n"
+    edit(root, "apps/photocraft/build.rs", [(winres, winres + """\
+    // HORIX: the release's version (HORIX_VERSION, set by desktop/package.sh) as the exe's, which
+    // HORIX Launcher checks against the release it installed; PhotoCraft's version otherwise.
+    println!("cargo:rerun-if-env-changed=HORIX_VERSION");
+    if let Ok(v) = std::env::var("HORIX_VERSION") {
+        res.set("ProductVersion", &v).set("FileVersion", &v);
+    }
+""")])
+
+
 def apply_patches(root: Path) -> None:
     """Unified diffs in apps/sg-ps/patches/ (made against the rebranded tree), applied in name order."""
     for diff in sorted((HERE / "patches").glob("*.diff")):
@@ -1592,6 +1608,7 @@ def main() -> None:
     selection_quality(root)
     stability(root)
     version(root)
+    exe_version(root)
     apply_patches(root)
     check(root)
     print(f"rebrand: done ({n} name replacements)")
