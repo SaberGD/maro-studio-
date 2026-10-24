@@ -215,3 +215,24 @@ def drop_branded_translations_tsv(root: Path, glob: str) -> int:
         n += len(lines) - len(keep)
         path.write_text("\n".join(keep), encoding="utf-8")
     return n
+
+
+def apply_patches(root: Path, patches: Path) -> int:
+    """Unified diffs in `patches` (made against the rebranded tree), applied in name order.
+    Returns how many were applied."""
+    import os
+    import subprocess
+    n = 0
+    for diff in sorted(patches.glob("*.diff")):
+        # LF everywhere (a Windows checkout may hand us CRLF), from stdin, so it reads the same.
+        data = diff.read_bytes().replace(b"\r\n", b"\n")
+        # The work dir may sit inside this repository (CI builds in .horix-build/): without the
+        # ceiling git would resolve paths against the outer repository and skip every file.
+        env = {**os.environ, "GIT_CEILING_DIRECTORIES": str(Path(root).resolve().parent)}
+        r = subprocess.run(["git", "apply", "--verbose", "--whitespace=nowarn", "-p1", "-"], cwd=root, input=data, capture_output=True, env=env)
+        err = r.stderr.decode(errors="replace")
+        if r.returncode != 0 or "Skipped patch" in err:
+            fail(f"patch {diff.name} does not apply:\n{err}")
+        print(f"rebrand: applied {diff.name}")
+        n += 1
+    return n

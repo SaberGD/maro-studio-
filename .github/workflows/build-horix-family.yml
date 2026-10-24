@@ -15,6 +15,7 @@ on:
       - "apps/horix-light/**"
       - "archive/vectorcraft/**"
       - "archive/lightcraft/**"
+      - "apps/sg-ps/ai/fetch.py"
       - ".github/workflows/build-horix-family.yml"
   workflow_dispatch:
 
@@ -58,9 +59,14 @@ jobs:
           sudo cp "wasm-bindgen-$v-x86_64-unknown-linux-musl/wasm-bindgen" /usr/local/bin/
           wasm-bindgen --version
 
+      - name: HORIX AI models (Horix Light; IS-Net is converted to half precision)
+        if: matrix.app == 'light'
+        run: python3 -m pip install --user --quiet "onnx>=1.17" "onnxruntime>=1.20"
+
       - uses: actions/cache@v4
         with:
           path: |
+            .sgps-build/ai-cache
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cache/trunk

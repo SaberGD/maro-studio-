@@ -61,8 +61,20 @@ upload() {
 }
 
 prefix="${UPLOAD_DIR:+$UPLOAD_DIR/}"
+# The AI models (Horix Light's models/*.onnx, ~135 MB) never change under the same name (fetch.py
+# checks their SHA-256): skip one the site already serves at the same size.
+same_on_site() {
+  local n
+  n="$(curl -fsSI -A "$UA" "https://$DOMAIN/$1" 2>/dev/null | tr -d '\r' | awk 'tolower($1)=="content-length:" {print $2}' | tail -1)"
+  [ -n "$n" ] && [ "$n" = "$(size "$2")" ]
+}
 while IFS= read -r -d '' f; do
-  upload "$f" "$prefix${f#"$SITE/$FOLDER/"}"
+  rel="${f#"$SITE/$FOLDER/"}"
+  if [[ "$rel" == models/*.onnx ]] && same_on_site "$rel" "$f"; then
+    echo "  $rel (already on the site)"
+    continue
+  fi
+  upload "$f" "$prefix$rel"
 done < <(find "$SITE/$FOLDER" -type f ! -path "$SITE/$FOLDER/index.html" -print0)
 upload "$SITE/$FOLDER/index.html" "${prefix}index.html"
 

@@ -298,10 +298,11 @@ pub const DETAILS: [AppDetails; 3] = [
         features: &[
             feature("Library and catalogs", "Import folders, rate, flag and keyword, smart albums, and Lightroom catalog import."),
             feature("Raw development", "White balance, tone, curves, color grading, lens corrections and hundreds of cameras."),
-            feature("Masks and local edits", "Brush, linear and radial masks, with subject, sky and background masks."),
+            feature("AI masks, even in the browser", "Object, Subject and Background masks with HORIX AI, on the device; brush, linear, radial and range masks too."),
             feature("Export your way", "JPEG, PNG, TIFF and more, with sizing, sharpening and watermarks."),
         ],
         shots: &[
+            shot("ai-mask", "A Subject mask with HORIX AI, in the browser"),
             shot("start", "Horix Light's library"),
             shot("develop", "Developing a photo"),
         ],

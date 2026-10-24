@@ -18,6 +18,26 @@
 
 الأسماء الداخلية في الكود (`lightcraft_engine`، `LightcraftApp`، …) مش بتظهر للمستخدم، فسيبناها زي ما هي عشان التحديثات ما تتكسرش.
 
+## تحديد بالذكاء الاصطناعي على الويب (HORIX AI)
+
+النسخة الأصلية من LightCraft مفيهاش AI masks على الويب خالص: Object وDescribe محتاجين موديل SAM 3، وده حجمه 3.4 جيجا ورخصته مش مفتوحة المصدر وبيشتغل على الديسكتوب بس. وSubject وBackground كانوا تقدير تقريبي من غير موديل.
+
+`patches/50-horix-ai.diff` بيدّي light.horix.live نفس موديلات HORIX، وكلها شغالة في المتصفح نفسه (onnxruntime-web: كارت الشاشة بـWebGPU لو موجود، وإلا البروسيسور):
+
+- **Masking › Object:** اضغط على الحاجة اللي عايزها، وAlt+كليك يشيل جزء منها. الموديل MobileSAM (44 ميجا).
+- **Masking › Subject وBackground:** بيظهر التقدير العادي الأول، وبعد ثواني بيتبدل بنتيجة IS-Net (89 ميجا) ويتسمّى «Subject» أو «Background». خطوة Undo واحدة بترجع للتقدير.
+- **Describe:** لسه للديسكتوب بس، وعلى الويب بيظهر رسالة بتقول كده.
+
+الموديلات بتنزل أول مرة بس، والمتصفح بيحتفظ بيها. النتيجة بتتخزن في الصورة كـAI mask عادي (`SegMask`)، فبتفتح زي ما هي في نسخة الديسكتوب وفي التصدير.
+
+إزاي بيشتغل:
+- الـengine بيحط الطلب في طابور (`Segmenter::external`، `crates/engine/src/segment/external.rs`).
+- الصفحة بتشغّل الموديل (`window.horixLight` في `index.html`).
+- النتيجة بترجع بأمر `mask.horixResult`، اللي بيرمي أي نتيجة قديمة لو المستخدم ضغط تاني في الوقت ده.
+- الديسكتوب ما اتغيرش، ولسه بيستخدم SAM 3.
+
+`build.sh` بيجيب الموديلات بـ`apps/sg-ps/ai/fetch.py web`، وبيحطها في `models/` مع رخصها، وبيتأكد من الـSHA-256 بتاعها. `deploy-static.sh` مش بيرفع موديل لو هو موجود على الموقع بنفس الحجم.
+
 ## الترخيص
 
 - `LICENSE-MIT` و`LICENSE-APACHE` و`NOTICE` بيتنسخوا مع كل نسخة ويب زي ما هم.
@@ -26,7 +46,7 @@
 
 ## البناء
 
-المتطلبات: Rust ≥ 1.95، والـtarget بتاع wasm، و`wasm-bindgen-cli` بنفس الإصدار اللي في `Cargo.lock`، وPython 3، و`zip`.
+المتطلبات: Rust ≥ 1.95، والـtarget بتاع wasm، و`wasm-bindgen-cli` بنفس الإصدار اللي في `Cargo.lock`، وPython 3 ومعاه `onnx` و`onnxruntime` (`pip install --user onnx onnxruntime`)، و`git`، و`zip`.
 
 ```sh
 rustup target add wasm32-unknown-unknown
