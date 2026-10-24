@@ -23,7 +23,7 @@
 
 | البرنامج | رقم الإصدار | بيتنشر لما |
 |---|---|---|
-| HORIX Launcher | `apps/horix-launcher/VERSION` (1.0.1) | يتغير الرقم ده (`horix-launcher.yml`) |
+| HORIX Launcher | `apps/horix-launcher/VERSION` (1.0.2) | يتغير الرقم ده (`horix-launcher.yml`) |
 | HORIX | `apps/sg-ps/VERSION` + رقم البناء | يشتغل `desktop-sg-ps.yml` |
 | Horix Vectors / Light | `apps/horix-<app>/VERSION` + رقم البناء | يتغير الرقم أو يشتغل `desktop-horix-family.yml` |
 
@@ -33,6 +33,7 @@
 - الكتالوج: برامج HORIX الـ3 بدل برامج ArtCraft الـ13.
 - ملف التحديثات بتاعنا بدل ArtCraft API.
 - الروابط: فيسبوك الأكاديمية، وموقعها، وواتساب.
+- صفحات التفاصيل: وصف لكل برنامج من الـ3، وصور حقيقية منه. الصور في `screenshots/v1/<app>/<key>.jpg` (JPEG مقاس 1200×750)، و`horix-feed.yml` بيرفعها على `horix.si/launcher/screenshots/`. الـLauncher بيحتفظ بالصور اللي نزّلها، فلو صورة اتغيّرت لازم تتحط في فولدر جديد (`v2`) ويتغيّر `SCREENSHOTS_REV`.
 
 ## البناء
 
@@ -44,6 +45,6 @@ apps/horix-launcher/desktop/package.sh macos    # على ماك
 
 ## لسه
 
+- الـLauncher فاضل على craft-launcher 0.4.1 بقصد: من 0.6.2 التحديث التلقائي للـLauncher على ويندوز بيطلب توقيع Authenticode، ونسختنا مش موقّعة، فالتحديث كان هيبطّل. لما يبقى فيه شهادة توقيع نطلع لـ0.7.0 (لازم وقتها نشيل `upstream_fixes()` و`AppGroup::Classic` من `rebrand.py`).
 - النسخ مش موقّعة (Windows SmartScreen و Gatekeeper في ماك بيحذّروا أول مرة).
 - مفيش نسخة Linux لسه، ومفيش MSI لويندوز (Portable بس).
-- صفحات التفاصيل والصور جوه الـLauncher لسه فاضية لبرامجنا.

@@ -17,6 +17,7 @@ What it changes:
     published by CI after every release, instead of ArtCraft's API.
   - Links: Saber Group (Facebook, website, WhatsApp) instead of ArtCraft's Discord, socials, GitHub.
   - HORIX look: falcon icons, the HORIX wordmark, Horus Ink / Falcon Ivory / Vision Amber.
+  - Details pages for the three apps, with pictures from horix.si (apps/horix-launcher/screenshots/).
 """
 
 import re
@@ -243,6 +244,93 @@ def version(root: Path) -> None:
     lock.write_text(text, encoding="utf-8")
 
 
+# Pictures for the details pages: apps/horix-launcher/screenshots/v1/<app>/<key>.jpg, published
+# on horix.si by horix-feed.yml (1200 x 750 JPEG each, as the launcher expects).
+SCREENSHOTS_BASE = "https://horix.si/launcher/screenshots"
+
+DETAILS = """const PLATFORMS: &str = "Windows, macOS, web";
+
+pub const DETAILS: [AppDetails; 3] = [
+    AppDetails {
+        id: "horix",
+        headline: "The visionary AI editor by Saber Group.",
+        about: "A layered image editor with the menus, shortcuts and panels Photoshop users already know, \\
+            built for Saber Group Academy's students and designers.\\n\\n\\
+            HORIX selects with AI on your own computer: Select Subject, Object Selection and Quick \\
+            Selection run local models, so your images never leave the device.",
+        features: &[
+            feature("AI selection, on device", "Select Subject, Object Selection and Quick Selection run local AI models, with the classic tools as a fallback."),
+            feature("Real layered files", "Opens and saves layered PSD and PSB documents, and opens Krita, GIMP and Affinity files."),
+            feature("Non-destructive editing", "Adjustment layers, smart objects, smart filters, layer styles and masks."),
+            feature("Content-Aware tools", "Content-Aware Fill, Move, Patch and Remove, plus Spot Healing and the Healing Brush."),
+            feature("Blur Gallery on the image", "Field, Iris, Spin, Tilt-Shift and Path Blur, edited with handles on the canvas."),
+            feature("Serious color", "8-, 16- and 32-bit RGB, CMYK, Lab and Grayscale with ICC color management."),
+        ],
+        shots: &[
+            shot("ai-select", "Select Subject with HORIX AI, on the device"),
+            shot("start", "HORIX, ready to work"),
+            shot("editing", "A photo open with the full toolset"),
+        ],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "horix-vectors",
+        headline: "Vector illustration from the HORIX family.",
+        about: "A vector illustration app with the pen, panels and shortcuts illustrators expect, \\
+            in the HORIX look. It runs on the desktop and in the browser at vectors.horix.live.",
+        features: &[
+            feature("The workflow you know", "Pen, direct selection, Shape Builder, booleans, snapping guides and an appearance panel."),
+            feature("Live, editable effects", "Blends, envelope distort, gradient mesh, repeats, glows and the Effect Gallery stay editable."),
+            feature("Type, including Arabic", "Area and path type, variable and color fonts, and Arabic text with Noto Sans Arabic on the web."),
+            feature("Open formats", "Illustrator .ai, EPS, PDF and SVG import, Word and RTF text, SVG, PDF and PNG export."),
+        ],
+        shots: &[
+            shot("start", "Horix Vectors, ready to draw"),
+            shot("drawing", "Arabic type on a perspective drawing"),
+        ],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "horix-light",
+        headline: "Organize and develop your photos.",
+        about: "A photo library and non-destructive raw developer in the spirit of Lightroom, from the HORIX \\
+            family. It runs on the desktop and in the browser at light.horix.live.",
+        features: &[
+            feature("Library and catalogs", "Import folders, rate, flag and keyword, smart albums, and Lightroom catalog import."),
+            feature("Raw development", "White balance, tone, curves, color grading, lens corrections and hundreds of cameras."),
+            feature("Masks and local edits", "Brush, linear and radial masks, with subject, sky and background masks."),
+            feature("Export your way", "JPEG, PNG, TIFF and more, with sizing, sharpening and watermarks."),
+        ],
+        shots: &[
+            shot("start", "Horix Light's library"),
+            shot("develop", "Developing a photo"),
+        ],
+        platforms: PLATFORMS,
+    },
+];
+"""
+
+
+def details(root: Path) -> None:
+    """The details pages: the three HORIX apps, with pictures from horix.si."""
+    rel = "crates/core/src/details.rs"
+    path = root / rel
+    text = path.read_text(encoding="utf-8")
+    s = text.index('/// Where every Craft App runs')
+    e = text.index("];\n\nimpl AppDetails {") + len("];\n")
+    path.write_text(text[:s] + DETAILS + text[e:], encoding="utf-8")
+    hx.edit(root, rel, [
+        ('pub const SCREENSHOTS_BASE: &str = "https://raw.githubusercontent.com/storytold/craft-launcher-assets";',
+         f'pub const SCREENSHOTS_BASE: &str = "{SCREENSHOTS_BASE}";'),
+        ('        let page = AppDetails::by_id("photocraft").unwrap();\n        assert_eq!(\n            page.screenshot_url("demo").as_deref(),\n'
+         '            Some("https://raw.githubusercontent.com/storytold/craft-launcher-assets/v1/photocraft/demo.jpg")\n        );\n'
+         '        for key in ["", "nope", "../vectorcraft/neon", "demo/../masks", "demo.jpg", "/etc/passwd", "demo?x=1", "demo#"] {',
+         '        let page = AppDetails::by_id("horix").unwrap();\n        assert_eq!(\n            page.screenshot_url("start").as_deref(),\n'
+         f'            Some("{SCREENSHOTS_BASE}/v1/horix/start.jpg")\n        );\n'
+         '        for key in ["", "nope", "../horix-vectors/start", "start/../editing", "start.jpg", "/etc/passwd", "start?x=1", "start#"] {'),
+    ])
+
+
 def upstream_fixes(root: Path) -> None:
     """Fixes to craft-launcher 0.4.1 itself."""
     # install_dmg gained a `replace` flag; the macOS self-update (and its test) still passed the
@@ -263,6 +351,7 @@ def main() -> None:
         sys.exit(f"rebrand: {root} is not a craft-launcher source tree")
     upstream_fixes(root)
     catalog(root)
+    details(root)
     tag_prefixes(root)
     names(root)
     look(root)
