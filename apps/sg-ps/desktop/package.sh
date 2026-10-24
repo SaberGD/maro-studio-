@@ -12,7 +12,7 @@ set -euo pipefail
 OS="${1:?usage: package.sh windows|macos}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
-SRC_TGZ="${SRC_TGZ:-$REPO/archive/photocraft/photocraft-source-0.9.0.tar.gz}"
+SRC_TGZ="${SRC_TGZ:-$REPO/archive/photocraft/photocraft-source-0.15.1.tar.gz}"
 WORK="${SGPS_WORK:-$REPO/.sgps-build}"
 OUT="$REPO/deploy/sg-ps-desktop"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$WORK/target}"

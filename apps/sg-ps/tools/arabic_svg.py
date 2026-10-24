@@ -26,7 +26,7 @@ from fontTools.varLib.instancer import instantiateVariableFont
 # name -> (text, weight)
 LINES = {
     "soon-title": ("قريبًا", 800),
-    "soon-apps": ("بدائل After Effects و Premiere و Illustrator و Lightroom", 500),
+    "soon-apps": ("بدائل After Effects و Premiere", 500),
     "soon-cta": ("احجز تجربتك المُبكرة", 700),
     "dl-short": ("نسخة ويندوز وماك", 600),
     "dl-cta": ("حمّل HORIX على ويندوز أو ماك", 700),

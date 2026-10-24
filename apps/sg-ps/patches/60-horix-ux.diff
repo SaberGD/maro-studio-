@@ -1,5 +1,5 @@
 diff --git a/crates/engine/src/color_cmds.rs b/crates/engine/src/color_cmds.rs
-index d3a6d36..bf43a4d 100644
+index 4f3435c..26a6bea 100644
 --- a/crates/engine/src/color_cmds.rs
 +++ b/crates/engine/src/color_cmds.rs
 @@ -112,6 +112,10 @@ pub struct ColorSettings {
@@ -22,20 +22,7 @@ index d3a6d36..bf43a4d 100644
              ask_on_paste: true,
              ask_on_missing: false,
              intent: Intent::RelativeColorimetric.id().into(),
-@@ -491,6 +495,12 @@ fn cms_err(e: photocraft_cms::CmsError) -> EngineError {
- 
- // ------------------------------------------------------------------ profiles
- 
-+/// HORIX: built-in profiles a document in `mode` can carry: (id, description). File › New lists them.
-+pub fn profiles_for_mode(mode: ColorMode) -> Vec<(&'static str, &'static str)> {
-+    let space = mode_space(mode);
-+    Builtin::ALL.into_iter().filter(|b| b.profile().color_space == space).map(|b| (b.id(), b.description())).collect()
-+}
-+
- /// ICC colour space of a document mode.
- pub fn mode_space(mode: ColorMode) -> ColorSpace {
-     match mode {
-@@ -1156,7 +1166,7 @@ pub fn specs() -> Vec<CommandSpec> {
+@@ -1171,7 +1175,7 @@ pub fn specs() -> Vec<CommandSpec> {
              "edit.colorSettings",
              "Color Settings…",
              ["Edit"],
@@ -44,7 +31,7 @@ index d3a6d36..bf43a4d 100644
              always,
              color_settings,
              true,
-@@ -1481,12 +1491,47 @@ mod settings_tests {
+@@ -1534,12 +1538,29 @@ mod settings_tests {
          assert!(s.color.resolve_open(&mut d, "explode").is_err());
      }
  
@@ -59,24 +46,6 @@ index d3a6d36..bf43a4d 100644
 +        let v = serde_json::to_value(&on).unwrap();
 +        assert_eq!(v["askOnOpenMismatch"], true);
 +        assert_eq!(serde_json::from_value::<ColorSettings>(v).unwrap(), on);
-+    }
-+
-+    /// HORIX round 4 #2: File › New › Color Profile (`file.new {"profile"}`).
-+    #[test]
-+    fn new_document_color_profile() {
-+        let mut s = Session::new();
-+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
-+        assert!(s.active().unwrap().doc.icc_profile.is_none(), "working space by default");
-+        s.execute("file.new", json!({"width": 8, "height": 8, "profile": "working"})).unwrap();
-+        assert!(s.active().unwrap().doc.icc_profile.is_none());
-+        s.execute("file.new", json!({"width": 8, "height": 8, "profile": "display-p3"})).unwrap();
-+        assert!(desc(&s.active().unwrap().doc).unwrap().starts_with("Display P3"));
-+        s.execute("file.new", json!({"width": 8, "height": 8, "mode": "gray", "profile": "dot-gain-20-compat"})).unwrap();
-+        assert!(desc(&s.active().unwrap().doc).unwrap().starts_with("Dot Gain 20%"));
-+        assert!(s.execute("file.new", json!({"width": 8, "height": 8, "profile": "coated-cmyk"})).is_err(), "a CMYK profile on an RGB document");
-+        assert!(s.execute("file.new", json!({"width": 8, "height": 8, "profile": 3})).is_err());
-+        assert!(profiles_for_mode(ColorMode::Rgb).iter().any(|(id, _)| *id == "adobe-rgb-compat"));
-+        assert!(profiles_for_mode(ColorMode::Cmyk).iter().all(|(id, _)| *id == "coated-cmyk"));
 +    }
 +
      #[test]
@@ -94,7 +63,7 @@ index d3a6d36..bf43a4d 100644
          assert!(desc(&s.active().unwrap().doc).unwrap().starts_with("Adobe RGB"));
          // Matching profiles never ask.
          let (_, r) = s.open_document(tagged("srgb"), None);
-@@ -1574,7 +1619,7 @@ mod settings_tests {
+@@ -1627,7 +1648,7 @@ mod settings_tests {
          let mut d = tagged("srgb");
          d.icc_profile = Some(input.to_bytes());
          let (photo, r) = s.open_document(d, None);
@@ -103,57 +72,11 @@ index d3a6d36..bf43a4d 100644
          let doc = &s.active().unwrap().doc;
          assert!(desc(doc).unwrap().starts_with("sRGB"));
          // Converted from P3, not reinterpreted as sRGB.
-diff --git a/crates/engine/src/commands.rs b/crates/engine/src/commands.rs
-index a954eca..c18715f 100644
---- a/crates/engine/src/commands.rs
-+++ b/crates/engine/src/commands.rs
-@@ -403,7 +403,7 @@ fn build() -> Vec<CommandSpec> {
-             "New…",
-             ["File"],
-             Some("Cmd+N"),
--            r##"{"width":1..300000=1920,"height":1..300000=1080 (pixel counts are rounded),"mode":"rgb|gray|grayscale|cmyk|lab"="rgb","depth":8|16|32=8,"background":"white|black|backgroundColor|transparent|#rrggbb"="white","backgroundColor":[r,g,b]? (0..1; defaults to toolbox colour),"resolution":1..30000=72 (ppi),"name":str}"##,
-+            r##"{"width":1..300000=1920,"height":1..300000=1080 (pixel counts are rounded),"mode":"rgb|gray|grayscale|cmyk|lab"="rgb","depth":8|16|32=8,"background":"white|black|backgroundColor|transparent|#rrggbb"="white","backgroundColor":[r,g,b]? (0..1; defaults to toolbox colour),"resolution":1..30000=72 (ppi),"name":str,"profile":"working|<profile id>|<.icc path>"="working"}"##,
-             always,
-             |s, p| {
-                 use crate::document_preset_cmds::{MAX_DIMENSION, MAX_RESOLUTION, background_color, color_mode, sample_type};
-@@ -439,6 +439,19 @@ fn build() -> Vec<CommandSpec> {
-                     }
-                 };
-                 doc.resolution_dpi = res;
-+                // HORIX: New Document › Color Profile: the working space (the default; the
-+                // document stays untagged and follows it) or a profile embedded in the document.
-+                let spec = p.get("profile").and_then(Value::as_str).unwrap_or("working");
-+                if !matches!(spec, "working" | "") {
-+                    let prof = s.color.resolve(spec, Some(&doc), None)?;
-+                    if prof.color_space != crate::color_cmds::mode_space(doc.mode) {
-+                        return Err(EngineError::BadParams {
-+                            cmd: "file.new".into(),
-+                            msg: format!("profile `{}` doesn't fit the colour mode", prof.description),
-+                        });
-+                    }
-+                    doc.icc_profile = Some(prof.to_bytes());
-+                }
-                 let i = s.add_document(doc, None);
-                 Ok(json!({ "document": i }))
-             }
-diff --git a/crates/engine/src/document_preset_cmds.rs b/crates/engine/src/document_preset_cmds.rs
-index 0bb409b..fc10f7d 100644
---- a/crates/engine/src/document_preset_cmds.rs
-+++ b/crates/engine/src/document_preset_cmds.rs
-@@ -78,6 +78,8 @@ pub(crate) fn validate_new_params(s: &Session, p: &Value) -> Result<()> {
-                 continue;
-             }
-             "name" => (value.is_string(), "a string".into()),
-+            // HORIX: New Document › Color Profile (`working`, a built-in profile id or an .icc path).
-+            "profile" => (value.is_string(), "a profile id or path".into()),
-             _ => return Err(bad(cmd, format!("unknown parameter `{key}`"))),
-         };
-         if !valid {
 diff --git a/crates/engine/src/extra_cmds.rs b/crates/engine/src/extra_cmds.rs
-index 3a27c99..78e73b4 100644
+index 4e2a265..0ff4304 100644
 --- a/crates/engine/src/extra_cmds.rs
 +++ b/crates/engine/src/extra_cmds.rs
-@@ -548,11 +548,22 @@ fn ungroup(s: &mut Session, p: &Value) -> Result<Value> {
+@@ -510,11 +510,22 @@ fn ungroup(s: &mut Session, p: &Value) -> Result<Value> {
      s.edit("Ungroup Layers", |doc, active| {
          let path = doc.path_of(id).ok_or(EngineError::NoLayer(id))?;
          let g = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
@@ -178,7 +101,7 @@ index 3a27c99..78e73b4 100644
          let sib = if parent.is_empty() { &mut doc.layers } else { doc.layer_at_mut(parent).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(id))? };
          sib.remove(idx);
          let top = children.last().map(|l| l.id);
-@@ -981,13 +992,33 @@ pub fn specs() -> Vec<CommandSpec> {
+@@ -976,13 +987,33 @@ pub fn specs() -> Vec<CommandSpec> {
              "Ungroup Layers",
              &["Layer"],
              Some("Cmd+Shift+G"),
@@ -216,7 +139,7 @@ index 3a27c99..78e73b4 100644
          spec!(
              "layer.hideLayers",
              "Hide Layers",
-@@ -1661,6 +1692,51 @@ mod tests {
+@@ -1722,6 +1753,51 @@ mod tests {
          assert_eq!(doc(&s).layer_count(), n - 1);
      }
  
@@ -269,10 +192,10 @@ index 3a27c99..78e73b4 100644
      fn ungroup_restores_children_in_order() {
          let mut s = session(8);
 diff --git a/crates/engine/src/layer_multi_cmds.rs b/crates/engine/src/layer_multi_cmds.rs
-index 80da3bd..e3dc93d 100644
+index 83d4e81..fc974e1 100644
 --- a/crates/engine/src/layer_multi_cmds.rs
 +++ b/crates/engine/src/layer_multi_cmds.rs
-@@ -1330,6 +1330,46 @@ pub fn delete_selected(s: &mut Session) -> Result<Value> {
+@@ -1591,6 +1591,46 @@ pub fn delete_selected(s: &mut Session) -> Result<Value> {
      Ok(json!({"deleted": sel.len()}))
  }
  
@@ -320,10 +243,10 @@ index 80da3bd..e3dc93d 100644
  /// copies become the selection. Artboard copies go beside their boards unless `in_place`
  /// ([`crate::artboard_cmds::place_copy`]). `label` names the history step (Layer via Copy reuses
 diff --git a/crates/text/src/layout.rs b/crates/text/src/layout.rs
-index 55f9e0a..700a3f0 100644
+index 5809e36..e9578b0 100644
 --- a/crates/text/src/layout.rs
 +++ b/crates/text/src/layout.rs
-@@ -216,6 +216,9 @@ pub struct TextLayout {
+@@ -233,6 +233,9 @@ pub struct TextLayout {
      pub px_per_pt: f32,
      /// Vertical type: line space is turned 90° clockwise into text space.
      pub vertical: bool,
@@ -333,7 +256,7 @@ index 55f9e0a..700a3f0 100644
  }
  
  impl TextLayout {
-@@ -1039,6 +1042,7 @@ impl Layouter {
+@@ -1097,6 +1100,7 @@ impl Layouter {
              }
              pending_space += ps.space_after_pt * k;
          }
@@ -342,10 +265,10 @@ index 55f9e0a..700a3f0 100644
      }
  }
 diff --git a/crates/text/src/tests.rs b/crates/text/src/tests.rs
-index ad83475..c4f9000 100644
+index 14ae2cc..b40c2b2 100644
 --- a/crates/text/src/tests.rs
 +++ b/crates/text/src/tests.rs
-@@ -270,6 +270,10 @@ fn box_text_wraps_inside_width() {
+@@ -302,6 +302,10 @@ fn box_text_wraps_inside_width() {
      t.shape = TextShape::Box { x: 0.0, y: 0.0, width: 100.0, height: 30.0 };
      let l2 = e.layout(&t, 72.0);
      assert_eq!(l2.lines.len(), 2);
@@ -355,17 +278,17 @@ index ad83475..c4f9000 100644
 +    assert!(!e.layout(&t, 72.0).overflow, "point text never overflows");
  }
  
- #[test]
+ /// #5565: paragraph text breaks at its horizontally scaled width. At 60% it breaks like 100%
 diff --git a/crates/ui-egui/src/blur_handles.rs b/crates/ui-egui/src/blur_handles.rs
 new file mode 100644
-index 0000000..e6b2e66
+index 0000000..782c8da
 --- /dev/null
 +++ b/crates/ui-egui/src/blur_handles.rs
-@@ -0,0 +1,726 @@
-+//! HORIX (round 4 #3, round 5 #2): the Blur Gallery's other blurs get Photoshop's on-canvas
-+//! controls too, beside upstream's Field Blur pins (`blur_pins`). While Tilt-Shift, Iris Blur,
-+//! Spin Blur or Path Blur is open, its geometry is drawn on the image under the dialog and dragged
-+//! there: Path Blur's arrow and its end and bend points, Tilt-Shift's focus and transition lines
+@@ -0,0 +1,728 @@
++//! HORIX (round 4 #3, round 5 #2): Path Blur gets Photoshop's on-canvas controls too. Upstream's
++//! `blur_pins` (PhotoCraft 0.10+) owns Field, Iris, Spin and Tilt-Shift, so only `pathBlur` is
++//! live here; the other kinds' geometry stays for the tests. While a blur is open, its geometry is
++//! drawn on the image under the dialog and dragged there: Path Blur's arrow and its end and bend points, Tilt-Shift's focus and transition lines
 +//! (and the dot that rotates them), the Iris and Spin ellipses with their size handles (and
 +//! Iris's feather handle), each blur's centre pin and the ring that sets its blur (Spin: its arc).
 +//! The handles edit the dialog's own fields (`centerX`, `radiusX`, `focus`, `startX`…, fractions
@@ -383,7 +306,7 @@ index 0000000..e6b2e66
 +use crate::canvas::ViewXform;
 +
 +const PREFIX: &str = "filter.blurGallery.";
-+const KINDS: [&str; 4] = ["tiltShift", "irisBlur", "spinBlur", "pathBlur"];
++const KINDS: [&str; 1] = ["pathBlur"];
 +/// The handle being dragged, and the one under the pointer (egui memory).
 +const HELD: &str = "horix-blur-handle-held";
 +const NEAR: &str = "horix-blur-handle-near";
@@ -1083,26 +1006,28 @@ index 0000000..e6b2e66
 +        sync("tiltShift", &mut f);
 +        assert!(!f.contains_key("pins") && !f.contains_key("paths"));
 +        assert_eq!(add_item("tiltShift", &mut f, &g, [10.0, 10.0], 1.0), None);
-+        // Field Blur is upstream's `blur_pins`.
-+        assert!(!owns(&fields("filter.blurGallery.fieldBlur")));
-+        assert!(owns(&fields("filter.blurGallery.spinBlur")));
++        // Field, Iris, Spin and Tilt-Shift are upstream's `blur_pins`; Path Blur is ours.
++        for kind in ["fieldBlur", "irisBlur", "spinBlur", "tiltShift"] {
++            assert!(!owns(&fields(&format!("filter.blurGallery.{kind}"))), "{kind}");
++        }
++        assert!(owns(&fields("filter.blurGallery.pathBlur")));
 +    }
 +}
 diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
-index 03ac923..cc26a21 100644
+index d460c1f..47ff137 100644
 --- a/crates/ui-egui/src/canvas.rs
 +++ b/crates/ui-egui/src/canvas.rs
-@@ -3217,7 +3217,8 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+@@ -3887,7 +3887,8 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
          let refine_brushing =
              primary && app.ui.dialogs.last().is_some_and(|d| crate::select_mask_view::owns(&d.fields) && crate::select_mask_view::brush_on(&d.fields));
          // Field Blur's pins are placed and dragged on the image (`blur_pins`).
 -        let pinning = primary && app.ui.dialogs.last().is_some_and(|d| crate::blur_pins::owns(&d.fields));
-+        // HORIX: and the other Blur Gallery blurs' controls (`blur_handles`).
++        // HORIX: and Path Blur's arrow and points (`blur_handles`).
 +        let pinning = primary && app.ui.dialogs.last().is_some_and(|d| crate::blur_pins::owns(&d.fields) || crate::blur_handles::owns(&d.fields));
-         let hand = app.ui.tool == Tool::Hand && !picking && !range_picking && !refine_brushing && !pinning;
-         if let Some(d) = crate::dialogs::pan_delta(&ctx, rect, hand) {
-             let d = xf.unmap_vec(d) / (view.zoom / ppp);
-@@ -3247,7 +3248,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+         // Layer Style on a Drop or Inner Shadow page: a drag on the image moves the shadow (#5701).
+         let shadow_drag =
+             !picking && app.ui.dialogs.last().is_some_and(|d| d.kind == crate::state::DialogKind::LayerStyle && crate::layer_style::drags_shadow(&d.fields));
+@@ -3963,7 +3964,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
              && let Some(p) = crate::dialogs::free_pointer_over(&ctx, rect)
          {
              let press = crate::dialogs::free_press(&ctx, rect);
@@ -1113,7 +1038,7 @@ index 03ac923..cc26a21 100644
          } else if refine_brushing
              && !middle
              && let Some(p) = crate::dialogs::free_pointer_over(&ctx, rect)
-@@ -3676,6 +3679,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
+@@ -4468,6 +4471,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
              painter.rect_stroke(img_rect, 0.0, Stroke::new(1.0, Color32::from_gray(20)), egui::StrokeKind::Outside);
          }
          crate::type_tool::draw_overlay(app, &painter, &xf);
@@ -1121,7 +1046,7 @@ index 03ac923..cc26a21 100644
          crate::transform_tool::draw_overlay(app, &painter, &xf);
          crate::cam_transform::draw(app, &painter, &xf);
          crate::cam_preview::wake(app, painter.ctx());
-@@ -4456,6 +4460,7 @@ fn draw_tool_state(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform,
+@@ -5292,6 +5296,7 @@ fn draw_tool_state(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform,
      }
      crate::crop_straighten::draw(app, painter, |p| xf.to_screen(p[0] as f32, p[1] as f32), hover);
      crate::blur_pins::draw(app, painter, xf);
@@ -1130,10 +1055,10 @@ index 03ac923..cc26a21 100644
          let deg = crate::crop_ui::angle(app);
          let shield = crate::crop_shield::current(app, painter.ctx());
 diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
-index ef09f1c..ff4cd08 100644
+index b9a0016..780ecfd 100644
 --- a/crates/ui-egui/src/dialogs.rs
 +++ b/crates/ui-egui/src/dialogs.rs
-@@ -157,7 +157,10 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+@@ -262,7 +262,10 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
          // effects, extends down and right instead of re-centring.
          let pinned: Option<egui::Vec2> = ctx.data(|m| m.get_temp(id));
          let place = place_id(&d);
@@ -1143,9 +1068,9 @@ index ef09f1c..ff4cd08 100644
 +            .or_else(|| crate::blur_pins::first_place(&d.fields, ctx))
 +            .or_else(|| crate::blur_handles::first_place(&d.fields, ctx));
          let mut drag = egui::Vec2::ZERO;
+         let mut close_clicked = false;
          let mut sizing = false;
-         let area = match start {
-@@ -240,6 +243,10 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+@@ -360,6 +363,10 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
              crate::widgets::hairline(ui);
              ui.add_space(8.0);
              crate::field_tab::begin(ui.ctx());
@@ -1156,7 +1081,7 @@ index ef09f1c..ff4cd08 100644
              match d.kind {
                  DialogKind::NewDocument => {
                      if crate::new_doc_ui::body(app, ui, &mut fields) {
-@@ -288,6 +295,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+@@ -410,6 +417,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                  DialogKind::Command if crate::actions::owns_insert_stop(&fields) => crate::actions::insert_stop_body(ui, &mut fields),
                  DialogKind::Command if crate::new_layer_ui::owns(&fields) => crate::new_layer_ui::body(ui, &mut fields),
                  DialogKind::Command if crate::mask_trash_prompt::owns(&fields) => crate::mask_trash_prompt::body(ui, &fields),
@@ -1164,7 +1089,7 @@ index ef09f1c..ff4cd08 100644
                  DialogKind::Command if crate::rasterize_prompt::owns(&fields) => crate::rasterize_prompt::body(ui, &fields),
                  DialogKind::Command if crate::duplicate_layer_ui::owns(&fields) => crate::duplicate_layer_ui::body(app, ui, &mut fields),
                  DialogKind::Command if crate::stack_dialog::owns(&fields) => crate::stack_dialog::body(app, ui, &mut fields, d.id),
-@@ -398,6 +406,8 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+@@ -539,6 +547,8 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                                  fields.insert("choice".into(), json!("apply"));
                              }
                              hit
@@ -1173,7 +1098,7 @@ index ef09f1c..ff4cd08 100644
                          } else if crate::rasterize_prompt::is_filter(&fields) {
                              // Photoshop: Convert to Smart Object / Rasterize / Cancel (#4303).
                              let rasterize = DialogButton::new(ButtonRole::Default, tl!("Rasterize"), 84.0);
-@@ -587,6 +597,7 @@ pub fn confirm(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
+@@ -806,6 +816,7 @@ pub fn confirm(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
          DialogKind::Command if crate::actions::owns_insert_stop(&d.fields) => crate::actions::insert_stop_confirm(app, &d.fields),
          DialogKind::Command if crate::new_layer_ui::owns(&d.fields) => crate::new_layer_ui::confirm(app, &d.fields),
          DialogKind::Command if crate::mask_trash_prompt::owns(&d.fields) => crate::mask_trash_prompt::confirm(app, &d.fields),
@@ -1182,10 +1107,10 @@ index ef09f1c..ff4cd08 100644
          DialogKind::Command if crate::duplicate_layer_ui::owns(&d.fields) => crate::duplicate_layer_ui::confirm(app, &d.fields),
          DialogKind::Command if crate::stack_dialog::owns(&d.fields) => crate::stack_dialog::confirm(app, &d.fields),
 diff --git a/crates/ui-egui/src/filter_dialog.rs b/crates/ui-egui/src/filter_dialog.rs
-index cf30429..e5eb810 100644
+index 8c9e050..414b269 100644
 --- a/crates/ui-egui/src/filter_dialog.rs
 +++ b/crates/ui-egui/src/filter_dialog.rs
-@@ -448,7 +448,8 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
+@@ -481,7 +481,8 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
      fields.insert("__label".into(), json!(spec.label));
      fields.insert("__filter".into(), json!(true));
      // Select and Mask previews in its view modes (`select_mask_view`), not as the command's result.
@@ -1195,22 +1120,19 @@ index cf30429..e5eb810 100644
          fields.insert("__preview".into(), json!(true));
      }
      for p in parse_spec(spec.params) {
-@@ -461,6 +462,9 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
-     if command == crate::blur_pins::COMMAND {
+@@ -494,6 +495,9 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
+     if crate::blur_pins::handles(command) {
          crate::blur_pins::init(app, &mut fields);
      }
 +    if crate::blur_handles::owns(&fields) {
 +        crate::blur_handles::init(app, &mut fields);
 +    }
-     if parse_spec(spec.params).iter().any(|p| p.kind == Kind::Document) {
-         // The document picker lists every open document (params refer to them by index).
-         let names: Vec<String> = app.session.documents().iter().map(|d| d.doc.name.clone()).collect();
-@@ -920,8 +924,15 @@ pub(crate) fn preview_document_for_target(
-     // Blur Gallery pins carry their blur in document pixels too.
-     if command.starts_with("filter.blurGallery.") {
-         crate::blur_pins::scale_for_proxy(&mut p, run_k);
-+        crate::blur_handles::scale_for_proxy(&mut p, run_k);
+     if command == LENS_BLUR {
+         lens_blur_channels(app, &mut fields);
      }
+@@ -1166,6 +1170,12 @@ pub(crate) fn preview_document_for_target(
+     }
+     s.active_mut()?.channel_view.target = target;
      s.execute(command, p).ok()?;
 +    // HORIX: Select › Modify shows the selection it makes (red over what isn't selected).
 +    if command.starts_with("select.modify.") {
@@ -1219,6 +1141,14 @@ index cf30429..e5eb810 100644
 +        return Some(crate::proxy::proxy_document(&out, reduce_k));
 +    }
      s.active().map(|d| crate::proxy::proxy_document(&d.doc, reduce_k))
+ }
+ 
+@@ -1224,6 +1234,7 @@ fn scale_preview_params(command: &str, params: &mut Value, k: u32) {
+     // Blur Gallery pins carry their blur in document pixels too.
+     if command.starts_with("filter.blurGallery.") {
+         crate::blur_pins::scale_for_proxy(params, k);
++        crate::blur_handles::scale_for_proxy(params, k);
+     }
  }
  
 diff --git a/crates/ui-egui/src/group_delete_prompt.rs b/crates/ui-egui/src/group_delete_prompt.rs
@@ -1505,10 +1435,10 @@ index 0000000..ded449b
 +}
 diff --git a/crates/ui-egui/src/horix_ux_tests.rs b/crates/ui-egui/src/horix_ux_tests.rs
 new file mode 100644
-index 0000000..1590b38
+index 0000000..8c84e7d
 --- /dev/null
 +++ b/crates/ui-egui/src/horix_ux_tests.rs
-@@ -0,0 +1,532 @@
+@@ -0,0 +1,473 @@
 +//! HORIX's bug reports re-run on PhotoCraft 0.9 (apps/sg-ps/NEXT-STEPS.md), and the HORIX UX
 +//! fixes that 0.9 still needed. Each test names the report it reproduces.
 +
@@ -1789,25 +1719,6 @@ index 0000000..1590b38
 +    assert_eq!(open(&mut app), json!(true));
 +}
 +
-+/// Round 4 #2: New Document › Color Profile reaches `file.new`; Working leaves the key out.
-+#[test]
-+fn new_document_dialog_has_a_color_profile() {
-+    use egui_kittest::kittest::Queryable;
-+    let mut h = app_harness(photocraft_engine::Session::new());
-+    let ctx = h.ctx.clone();
-+    crate::menus::invoke(h.state_mut(), &ctx, "file.new", json!({})).unwrap();
-+    h.run_steps(4);
-+    assert!(h.query_by_label("Color Profile").is_some(), "the dropdown is there");
-+    let d = h.state().ui.dialogs.last().unwrap().id;
-+    assert!(!h.state().ui.dialogs.last().unwrap().fields.contains_key("profile"), "Working by default");
-+    h.state_mut().ui.dialog_mut(d).unwrap().fields.insert("profile".into(), json!("display-p3"));
-+    h.run_steps(2);
-+    crate::dialogs::confirm(h.state_mut(), d).unwrap();
-+    let st = h.state().session.active().unwrap();
-+    let p = photocraft_cms::Profile::parse(st.doc.icc_profile.as_ref().unwrap()).unwrap();
-+    assert!(p.description.starts_with("Display P3"), "{}", p.description);
-+}
-+
 +/// Round 1 #12: overset paragraph text has its mark's corner; text that fits has none.
 +#[test]
 +fn overset_text_has_a_mark() {
@@ -1989,50 +1900,10 @@ index 0000000..1590b38
 +    m[k].as_f64().unwrap()
 +}
 +
-+/// Round 4 #3, round 5 #2: Iris Blur's ellipse handle and centre pin drag on the image, the
-+/// dialog's fields and its first pin follow; a click elsewhere adds a pin, Delete removes it.
++/// Round 4 #3, round 5 #2: Path Blur's end point drags on the image, the dialog's fields and
++/// its first path follow (Field, Iris, Spin and Tilt-Shift are upstream's `blur_pins`).
 +#[test]
-+fn iris_blur_is_edited_on_the_image() {
-+    let mut h = blur_harness("filter.blurGallery.irisBlur");
-+    let fl = blur_fields(&h);
-+    assert_eq!(fl["__bounds"], json!([0, 0, 400, 300]));
-+    assert_eq!(fl["pins"].as_array().unwrap().len(), 1, "the fields are the first pin");
-+    // The radius-X handle sits at centre + 0.35 × 300 px: drag it 30 px further out.
-+    let (cx, cy) = (200.0, 150.0);
-+    let rx = (f(&fl, "radiusX") * 300.0) as f32;
-+    doc_drag(&mut h, [cx + rx, cy], [cx + rx + 30.0, cy]);
-+    let fl = blur_fields(&h);
-+    assert!((f(&fl, "radiusX") - (0.35 + 0.1)).abs() < 0.005, "{}", fl["radiusX"]);
-+    assert_eq!(fl["pins"][0]["radiusX"], fl["radiusX"], "the pin follows");
-+    // The centre pin moves the blur.
-+    doc_drag(&mut h, [cx, cy], [cx - 40.0, cy + 30.0]);
-+    let fl = blur_fields(&h);
-+    assert!((f(&fl, "centerX") - 0.4).abs() < 0.005 && (f(&fl, "centerY") - 0.6).abs() < 0.005, "{} {}", fl["centerX"], fl["centerY"]);
-+    // A click on an empty spot adds a second pin there, selected.
-+    let at = doc_to_screen(&h, [30.0, 30.0]);
-+    screen_drag(&mut h, at, at);
-+    let fl = blur_fields(&h);
-+    assert_eq!(fl["pins"].as_array().unwrap().len(), 2);
-+    assert_eq!(fl["__pin"], 1);
-+    assert!((f(&fl, "centerX") - 30.0 / 400.0).abs() < 0.005);
-+    // Delete removes it (with the pointer over the image).
-+    h.event(egui::Event::PointerMoved(at));
-+    key(&mut h, Modifiers::NONE, Key::Delete);
-+    assert_eq!(blur_fields(&h)["pins"].as_array().unwrap().len(), 1);
-+    // OK applies the pins.
-+    let d = h.state().ui.dialogs.last().unwrap().id;
-+    crate::dialogs::confirm(h.state_mut(), d).unwrap();
-+    assert!(h.state().ui.dialogs.is_empty());
-+}
-+
-+/// Tilt-Shift's focus line and Path Blur's end point drag on the image.
-+#[test]
-+fn tilt_shift_and_path_blur_are_edited_on_the_image() {
-+    let mut h = blur_harness("filter.blurGallery.tiltShift");
-+    let fl = blur_fields(&h);
-+    let focus = (f(&fl, "focus") * 300.0) as f32;
-+    doc_drag(&mut h, [200.0, 150.0 + focus], [200.0, 150.0 + 60.0]);
-+    assert!((f(&blur_fields(&h), "focus") - 0.2).abs() < 0.005, "{}", blur_fields(&h)["focus"]);
++fn path_blur_is_edited_on_the_image() {
 +    let mut h = blur_harness("filter.blurGallery.pathBlur");
 +    let fl = blur_fields(&h);
 +    let end = [(f(&fl, "endX") * 400.0) as f32, (f(&fl, "endY") * 300.0) as f32];
@@ -2042,7 +1913,7 @@ index 0000000..1590b38
 +    assert_eq!(fl["paths"][0]["points"][1], json!([fl["endX"], fl["endY"]]), "the path follows");
 +}
 diff --git a/crates/ui-egui/src/layer_menu_ui.rs b/crates/ui-egui/src/layer_menu_ui.rs
-index beb3e9b..d861c7e 100644
+index a26b2f1..ae40042 100644
 --- a/crates/ui-egui/src/layer_menu_ui.rs
 +++ b/crates/ui-egui/src/layer_menu_ui.rs
 @@ -58,6 +58,10 @@ pub fn entries(l: &Layer, multi: bool, has_selection: bool) -> Vec<Entry> {
@@ -2057,29 +1928,31 @@ index beb3e9b..d861c7e 100644
      v.push(Some((tl!("Quick Export As PNG"), "layer.quickExportAsPng")));
      v.push(Some((tl!("Export As…"), "layer.exportAs")));
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index f5bdc6c..0c04336 100644
+index 22d50ab..84b2e72 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
-@@ -28,6 +28,7 @@ pub mod artboard_ui;
- pub(crate) mod background_redraw;
+@@ -32,6 +32,7 @@ pub mod bidi_text;
+ pub(crate) mod bitmap_dialog;
  mod blend_keys;
  pub(crate) mod blend_preview;
 +pub mod blur_handles;
  pub mod blur_pins;
  mod brand;
  pub(crate) mod brush_cursor;
-@@ -100,8 +101,10 @@ pub mod gallery_ui;
+@@ -111,10 +112,12 @@ pub mod gallery_ui;
  pub mod gpu_canvas;
  pub mod gpu_status;
  pub mod gradient_ui;
 +pub mod group_delete_prompt;
  pub mod guide_layout_ui;
+ pub mod guide_select;
+ pub mod history_menu_ui;
  pub mod hold_keys;
 +pub mod horix_ux;
  pub mod i18n;
  mod icon_data;
  pub mod icons;
-@@ -966,6 +969,10 @@ impl PhotocraftApp {
+@@ -1256,6 +1259,10 @@ impl PhotocraftApp {
  
      /// Run an engine command, reporting errors in the status bar.
      pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
@@ -2090,7 +1963,7 @@ index f5bdc6c..0c04336 100644
          if let Some(result) = delete_layer_prompt::intercept(self, id, &params) {
              return result;
          }
-@@ -1722,6 +1729,7 @@ impl eframe::App for PhotocraftApp {
+@@ -2291,6 +2298,7 @@ impl eframe::App for PhotocraftApp {
              vector_ui::pen_commit(self, false);
          }
          transform_tool::end_if_left(self);
@@ -2098,7 +1971,7 @@ index f5bdc6c..0c04336 100644
          shape_stroke_ui::sync_editor(self, ctx);
          self.collect_screenshots(ctx);
          self.issue_screenshots(ctx);
-@@ -2529,6 +2537,9 @@ mod transform_fx_tests;
+@@ -3242,6 +3250,9 @@ mod transform_switch_tests;
  #[cfg(test)]
  mod transform_undo_tests;
  
@@ -2108,60 +1981,11 @@ index f5bdc6c..0c04336 100644
  #[cfg(test)]
  mod transform_type_tests;
  
-diff --git a/crates/ui-egui/src/new_doc_ui.rs b/crates/ui-egui/src/new_doc_ui.rs
-index 1b335ea..469f5e2 100644
---- a/crates/ui-egui/src/new_doc_ui.rs
-+++ b/crates/ui-egui/src/new_doc_ui.rs
-@@ -285,6 +285,36 @@ fn page_icon(ui: &egui::Ui, r: Rect, w: u32, h: u32, t: &Tokens) {
-     ui.painter().rect_stroke(page, 1.0, Stroke::new(1.2, t.text_dim), StrokeKind::Inside);
- }
- 
-+/// HORIX: Advanced Options › Color Profile (Photoshop): the working space (the default; the
-+/// document stays untagged and follows it) or a built-in profile of the colour mode, as
-+/// `file.new`'s `profile`. A profile of another mode falls back to the working space.
-+fn color_profile(app: &crate::PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Value>) {
-+    ui.add_space(4.0);
-+    small_label(ui, tl!("Color Profile"));
-+    let mode = match get_s(f, "mode", "rgb").as_str() {
-+        "gray" | "grayscale" => photocraft_color::ColorMode::Grayscale,
-+        "cmyk" => photocraft_color::ColorMode::Cmyk,
-+        "lab" => photocraft_color::ColorMode::Lab,
-+        _ => photocraft_color::ColorMode::Rgb,
-+    };
-+    let working = format!("{}: {}", tl!("Working"), app.session.color.working(mode).description);
-+    let mut opts: Vec<(String, &str)> = vec![("working".to_string(), working.as_str())];
-+    let list = photocraft_engine::color_cmds::profiles_for_mode(mode);
-+    opts.extend(list.iter().map(|(id, d)| (id.to_string(), *d)));
-+    let mut prof = get_s(f, "profile", "working");
-+    if !opts.iter().any(|(id, _)| *id == prof) {
-+        prof = "working".into();
-+        f.remove("profile");
-+    }
-+    if widgets::dropdown(ui, "nd-profile", &mut prof, &opts, 240.0) {
-+        if prof == "working" {
-+            f.remove("profile");
-+        } else {
-+            f.insert("profile".into(), json!(prof));
-+        }
-+    }
-+}
-+
- /// The Background Contents menu's entry for a colour of the user's own ([`body`]).
- const CUSTOM: &str = "custom";
- /// Side of the Background Contents colour swatch.
-@@ -758,6 +788,7 @@ pub fn body(app: &mut crate::PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<Strin
-                 f.remove("backgroundColor");
-                 crate::color_picker_ui::request_field(f, "background", &crate::color_picker_ui::title_for(tl!("Background Contents")));
-             }
-+            color_profile(app, ui, f);
-             save_preset(app, ui, f);
-         });
-     });
 diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
-index e20e374..253caed 100644
+index 19c3299..c24ae8a 100644
 --- a/crates/ui-egui/src/panels.rs
 +++ b/crates/ui-egui/src/panels.rs
-@@ -3632,6 +3632,8 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -4358,6 +4358,8 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                  ui.data_mut(|d| d.insert_temp(key, (h.h, h.s)));
              }
          }
@@ -2171,7 +1995,7 @@ index e20e374..253caed 100644
  }
  
 diff --git a/crates/ui-egui/src/path_selection_tests.rs b/crates/ui-egui/src/path_selection_tests.rs
-index 8f82e2a..1e954dc 100644
+index a5d4ee0..21c2257 100644
 --- a/crates/ui-egui/src/path_selection_tests.rs
 +++ b/crates/ui-egui/src/path_selection_tests.rs
 @@ -157,6 +157,8 @@ fn thumbnail_selection_ctrl_click_shape_keeps_active_layer_and_supports_undo() {
@@ -2183,11 +2007,20 @@ index 8f82e2a..1e954dc 100644
      click(&mut h, egui::pos2(row.row.left() + 46.0, row.row.center().y), command());
      assert_eq!(selection(&h), Some([40, 20, 60, 40]), "{}", h.state().ui.status);
      assert_eq!(h.state().session.active().unwrap().active_layer, Some(photocraft_doc::LayerId(active)));
+@@ -349,6 +351,8 @@ fn thumbnail_selection_after_hiding_extras_restores_outline() {
+     assert!(!h.state().ui.view.extras, "selecting layers must not reveal Extras");
+     h.state_mut().run("layer.select", json!({"layer": active})).unwrap();
+     h.run_steps(2);
++    // HORIX: selecting the shape brought Properties forward, which moved the Layers rows.
++    let row = crate::layer_row_ui::recorded(&h.ctx).into_iter().find(|r| r.layer == shape).unwrap();
+     click(&mut h, egui::pos2(row.row.left() + 46.0, row.row.center().y), command());
+     assert_eq!(selection(&h), Some([40, 20, 60, 40]));
+     assert!(h.state().ui.view.shows(h.state().ui.view.show.selection_edges), "Ctrl-clicking the thumbnail reveals the new selection");
 diff --git a/crates/ui-egui/src/prefs_ui.rs b/crates/ui-egui/src/prefs_ui.rs
-index 21fbdd0..0f60c5d 100644
+index a0a4562..f4e697c 100644
 --- a/crates/ui-egui/src/prefs_ui.rs
 +++ b/crates/ui-egui/src/prefs_ui.rs
-@@ -852,6 +852,8 @@ pub fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &V
+@@ -994,6 +994,8 @@ pub fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &V
                          dm.fields.insert(k.clone(), v.clone());
                      }
                  }
@@ -2197,17 +2030,17 @@ index 21fbdd0..0f60c5d 100644
              }
              dialog(d)
 diff --git a/crates/ui-egui/src/type_tool.rs b/crates/ui-egui/src/type_tool.rs
-index 723a5a3..1db1d41 100644
+index ce9760e..2f6c6d0 100644
 --- a/crates/ui-egui/src/type_tool.rs
 +++ b/crates/ui-egui/src/type_tool.rs
-@@ -1029,6 +1029,10 @@ pub fn draw_overlay(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewX
-                 painter.rect_filled(r, 0.0, Color32::WHITE);
-                 painter.rect_stroke(r, 0.0, frame, egui::StrokeKind::Inside);
+@@ -1270,6 +1270,10 @@ pub fn draw_overlay(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewX
+                     painter.rect_filled(r, 0.0, Color32::WHITE);
+                     painter.rect_stroke(r, 0.0, frame, egui::StrokeKind::Inside);
+                 }
++                // HORIX: the overset-text mark on the bottom-right handle.
++                if l.overflow {
++                    crate::horix_ux::overflow_mark(painter, c[2]);
++                }
              }
-+            // HORIX: the overset-text mark on the bottom-right handle.
-+            if l.overflow {
-+                crate::horix_ux::overflow_mark(painter, c[2]);
-+            }
          }
          _ => {
-             for ln in &l.lines {
