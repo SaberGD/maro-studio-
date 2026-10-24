@@ -2,14 +2,14 @@
 # Build Horix Light (rebranded LightCraft) for the web and zip it for hosting.
 #
 # Usage: apps/horix-light/build.sh [lightcraft-source.tar.gz]
-#   default source: archive/lightcraft/lightcraft-source-0.8.0.tar.gz
+#   default source: archive/lightcraft/lightcraft-source-0.13.0.tar.gz
 # Needs: Rust >= 1.95 with the wasm32-unknown-unknown target, wasm-bindgen-cli (version in Cargo.lock), python3, zip.
 # Output: deploy/horix-light/horix-light-<version>-web.zip (a static site; any URL path works).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-SRC_TGZ="${1:-$REPO/archive/lightcraft/lightcraft-source-0.8.0.tar.gz}"
+SRC_TGZ="${1:-$REPO/archive/lightcraft/lightcraft-source-0.13.0.tar.gz}"
 WORK="${HORIX_LIGHT_WORK:-$REPO/.horix-build/light}"
 OUT="$REPO/deploy/horix-light"
 

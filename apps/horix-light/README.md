@@ -2,7 +2,7 @@
 
 العنوان: https://light.horix.live/
 
-**Horix Light** هو برنامج تنظيم وتحميض الصور (بديل Lightroom) من عيلة HORIX بتاعة أكاديمية صابر جروب. مبني على [LightCraft](https://github.com/storytold/lightcraft) المفتوح المصدر (MIT OR Apache-2.0)، الإصدار **0.8.0** (commit `f34c7a8`).
+**Horix Light** هو برنامج تنظيم وتحميض الصور (بديل Lightroom) من عيلة HORIX بتاعة أكاديمية صابر جروب. مبني على [LightCraft](https://github.com/storytold/lightcraft) المفتوح المصدر (MIT OR Apache-2.0)، الإصدار **0.13.0** (tag `v0.13.0`، commit `23e1812`).
 
 زي HORIX بالظبط: إحنا مش بنعدّل الكود الأصلي بإيدينا. `rebrand.py` بيتطبّق على نسخة نظيفة من الكود وقت البناء، فالتحديث لأي إصدار جديد من LightCraft هو إن تحفظ الكود الجديد في `archive/lightcraft/` وتشغّل البناء تاني.
 
