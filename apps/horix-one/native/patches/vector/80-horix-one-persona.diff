@@ -1,0 +1,158 @@
+diff --git a/apps/vectorcraft/Cargo.toml b/apps/vectorcraft/Cargo.toml
+index 196e167..c3a27fb 100644
+--- a/apps/vectorcraft/Cargo.toml
++++ b/apps/vectorcraft/Cargo.toml
+@@ -9,6 +9,18 @@ default-run = "vectorcraft"
+ [lints]
+ workspace = true
+ 
++# HORIX One: the same app as a library, which HORIX's window shows as its Vector persona
++# (`horix_one_persona` in src/main.rs).
++[lib]
++name = "horix_vectors_app"
++path = "src/main.rs"
++test = false
++doctest = false
++
++[[bin]]
++name = "vectorcraft"
++path = "src/main.rs"
++
+ [features]
+ default = ["wgpu", "accessibility"]
+ wgpu = ["eframe/wgpu", "dep:winsafe"]
+@@ -20,6 +32,7 @@ windows7 = ["eframe/glow"]
+ vectorcraft-engine = { workspace = true, features = ["bundled-fonts"] }
+ vectorcraft-ui-egui = { workspace = true }
+ vectorcraft-text = { workspace = true }
++vectorcraft-format = { workspace = true }
+ # Shared across the Craft suite: decides who draws the window frame per desktop (compositor vs app)
+ # so VectorCraft matches the rest on Linux. `egui` adds `craft_window::decorate`. See #217.
+ craft-window = { workspace = true }
+diff --git a/apps/vectorcraft/src/main.rs b/apps/vectorcraft/src/main.rs
+index e8d6f86..7409e39 100644
+--- a/apps/vectorcraft/src/main.rs
++++ b/apps/vectorcraft/src/main.rs
+@@ -14,6 +14,8 @@
+ //! files its requests read and write (`vectorcraft_engine::file_access`); the person at the
+ //! keyboard isn't confined.
+ #![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
++// HORIX One builds this file as a library too (`horix_one_persona`), where `main` is unused.
++#![allow(dead_code)]
+ 
+ #[cfg(all(feature = "windows7", any(feature = "wgpu", feature = "accessibility")))]
+ compile_error!("windows7 requires --no-default-features (wgpu and accessibility must be disabled)");
+@@ -62,7 +64,7 @@ use vectorcraft_ui_egui::graphics::GraphicsLoss;
+ use vectorcraft_ui_egui::picks::PickRequest;
+ use vectorcraft_ui_egui::{ClipboardProbeFactory, FilePick, Services, VectorcraftApp};
+ 
+-struct App {
++pub struct App {
+     app: VectorcraftApp,
+     /// Reported by wgpu when the window's graphics device is lost (a driver reset).
+     graphics_loss: GraphicsLoss,
+@@ -80,6 +82,79 @@ struct App {
+     maximize_tries: u8,
+ }
+ 
++/// HORIX One: Horix Vectors as the Vector persona of HORIX's window. HORIX's start-up made the
++/// window, its graphics device, the log and the macOS menu bar; this is the part of [`main`]'s app
++/// creation that belongs to Horix Vectors (its preferences, libraries, fonts and Data Recovery,
++/// which it shares with the standalone app). The menus stay inside the window.
++pub fn horix_one_persona(cc: &eframe::CreationContext<'_>, custom_titlebar: bool) -> App {
++    vectorcraft_ui_egui::i18n::detect_system_lang_in_background();
++    #[cfg(all(windows, not(target_vendor = "win7")))]
++    system_fonts::install();
++    #[cfg(target_os = "macos")]
++    mac_fonts::install();
++    prefs_dir::install_fonts();
++    let saved = read_prefs();
++    let mut session = Session::new();
++    prefs_dir::attach_profile_store(&mut session);
++    prefs_dir::attach_plugin_store(&mut session);
++    let mut app = VectorcraftApp::new(session, services(cc.winit_window().cloned(), cc.egui_ctx.clone()));
++    load_prefs(&mut app, saved);
++    prefs_dir::attach_pdf_preset_store(&mut app.session);
++    let swatches = prefs_path().and_then(|p| Some(p.parent()?.join("Swatches").to_string_lossy().to_string()));
++    app.session.swatch_libraries.set_user_dir(swatches);
++    let styles = prefs_path().and_then(|p| Some(p.parent()?.join("Graphic Styles").to_string_lossy().to_string()));
++    app.session.style_libraries.set_user_dir(styles);
++    vectorcraft_ui_egui::panels::library_panel::restore(&mut app);
++    if prefs_enabled() {
++        let libraries = prefs_path().and_then(|p| Some(p.parent()?.join("Libraries").to_string_lossy().to_string()));
++        app.session.libraries.set_dir(libraries);
++    }
++    if std::env::var_os("VECTORCRAFT_NO_PREFS").is_none() {
++        let recovery = prefs_path().and_then(|p| Some(p.parent()?.join("Data Recovery").to_string_lossy().to_string()));
++        app.session.recovery.set_default_folder(recovery);
++    }
++    #[cfg(feature = "wgpu")]
++    if let Some(rs) = &cc.wgpu_render_state {
++        app.graphics_adapter = Some(adapter_summary(&rs.adapter.get_info()));
++    }
++    app.custom_titlebar = custom_titlebar;
++    // HORIX keeps the window's size and place.
++    app.ui.window = None;
++    App {
++        app,
++        graphics_loss: GraphicsLoss::default(),
++        graphics_lost: false,
++        frames: 0,
++        window_frame: None,
++        winit_window: None,
++        pending_maximize: false,
++        maximize_tries: 0,
++    }
++}
++
++impl App {
++    /// The app, for HORIX One's persona bar (open a file, export the drawing).
++    pub fn app(&mut self) -> &mut VectorcraftApp {
++        &mut self.app
++    }
++
++    /// Open `bytes` named `name` as a new document, as a dropped file opens.
++    pub fn open_bytes(&mut self, name: &str, bytes: &[u8]) -> Result<(), String> {
++        file_access::unconfined(|| vectorcraft_ui_egui::io::open_bytes(&mut self.app, name, bytes, None)).map(|_| ())
++    }
++
++    /// The active document as SVG, its type as outlines (HORIX One's hand-off to Pixel). `None`
++    /// without a document.
++    pub fn export_svg(&mut self) -> Result<Option<Vec<u8>>, String> {
++        if self.app.session.active().is_none() {
++            return Ok(None);
++        }
++        let r = file_access::unconfined(|| self.app.run("document.export", serde_json::json!({"format": "svg", "outlineText": true})))?;
++        let data = r["dataBase64"].as_str().ok_or("the export returned no data")?;
++        vectorcraft_format::base64_decode(data).map(Some).ok_or_else(|| "the export data is not base64".to_string())
++    }
++}
++
+ impl eframe::App for App {
+     // Each frame runs unconfined: it is the person at the keyboard's. The app confines what the
+     // control channel asks for, and the frames carrying input it injected, to the automation roots
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index d9540db..d3dc8e5 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -1272,6 +1272,20 @@ impl VectorcraftApp {
+ 
+     /// Per-frame logic before layout (control channel, shortcuts, inbox). A bug that panics costs
+     /// one frame and shows an error, instead of closing the app with unsaved work.
++    /// HORIX One: its window shows another persona's interface too, with that persona's fonts and
++    /// style. Before this one shows again, its fonts and style go back on the context (from the
++    /// next frame, as on the first; the installed fonts added for missing glyphs come back too).
++    pub fn horix_one_restyle(&mut self) {
++        self.styled = false;
++        self.fonts_ready = false;
++        self.ui_fonts = Default::default();
++    }
++
++    /// HORIX One: whether a document has unsaved changes (quitting asks about them first).
++    pub fn horix_one_unsaved(&self) -> bool {
++        unsaved::any_dirty(self)
++    }
++
+     pub fn logic(&mut self, ctx: &egui::Context) {
+         let confined = self.synthetic_frame.then(|| self.automation_roots.clone()).flatten();
+         if let Err(msg) = file_access::confine(confined.as_ref(), || vectorcraft_engine::guard::catch_panic(|| self.logic_frame(ctx))) {

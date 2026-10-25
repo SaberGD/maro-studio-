@@ -1,0 +1,112 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 8a3e051..a702011 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -172,3 +172,10 @@ opt-level = "z"
+ [profile.wasm-release.package.photocraft-paint]
+ opt-level = 3
+ 
++
++# HORIX One: Horix Vectors (its Vector persona) reads PDFs with these, from its own workspace.
++[patch.crates-io]
++hayro-syntax = { git = "https://github.com/storytold/craft-libs", rev = "ca50d63b773c99f96e75c77ce5a1d21e7c9cda0d" }
++hayro-interpret = { git = "https://github.com/storytold/craft-libs", rev = "ca50d63b773c99f96e75c77ce5a1d21e7c9cda0d" }
++hayro-jbig2 = { git = "https://github.com/storytold/craft-libs", rev = "ca50d63b773c99f96e75c77ce5a1d21e7c9cda0d" }
++krilla = { git = "https://github.com/storytold/craft-libs", rev = "ca50d63b773c99f96e75c77ce5a1d21e7c9cda0d" }
+diff --git a/apps/photocraft/Cargo.toml b/apps/photocraft/Cargo.toml
+index e97802d..73957c2 100644
+--- a/apps/photocraft/Cargo.toml
++++ b/apps/photocraft/Cargo.toml
+@@ -36,6 +36,8 @@ log = { workspace = true }
+ chrono = { workspace = true }
+ 
+ [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
++# HORIX One: Horix Vectors, the Vector persona of the same window (src/horix_one.rs).
++horix-vectors-app = { package = "vectorcraft", path = "../../../vector/apps/vectorcraft" }
+ rfd = { workspace = true }
+ # HORIX AI selection: Microsoft's onnxruntime, loaded at run time from the app folder (the
+ # Windows build links the C runtime statically, so the runtime ships as its own library).
+diff --git a/apps/photocraft/build.rs b/apps/photocraft/build.rs
+index 7aa02f1..d34eb89 100644
+--- a/apps/photocraft/build.rs
++++ b/apps/photocraft/build.rs
+@@ -27,12 +27,12 @@ fn main() {
+         res.set("ProductVersion", &v).set("FileVersion", &v);
+     }
+     res.set_icon("../../assets/app-icon/photocraft.ico")
+-        .set("ProductName", "HORIX")
+-        .set("FileDescription", "HORIX image editor")
++        .set("ProductName", "HORIX One")
++        .set("FileDescription", "HORIX One: Vector and Pixel")
+         .set("CompanyName", "Saber Group Academy")
+         .set("LegalCopyright", "Copyright (c) the HORIX authors. MIT OR Apache-2.0.")
+-        .set("OriginalFilename", "HORIX.exe")
+-        .set("InternalName", "HORIX");
++        .set("OriginalFilename", "horix-one.exe")
++        .set("InternalName", "HORIX One");
+     if let Err(e) = res.compile() {
+         if std::env::var_os("PHOTOCRAFT_REQUIRE_WINRES").is_some() {
+             panic!("embedding Windows resources failed: {e}");
+diff --git a/apps/photocraft/src/main.rs b/apps/photocraft/src/main.rs
+index 856ddfe..6cca2da 100644
+--- a/apps/photocraft/src/main.rs
++++ b/apps/photocraft/src/main.rs
+@@ -48,6 +48,7 @@ mod crash_guard;
+ mod cursor;
+ mod file_dialog_probe;
+ mod gpu_startup;
++mod horix_one;
+ #[cfg(target_os = "linux")]
+ mod icon_theme;
+ #[cfg(target_os = "macos")]
+@@ -453,7 +454,9 @@ fn main() -> eframe::Result {
+     let mut launch = LaunchArgs {
+         automation_read_root: std::env::var_os("PHOTOCRAFT_AUTOMATION_READ_ROOT").map(std::path::PathBuf::from),
+         automation_write_root: std::env::var_os("PHOTOCRAFT_AUTOMATION_WRITE_ROOT").map(std::path::PathBuf::from),
+-        in_window_menus: std::env::var_os("PHOTOCRAFT_IN_WINDOW_MENUS").is_some_and(|v| !v.is_empty() && v != "0"),
++        // HORIX One: the menus stay in the window on macOS too, each persona with its own (the
++        // menu bar would only ever hold Pixel's).
++        in_window_menus: true,
+         ..Default::default()
+     };
+     if let Some(value) = std::env::var("PHOTOCRAFT_CONTROL_PORT").ok().filter(|v| !v.trim().is_empty()) {
+@@ -719,7 +722,7 @@ fn main() -> eframe::Result {
+     let created_in_callback = app_created.clone();
+     let started_sentinel = sentinel.clone();
+     let result = eframe::run_native(
+-        "HORIX",
++        "HORIX One",
+         options,
+         Box::new(move |cc| {
+             created_in_callback.store(true, std::sync::atomic::Ordering::Relaxed);
+@@ -901,7 +904,8 @@ fn main() -> eframe::Result {
+             if let Some(w) = &app_dirs::current().warning {
+                 photocraft_ui_egui::notices::post(&mut app, "Portable mode is off", vec![w.clone()], false, None);
+             }
+-            Ok(Box::new(app))
++            // HORIX One: this window shows Horix Vectors too, as the Vector persona.
++            Ok(Box::new(horix_one::One::new(cc, app, custom_titlebar, !files.is_empty())))
+         }),
+     );
+     // The window is gone: refuse further files and free the lock, so a launch that is waiting (or
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 84b2e72..be53bdd 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -2251,6 +2251,16 @@ impl PhotocraftApp {
+     }
+ }
+ 
++impl PhotocraftApp {
++    /// HORIX One: its window shows another persona's interface too, with that persona's fonts and
++    /// style. Before this one shows again, its fonts and style go back on the context (from the
++    /// next frame, as on the first).
++    pub fn horix_one_restyle(&mut self) {
++        self.styled = false;
++        self.fonts_ready = false;
++    }
++}
++
+ impl eframe::App for PhotocraftApp {
+     fn on_exit(&mut self) {
+         if let Err(err) = tool_memory::save_on_exit(self) {
