@@ -87,6 +87,14 @@ def links(root: Path) -> None:
         (sibling_block(root), "pub const SIBLINGS: &[(&str, &str, &str)] = &[\n"
          + "".join(f'    ("{site}", "{name}", "{what}"),\n' for site, name, what in FAMILY) + "];\n"),
         ('                    let url = format!("{}/apps/{slug}", links::WEBSITE);', '                    let url = format!("https://{slug}/");'),
+        ("    let fill = if resp.hovered() { Color32::from_rgb(0x47, 0x52, 0xc4) } else { DISCORD };",
+         "    let fill = if resp.hovered() { Color32::from_rgb(0xb0, 0x2e, 0x25) } else { DISCORD };"),
+    ])
+    hx.edit(root, "crates/ui-egui/src/chrome.rs", [
+        ('                            // Always one click away: the ArtCraft community Discord.\n'
+         '                            if crate::about::discord_button(ui, "Discord", vec2(78.0, 22.0)) {',
+         '                            // Always one click away: Saber Group Academy.\n'
+         '                            if crate::about::discord_button(ui, "Saber Group", vec2(112.0, 22.0)) {'),
     ])
     hx.edit(root, "apps/designcraft/build.rs", [('.set("CompanyName", "Learning Machines LLC")', '.set("CompanyName", "Saber Group Academy")')])
 
