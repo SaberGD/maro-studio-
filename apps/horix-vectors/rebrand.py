@@ -145,21 +145,19 @@ def web_prefs(root: Path) -> None:
     """Preferences in the browser: upstream's web build keeps none, so Brightness (and every other
     preference) went back to the default on the next visit. They now live in localStorage, read at
     start and written whenever they change, as the desktop app keeps its preferences file."""
-    hx.edit(root, "apps/vectorcraft-web/Cargo.toml", [("log = { workspace = true }\n", "log = { workspace = true }\nserde_json = { workspace = true }\n")])
-    hx.edit(root, "Cargo.lock", [(' "rfd",\n "vectorcraft-engine",\n "vectorcraft-format",\n "vectorcraft-text",\n "vectorcraft-ui-egui",\n "wasm-bindgen",',
-                                  ' "rfd",\n "serde_json",\n "vectorcraft-engine",\n "vectorcraft-format",\n "vectorcraft-text",\n "vectorcraft-ui-egui",\n "wasm-bindgen",')])
+    # (vectorcraft-web depends on serde_json itself since 0.14, for `window.vectorcraft`.)
     hx.edit(root, "apps/vectorcraft-web/src/web.rs", [
-        ("                    None => VectorcraftApp::new(Session::new(), services),\n",
-         "                    None => {\n                        let mut app = VectorcraftApp::new(Session::new(), services);\n"
-         "                        restore_prefs(&mut app);\n                        app\n                    }\n"),
+        ("                        VectorcraftApp::new(Session::new(), services).with_control(control_rx)\n",
+         "                        let mut app = VectorcraftApp::new(Session::new(), services).with_control(control_rx);\n"
+         "                        restore_prefs(&mut app);\n                        app\n"),
         ("                Ok(Box::new(WebShell { app: Some(app), host, canvas: page, loss }))",
          "                let saved_prefs = app.session.prefs.clone();\n"
          "                Ok(Box::new(WebShell { app: Some(app), host, canvas: page, loss, saved_prefs }))"),
         ("    canvas: web_sys::HtmlCanvasElement,\n    loss: GraphicsLoss,\n}\n",
          "    canvas: web_sys::HtmlCanvasElement,\n    loss: GraphicsLoss,\n"
          "    /// The preferences last written to the browser's storage.\n    saved_prefs: vectorcraft_engine::Prefs,\n}\n"),
-        ("        app.logic(ctx);\n    }\n",
-         "        app.logic(ctx);\n"
+        ("        app.logic(ctx);\n        crate::api::poll_replies();\n    }\n",
+         "        app.logic(ctx);\n        crate::api::poll_replies();\n"
          "        if app.session.prefs != self.saved_prefs {\n"
          "            self.saved_prefs = app.session.prefs.clone();\n"
          "            if let Ok(s) = local_storage() {\n"

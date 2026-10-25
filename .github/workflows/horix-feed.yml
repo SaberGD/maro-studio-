@@ -15,6 +15,7 @@ on:
     branches: [claude/nice-shannon-7w6xo5]
     paths:
       - "apps/horix-launcher/feed/**"
+      - "apps/horix-launcher/screenshots/**"
       - ".github/workflows/horix-feed.yml"
 
 concurrency:
@@ -40,6 +41,11 @@ jobs:
           HOSTINGER_USERNAME: ${{ vars.HOSTINGER_USERNAME || 'u570689065' }}
           DOMAIN: ${{ vars.HORIX_DOWNLOAD_DOMAIN || 'horix.si' }}
         run: |
+          # The details pages' pictures (HORIX Launcher reads launcher/screenshots/v1/<app>/<key>.jpg).
+          # A launcher keeps the copies it fetched, so a changed picture needs a new v<N> folder.
+          (cd apps/horix-launcher && find screenshots -name '*.jpg' | sort) | while read -r f; do
+            apps/horix-common/upload-file.sh "apps/horix-launcher/$f" "$DOMAIN" "launcher/$f"
+          done
           apps/horix-common/upload-file.sh out/release_info.json "$DOMAIN" launcher/release_info.json
           # The live copy must be the one just built.
           UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"

@@ -140,47 +140,36 @@ def links(root: Path) -> None:
 
 
 def menus(root: Path) -> None:
-    edit(root, "crates/ui-egui/src/menus.rs", [
+    # PhotoCraft 0.15 keeps the menu command table in the engine (shell_commands.rs).
+    edit(root, "crates/engine/src/shell_commands.rs", [
         ('("help.discord", "Join the ArtCraft Discord…", &["Help"], None),', '("help.discord", "Saber Group Academy on Facebook", &["Help"], None),\n    ("help.contact", "Contact Us: Courses & Services…", &["Help"], None),\n    ("help.download", "Download the Desktop App (Windows / Mac)…", &["Help"], None),'),
         ('("help.website", "PhotoCraft Website", &["Help"], None),', f'("help.website", "{APP_NAME} Website", &["Help"], None),'),
         # The legacy Studio shell hides or simplifies several panels.  Keep its enum for loading
         # old preference files, but do not expose it as a user-selectable theme.
-        ('    ("window.theme.studio", "Studio Theme", &["Window", "Theme"], None),\n', ""),
+        ('    ("window.theme.studio", "Studio", &["Window", "Theme", "Dark Theme"], None),\n', ""),
         ('    ("help.artcraftWebsite", "ArtCraft Website", &["Help"], None),\n', ""),
         ('    ("help.github", "PhotoCraft on GitHub", &["Help"], None),\n', ""),
         ('    ("help.reportIssue", "Report an Issue…", &["Help"], None),\n', ""),
-        ('("window.theme.pro", "Pro Theme", &["Window", "Theme"], None),', '("window.theme.pro", "HORIX Theme", &["Window", "Theme"], None),'),
+        ('("window.theme.pro", "Pro", &["Window", "Theme", "Dark Theme"], None),', '("window.theme.pro", "HORIX", &["Window", "Theme", "Dark Theme"], None),'),
     ])
 
 
 def title_bar(root: Path) -> None:
-    # The title-bar Discord button goes; in the browser a "desktop apps" button takes its place.
-    edit(root, "crates/ui-egui/src/panels.rs", [(
-        """                    // The community Discord, one click away while the bar has room for it
-                    // (narrow windows drop it first; it is also Help › Discord).
-                    if ui.available_width() >= DISCORD_ROOM {
-                        let discord = egui::Button::image_and_text(
-                            icons::image("message-square", 14.0, t.text_dim),
-                            egui::RichText::new(tl!("Discord")).color(t.text_dim).size(12.0),
-                        )
-                        .frame(false);
-                        if ui
-                            .add(discord)
-                            .on_hover_text({
-                                let template = "Join the ArtCraft Discord ({url})";
-                                crate::i18n::fmt(tl!(template), &[("url", crate::links::DISCORD)])
-                            })
-                            .clicked()
-                        {
-                            crate::links::open(app, ui.ctx(), crate::links::DISCORD);
-                        }
-                    }
-""",
-        """                    // HORIX (web): the Windows / macOS apps, one click away while the bar has room.
-                    if ui.available_width() >= DISCORD_ROOM {
+    # Upstream dropped its title-bar Discord button (0.10); in the browser HORIX puts a
+    # "desktop apps" button in that spot, shown while the bar has room for it.
+    edit(root, "crates/ui-egui/src/panels.rs", [
+        ("""                    if rtl { ui.min_rect().right() } else { ui.min_rect().left() }
+                };
+                free = if rtl""", """                    // HORIX (web): the Windows / macOS apps, one click away while the bar has room.
+                    if ui.available_width() >= DESKTOP_ROOM {
                         crate::links::desktop_title_button(app, ui);
                     }
-""")])
+                    if rtl { ui.min_rect().right() } else { ui.min_rect().left() }
+                };
+                free = if rtl"""),
+        ("const TITLE_GAP: f32 = 16.0;\n",
+         "const TITLE_GAP: f32 = 16.0;\n/// HORIX: free room the title bar needs after its other controls for the desktop-apps button.\nconst DESKTOP_ROOM: f32 = 120.0;\n"),
+    ])
 
 
 def logo(root: Path) -> None:
@@ -259,8 +248,10 @@ pub fn url_for("""),
     consts = "".join(f"const {n.upper().replace('-', '_')}_ASPECT: f32 = {v:.4f};\n" for n, v in aspect.items())
     edit(root, "crates/ui-egui/src/links.rs", [("/// HORIX: one line of Arabic", consts + "\n" + DESKTOP_BUTTONS + "/// HORIX: one line of Arabic")])
     edit(root, "crates/ui-egui/src/canvas.rs", [
-        ("let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 330.0 + recent_h));",
-         "let card = Rect::from_center_size(area.center(), egui::vec2(470.0, 560.0 + recent_h));"),
+        # The lockup, descriptor and "coming soon" make the card taller (230 px) and a touch wider.
+        ("let card_width = HOME_CARD_WIDTH.min(area.width());", "let card_width = (HOME_CARD_WIDTH + 10.0).min(area.width());"),
+        ("let card = Rect::from_center_size(area.center(), egui::vec2(card_width, 330.0 + recent_h + stacked_h));",
+         "let card = Rect::from_center_size(area.center(), egui::vec2(card_width, 560.0 + recent_h + stacked_h));"),
         ("""            crate::links::discord_button(app, ui, 190.0);
             ui.add_space(10.0);
             crate::links::link_row(app, ui);""",
@@ -504,281 +495,6 @@ def better_select_subject(root: Path) -> None:
     ])
 
 
-PLAIN_SUBJECT_OLD = r'''    let mut trimap = vec![PR_BG; w * h];
-    let mut any_fg = false;
-    for y in 0..h {
-        for x in 0..w {
-            let i = y * w + x;
-            let border = x == 0 || y == 0 || x + 1 == w || y + 1 == h;
-            trimap[i] = if sal[i] >= t {
-                any_fg = true;
-                PR_FG
-            } else if border || sal[i] < 0.4 * t {
-                BG
-            } else {
-                PR_BG
-            };
-        }
-    }
-    if !any_fg {
-        return Ok(None);
-    }
-    let Some((fg, bg)) = grabcut::grabcut_with(&img, &mut trimap, 6, ctl)? else { return Ok(None) };
-    let low: Vec<bool> = trimap.iter().map(|v| *v == PR_FG || *v == grabcut::FG).collect();
-    let low = super::clean_mask(&low, w, h, 0.2, 0.05);
-    if !low.iter().any(|v| *v) {
-        return Ok(None);
-    }
-    super::finish_region_with(sampler, canvas, step, &low, w, h, Some((&fg, &bg)), ctl)
-}
-'''
-
-PLAIN_SUBJECT = r'''    // SG - PS: on a plain background (studio white, a flat colour, a soft gradient) the
-    // background itself is the better cue. A colour model of the canvas border marks what is
-    // background; pixels that look like it and connect to the border are background for sure,
-    // and everything else (bar soft shadows) starts as subject, so dark or thin parts the
-    // saliency misses (fingers, black joints) stay in. Busy backgrounds keep the saliency trimap.
-    let ring = (w.min(h) / 40).max(2);
-    let on_ring = |i: usize| {
-        let (x, y) = (i % w, i / w);
-        x < ring || y < ring || x + ring >= w || y + ring >= h
-    };
-    let ring_px: Vec<[f32; 3]> = (0..w * h).filter(|i| on_ring(*i)).map(|i| img.px[i]).collect();
-    let mut mean = [0f64; 3];
-    for p in &ring_px {
-        for c in 0..3 {
-            mean[c] += p[c] as f64;
-        }
-    }
-    let mean = mean.map(|v| (v / ring_px.len() as f64) as f32);
-    // How plain the border is: RMS distance of its colours from their mean.
-    let spread = (ring_px.iter().map(|p| super::d2(*p, mean) as f64).sum::<f64>() / ring_px.len() as f64).sqrt() as f32;
-    let plain = spread < PLAIN_SPREAD;
-    let mut bg_like = vec![false; w * h];
-    let mut reach = vec![false; w * h];
-    if plain {
-        let Some(bgm) = Gmm::fit(&subsample(&ring_px, 20_000), 3, DEFAULT_REG) else { return Ok(None) };
-        let nl: Vec<f32> = img.px.iter().map(|p| bgm.neg_log(*p)).collect();
-        let mut ring_nl: Vec<f32> = (0..w * h).filter(|i| on_ring(*i)).map(|i| nl[i]).collect();
-        ring_nl.sort_by(f32::total_cmp);
-        let thr = ring_nl[(ring_nl.len() - 1) * BG_PCT / 100] + BG_SLACK;
-        bg_like = nl.iter().map(|v| *v <= thr).collect();
-        reach = border_flood(&bg_like, w, h);
-    }
-    // Shadows: a darker copy of the background colour (only visible on a light background).
-    let light_bg = 0.299 * mean[0] + 0.587 * mean[1] + 0.114 * mean[2] > 0.35;
-    let mm = (mean[0] * mean[0] + mean[1] * mean[1] + mean[2] * mean[2]).max(1e-4);
-    let shadow = |p: [f32; 3]| {
-        let k = (p[0] * mean[0] + p[1] * mean[1] + p[2] * mean[2]) / mm;
-        light_bg && (0.45..1.03).contains(&k) && super::d2(p, mean.map(|c| c * k)).sqrt() < SHADOW_TOL
-    };
-    let mut trimap = vec![PR_BG; w * h];
-    let mut any_fg = false;
-    for y in 0..h {
-        for x in 0..w {
-            let i = y * w + x;
-            let border = x == 0 || y == 0 || x + 1 == w || y + 1 == h;
-            trimap[i] = if plain {
-                if border || (reach[i] && sal[i] < REACH_SAL) {
-                    BG
-                } else if reach[i] || shadow(img.px[i]) {
-                    PR_BG
-                } else {
-                    any_fg = true;
-                    PR_FG
-                }
-            } else if sal[i] >= t {
-                any_fg = true;
-                PR_FG
-            } else if border || sal[i] < 0.4 * t {
-                BG
-            } else {
-                PR_BG
-            };
-        }
-    }
-    if !any_fg {
-        return Ok(None);
-    }
-    let Some((fg, bg)) = grabcut::grabcut_with(&img, &mut trimap, 6, ctl)? else { return Ok(None) };
-    let low: Vec<bool> = trimap.iter().map(|v| *v == PR_FG || *v == grabcut::FG).collect();
-    // Islands on a plain background are parts of the subject (a hand past a dark wrist).
-    let mut low = super::clean_mask(&low, w, h, if plain { 0.02 } else { 0.2 }, 0.05);
-    if plain {
-        // Enclosed areas of the background colour are gaps in the subject (between a raised arm
-        // and the head, say): open them unless they are specks (highlights).
-        let area = low.iter().filter(|v| **v).count();
-        let gap: Vec<bool> = (0..w * h).map(|i| low[i] && bg_like[i] && !reach[i]).collect();
-        let (lab, sizes) = super::components(&gap, w, h);
-        for (o, l) in low.iter_mut().zip(&lab) {
-            if *l != 0 && sizes[*l as usize] * GAP_PER_MILLE >= area {
-                *o = false;
-            }
-        }
-    }
-    if !low.iter().any(|v| *v) {
-        return Ok(None);
-    }
-    let Some(r) = super::finish_region_with(sampler, canvas, step, &low, w, h, Some((&fg, &bg)), ctl)? else { return Ok(None) };
-    // Soft edges where the background is plain enough to estimate them.
-    Ok(Some(if plain { matte_edges(sampler, canvas, r) } else { r }))
-}
-
-/// Border colour spread (RMS, 0..1 RGB) under which the background counts as plain.
-const PLAIN_SPREAD: f32 = 0.15;
-/// Percentile of the border's own pixels the background model must explain, and extra slack
-/// (in negative log-likelihood) so gradients and soft noise still count as background.
-const BG_PCT: usize = 97;
-const BG_SLACK: f32 = 4.0;
-/// Background-coloured pixels connected to the border stay background below this saliency.
-const REACH_SAL: f32 = 0.8;
-/// RGB distance within which a darker copy of the background colour is a shadow.
-const SHADOW_TOL: f32 = 0.05;
-/// Enclosed background-coloured areas of at least 1/GAP_PER_MILLE of the subject are gaps.
-const GAP_PER_MILLE: usize = 400;
-
-/// Pixels of `mask` 4-connected to the image border through `mask`.
-fn border_flood(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
-    let mut out = vec![false; w * h];
-    let mut stack: Vec<usize> = (0..w * h).filter(|i| {
-        let (x, y) = (i % w, i / w);
-        mask[*i] && (x == 0 || y == 0 || x + 1 == w || y + 1 == h)
-    }).collect();
-    for i in &stack {
-        out[*i] = true;
-    }
-    while let Some(i) = stack.pop() {
-        let (x, y) = (i % w, i / w);
-        let n = [(x > 0).then(|| i - 1), (x + 1 < w).then(|| i + 1), (y > 0).then(|| i - w), (y + 1 < h).then(|| i + w)];
-        for j in n.into_iter().flatten() {
-            if mask[j] && !out[j] {
-                out[j] = true;
-                stack.push(j);
-            }
-        }
-    }
-    out
-}
-
-/// SG - PS: soft edges. Pixels within 2 px of the cut get the coverage the local colours imply:
-/// with F and B the mean colours of the sure foreground and sure background within `R` pixels,
-/// alpha is the projection of the pixel onto the line from B to F (a closed-form colour-line
-/// matte). Where F and B are too alike to tell apart the cut's own edge is kept.
-fn matte_edges(sampler: &dyn Sampler, canvas: Rect, r: Region) -> Region {
-    const R: i32 = 6;
-    const E: i32 = 2;
-    const STRIP: i32 = 128;
-    let win = r.bbox.inflate(R + E + 1).intersect(&canvas);
-    let w = win.width() as usize;
-    let mut a = vec![0u8; w * win.height() as usize];
-    for y in r.bbox.y0..r.bbox.y1 {
-        let bw = r.bbox.width() as usize;
-        let src = &r.mask[(y - r.bbox.y0) as usize * bw..][..bw];
-        let o = (y - win.y0) as usize * w + (r.bbox.x0 - win.x0) as usize;
-        a[o..o + bw].copy_from_slice(src);
-    }
-    let src = a.clone();
-    let mut y0 = win.y0;
-    while y0 < win.y1 {
-        let y1 = (y0 + STRIP).min(win.y1);
-        let s = Rect::new(win.x0, (y0 - R - E).max(win.y0), win.x1, (y1 + R + E).min(win.y1));
-        let sh = s.height() as usize;
-        let soff = (s.y0 - win.y0) as usize * w;
-        let hard: Vec<u8> = src[soff..soff + w * sh].iter().map(|v| (*v >= 128) as u8).collect();
-        // Integral image helper over (w+1)×(sh+1).
-        let integral = |f: &dyn Fn(usize) -> f64| -> Vec<f64> {
-            let mut t = vec![0f64; (w + 1) * (sh + 1)];
-            for y in 0..sh {
-                let mut row = 0.0;
-                for x in 0..w {
-                    row += f(y * w + x);
-                    t[(y + 1) * (w + 1) + x + 1] = t[y * (w + 1) + x + 1] + row;
-                }
-            }
-            t
-        };
-        let boxsum = |t: &[f64], x: usize, y: usize, rr: usize| -> f64 {
-            let (xa, ya) = (x.saturating_sub(rr), y.saturating_sub(rr));
-            let (xb, yb) = ((x + rr + 1).min(w), (y + rr + 1).min(sh));
-            t[yb * (w + 1) + xb] - t[ya * (w + 1) + xb] - t[yb * (w + 1) + xa] + t[ya * (w + 1) + xa]
-        };
-        let ih = integral(&|i| hard[i] as f64);
-        let e = E as usize;
-        let full = |x: usize, y: usize| {
-            let (xa, ya) = (x.saturating_sub(e), y.saturating_sub(e));
-            (((x + e + 1).min(w) - xa) * ((y + e + 1).min(sh) - ya)) as f64
-        };
-        // Sure foreground / background: the whole (2E+1)² neighbourhood agrees.
-        let mut sure = vec![0u8; w * sh];
-        for y in 0..sh {
-            for x in 0..w {
-                let c = boxsum(&ih, x, y, e);
-                sure[y * w + x] = if c >= full(x, y) - 0.5 { 1 } else if c < 0.5 { 2 } else { 0 };
-            }
-        }
-        if sure.iter().all(|v| *v != 0) {
-            y0 = y1;
-            continue;
-        }
-        let img = sampler.rgb(s);
-        let mut sums = Vec::new();
-        for side in [1u8, 2] {
-            sums.push(integral(&|i| (sure[i] == side) as u8 as f64));
-            for c in 0..3 {
-                sums.push(integral(&|i| if sure[i] == side { img.px[i][c] as f64 } else { 0.0 }));
-            }
-        }
-        let rr = R as usize;
-        for y in (y0 - s.y0) as usize..(y1 - s.y0) as usize {
-            for x in 0..w {
-                let i = y * w + x;
-                if sure[i] != 0 {
-                    continue;
-                }
-                let (nf, nb) = (boxsum(&sums[0], x, y, rr), boxsum(&sums[4], x, y, rr));
-                if nf < 1.0 || nb < 1.0 {
-                    continue;
-                }
-                let f: [f64; 3] = [0, 1, 2].map(|c| boxsum(&sums[1 + c], x, y, rr) / nf);
-                let b: [f64; 3] = [0, 1, 2].map(|c| boxsum(&sums[5 + c], x, y, rr) / nb);
-                let p = img.px[i];
-                let (mut num, mut den) = (0.0, 0.0);
-                for c in 0..3 {
-                    let d = f[c] - b[c];
-                    num += (p[c] as f64 - b[c]) * d;
-                    den += d * d;
-                }
-                if den < 0.004 {
-                    continue;
-                }
-                let alpha = (num / den).clamp(0.0, 1.0);
-                let conf = (den / 0.03).min(1.0);
-                let o = soff + i;
-                let old = src[o] as f64 / 255.0;
-                a[o] = ((conf * alpha + (1.0 - conf) * old) * 255.0).round() as u8;
-            }
-        }
-        y0 = y1;
-    }
-    super::trim_region(Region { bbox: win, mask: a }).unwrap_or(r)
-}
-'''
-
-
-def plain_background_subject(root: Path) -> None:
-    """Select Subject on plain backgrounds: border colour model, gap opening, colour-line soft edges.
-
-    Measured with the segeval harness (Maro renders with exact alpha over white, gray, gradient,
-    soft texture, shadow, black and navy): IoU 0.94 -> 0.999 on white, edge error 0.157 -> 0.026;
-    busy backgrounds unchanged.
-    """
-    edit(root, "crates/algo/src/segment/subject.rs", [
-        ("use super::{Region, Sampler};", "use super::gmm::{DEFAULT_REG, Gmm};\nuse super::{Region, Sampler, subsample};"),
-        (PLAIN_SUBJECT_OLD, PLAIN_SUBJECT),
-    ])
-    edit(root, "crates/algo/src/segment/mod.rs", [("\nfn d2(a: [f32; 3], b: [f32; 3]) -> f32 {", "\npub(crate) fn d2(a: [f32; 3], b: [f32; 3]) -> f32 {")])
-
-
 KEYBOARD_SCRIPT = """  <script>
     // SG - PS: while the editor is open, keyboard shortcuts belong to the editor, not the browser.
     // The listener runs in the capture phase and only cancels the browser's default action, so the
@@ -971,7 +687,7 @@ WAITLIST_SCRIPT = """  <div id="sgps_wl" dir="rtl" hidden>
     // /?waitlist=early opens it too (desktop app links; the old ?waitlist=SG-AI links as well).
     (function () {
       var WHATSAPP = '__WHATSAPP__';
-      var NAMES = { 'early': 'بدائل After Effects و Premiere و Illustrator و Lightroom' };
+      var NAMES = { 'early': 'بدائل After Effects و Premiere' };
       var box = document.getElementById('sgps_wl'), form = document.getElementById('sgps_wl_form');
       var done = document.getElementById('sgps_wl_done'), err = document.getElementById('sgps_wl_err');
       var product = 'general';
@@ -1074,10 +790,12 @@ pub fn register_font(bytes: Vec<u8>) -> Vec<String> {
 }
 
 /// Font families: bundled, system, and those the host serves""")])
-    edit(root, "crates/ui-egui/src/menus.rs", [
+    edit(root, "crates/engine/src/shell_commands.rs", [
         ('    ("edit.search", "Search…", &["Edit"], Some("Cmd+F")),',
          '    ("edit.search", "Search…", &["Edit"], Some("Cmd+F")),\n'
          '    ("type.loadDeviceFonts", "Load Device Fonts…", &["Type"], None),'),
+    ])
+    edit(root, "crates/ui-egui/src/menus.rs", [
         ('| "help.about" | "help.systemInfo" | "edit.search" => true,',
          '| "help.about" | "help.systemInfo" | "edit.search" | "type.loadDeviceFonts" => true,'),
         ("""    if let Some(url) = crate::links::url_for(id) {
@@ -1597,7 +1315,6 @@ def main() -> None:
     theme(root)
     full_tool_options(root)
     better_select_subject(root)
-    plain_background_subject(root)
     web(root)
     web_page_behaviour(root)
     device_fonts(root)

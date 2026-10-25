@@ -67,7 +67,7 @@ apps/sg-ps/build.sh                # يطلع deploy/sg-ps/sg-ps-<version>-hosti
 
 ## قائمة الانتظار والتجربة المجانية
 
-في شاشة البداية فيه قسم «قريبًا: بدائل After Effects و Premiere و Illustrator و Lightroom» وزرار **احجز تجربتك المُبكرة**، وبيفتح فورم عربي فيه:
+في شاشة البداية فيه قسم «قريبًا: بدائل After Effects و Premiere» وزرار **احجز تجربتك المُبكرة**، وبيفتح فورم عربي فيه:
 - الاسم.
 - رقم الواتساب.
 - «مهتم تتعلم إيه؟»: Graphic Design 101، وAdvertising Mastery، وAI 101 وMastery و100x Creatives، أو «لسه مش متأكد».

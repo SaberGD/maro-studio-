@@ -2,14 +2,15 @@
 # Build Horix Light (rebranded LightCraft) for the web and zip it for hosting.
 #
 # Usage: apps/horix-light/build.sh [lightcraft-source.tar.gz]
-#   default source: archive/lightcraft/lightcraft-source-0.8.0.tar.gz
-# Needs: Rust >= 1.95 with the wasm32-unknown-unknown target, wasm-bindgen-cli (version in Cargo.lock), python3, zip.
+#   default source: archive/lightcraft/lightcraft-source-0.13.0.tar.gz
+# Needs: Rust >= 1.95 with the wasm32-unknown-unknown target, wasm-bindgen-cli (version in Cargo.lock), python3
+# (with the onnx and onnxruntime packages, for the AI models), git, zip.
 # Output: deploy/horix-light/horix-light-<version>-web.zip (a static site; any URL path works).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-SRC_TGZ="${1:-$REPO/archive/lightcraft/lightcraft-source-0.8.0.tar.gz}"
+SRC_TGZ="${1:-$REPO/archive/lightcraft/lightcraft-source-0.13.0.tar.gz}"
 WORK="${HORIX_LIGHT_WORK:-$REPO/.horix-build/light}"
 OUT="$REPO/deploy/horix-light"
 
@@ -44,6 +45,12 @@ done
 # Licence obligations: the licence texts and the third-party notices, as plain files.
 cp "$WORK/src/LICENSE-MIT" "$WORK/src/LICENSE-APACHE" "$WORK/src/NOTICE" "$SITE/"
 cp "$HERE/assets/app-icon/favicon.svg" "$SITE/horix-light-icon.svg"
+# HORIX AI masks (patches/50-horix-ai.diff): MobileSAM (Object) and IS-Net fp16 (Subject,
+# Background), the same files HORIX's web build serves. -E, not -I: converting IS-Net needs onnx
+# from the user site-packages (CI installs it with pip --user).
+python3 -E "$HERE/../sg-ps/ai/fetch.py" "$SITE/models" web
+cp "$HERE/../sg-ps/ai/LICENSE-MobileSAM.txt" "$HERE/../sg-ps/ai/LICENSE-SegmentAnything.txt" "$HERE/../sg-ps/ai/LICENSE-ISNet.txt" "$SITE/models/"
+printf '\n# HORIX AI models\nAddType application/octet-stream .onnx\n' >> "$SITE/.htaccess"
 
 ZIP="$OUT/horix-light-$VERSION-web.zip"
 rm -f "$ZIP"

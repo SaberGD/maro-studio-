@@ -2,14 +2,14 @@
 # Build Horix Vectors (rebranded VectorCraft) for the web and zip it for hosting.
 #
 # Usage: apps/horix-vectors/build.sh [vectorcraft-source.tar.gz]
-#   default source: archive/vectorcraft/vectorcraft-source-0.11.0.tar.gz
-# Needs: Rust >= 1.95 with the wasm32-unknown-unknown target, trunk, python3, zip.
+#   default source: archive/vectorcraft/vectorcraft-source-0.16.0.tar.gz
+# Needs: Rust >= 1.95 with the wasm32-unknown-unknown target, trunk, python3, zip, git (craft-fonts).
 # Output: deploy/horix-vectors/horix-vectors-<version>-web.zip (a static site; any URL path works).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-SRC_TGZ="${1:-$REPO/archive/vectorcraft/vectorcraft-source-0.11.0.tar.gz}"
+SRC_TGZ="${1:-$REPO/archive/vectorcraft/vectorcraft-source-0.16.0.tar.gz}"
 WORK="${HORIX_VECTORS_WORK:-$REPO/.horix-build/vectors}"
 OUT="$REPO/deploy/horix-vectors"
 
@@ -19,6 +19,18 @@ tar -xzf "$SRC_TGZ" -C "$WORK/src" --strip-components=1
 VERSION="$(awk '/^\[/{p=($0=="[workspace.package]");next} p&&$1=="version"{gsub(/[" ]/,"",$3);print $3;exit}' "$WORK/src/Cargo.toml")"
 
 python3 -I "$HERE/rebrand.py" "$WORK/src"
+# Fonts the browser has no system copy of (Noto Sans Arabic first), served beside the wasm, as
+# upstream's releases do; trunk's post-build hook copies them into fonts/.
+CRAFT_FONTS_DIR="${CRAFT_FONTS_DIR:-$("$HERE/../horix-common/craft-fonts.sh" "$WORK/src" "$WORK")}"
+# Without the Japanese and Chinese faces: a web build embeds BIZ UDPGothic (the Japanese UI font,
+# ~4.7 MB) in the wasm whenever the manifest lists it. The Arabic, Thai and Georgian faces stay.
+WEB_FONTS="$WORK/craft-fonts-web"
+rm -rf "$WEB_FONTS" && mkdir -p "$WEB_FONTS/fonts"
+grep -vE '\| *[^|]*(Jpan|Hans|Hant|Kore)[^|]* *\| *OFL' "$CRAFT_FONTS_DIR/fonts/manifest.txt" > "$WEB_FONTS/fonts/manifest.txt"
+for d in $(sed -n 's/^[^#][^|]*|[^|]*| *fonts\/\([^/]*\)\/.*/\1/p' "$WEB_FONTS/fonts/manifest.txt" | sort -u); do
+  cp -R "$CRAFT_FONTS_DIR/fonts/$d" "$WEB_FONTS/fonts/$d"
+done
+export CRAFT_FONTS_DIR="$WEB_FONTS"
 
 (cd "$WORK/src/apps/vectorcraft-web" && CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$WORK/target}" trunk build --release)
 
@@ -42,6 +54,10 @@ done
 { echo; cat "$HERE/../horix-common/htaccess-compressed-wasm"; } >> "$SITE/.htaccess"
 # Licence obligations: the licence texts and the third-party notices, as plain files.
 cp "$WORK/src/LICENSE-MIT" "$WORK/src/LICENSE-APACHE" "$WORK/src/NOTICE" "$SITE/"
+# The craft-fonts faces are OFL: their licences go with them, as OFL-<family dir>.txt.
+for ofl in "$CRAFT_FONTS_DIR"/fonts/*/OFL.txt; do
+  [ -f "$ofl" ] && cp "$ofl" "$SITE/OFL-$(basename "$(dirname "$ofl")").txt"
+done
 cp "$HERE/assets/app-icon/favicon.svg" "$SITE/horix-vectors-icon.svg"
 
 ZIP="$OUT/horix-vectors-$VERSION-web.zip"

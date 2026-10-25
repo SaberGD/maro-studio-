@@ -2,7 +2,7 @@
 
 العنوان: https://vectors.horix.live/
 
-**Horix Vectors** هو برنامج الفيكتور (بديل Illustrator) من عيلة HORIX بتاعة أكاديمية صابر جروب. مبني على [VectorCraft](https://github.com/storytold/vectorcraft) المفتوح المصدر (MIT OR Apache-2.0)، الإصدار **0.11.0** (commit `06b33b0`).
+**Horix Vectors** هو برنامج الفيكتور (بديل Illustrator) من عيلة HORIX بتاعة أكاديمية صابر جروب. مبني على [VectorCraft](https://github.com/storytold/vectorcraft) المفتوح المصدر (MIT OR Apache-2.0)، الإصدار **0.16.0** (tag `v0.16.0`، commit `1019075`).
 
 زي HORIX بالظبط: إحنا مش بنعدّل الكود الأصلي بإيدينا. `rebrand.py` بيتطبّق على نسخة نظيفة من الكود وقت البناء، فالتحديث لأي إصدار جديد من VectorCraft هو إن تحفظ الكود الجديد في `archive/vectorcraft/` وتشغّل البناء تاني.
 

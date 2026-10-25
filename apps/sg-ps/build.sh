@@ -2,7 +2,7 @@
 # Build HORIX (rebranded PhotoCraft Web) and package it for Hostinger.
 #
 # Usage: apps/sg-ps/build.sh [photocraft-source.tar.gz]
-#   default source: archive/photocraft/photocraft-source-0.9.0.tar.gz
+#   default source: archive/photocraft/photocraft-source-0.15.1.tar.gz
 # Needs: Rust >= 1.95, `rustup target add wasm32-unknown-unknown`, `cargo install trunk --locked`, zip.
 # Output: deploy/sg-ps/sg-ps-<version>-hostinger.zip, with three folders:
 #   horix/      the editor, deployed at the root of https://horix.live/
@@ -13,7 +13,7 @@ PYTHON="$(command -v python3)"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-SRC_TGZ="${1:-$REPO/archive/photocraft/photocraft-source-0.9.0.tar.gz}"
+SRC_TGZ="${1:-$REPO/archive/photocraft/photocraft-source-0.15.1.tar.gz}"
 WORK="${SGPS_WORK:-$REPO/.sgps-build}"
 OUT="$REPO/deploy/sg-ps"
 
