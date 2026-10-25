@@ -2,8 +2,9 @@
 # - web: builds the site (apps/horix-one/build.sh: the persona bar, HORIX under pixel/, Horix
 #   Vectors under vector/) and, on the default branch, publishes it to https://one.horix.live/
 #   (Hostinger, the HOSTINGER_API_TOKEN secret; the subdomain is created on the first deploy).
-# - desktop: HORIX One for Windows (portable zip) and macOS (DMG) around the same site, on every
-#   run, so a change that breaks either build shows on its pull request.
+# - desktop: HORIX One for Windows (portable zip) and macOS (DMG), native: HORIX and Horix Vectors
+#   in one app (apps/horix-one/native), on every run, so a change that breaks either build shows on
+#   its pull request.
 # - release: on the default branch when apps/horix-one/VERSION changes (or by hand), a GitHub
 #   release horix-one-v<v> with SHA256SUMS.txt, which HORIX Launcher installs and updates from;
 #   then the launcher feed and the Mac downloads on horix.si are refreshed.
@@ -124,13 +125,13 @@ jobs:
           apps/horix-common/deploy-static.sh "$zip" horix-one "$DOMAIN"
 
   desktop:
-    needs: web
+    # Native: HORIX (Pixel) and Horix Vectors (Vector) built into one app (apps/horix-one/native).
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 180
     defaults:
       run:
         shell: bash
@@ -150,17 +151,22 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             .horix-target-one
-          key: horix-one-desktop-${{ runner.os }}-${{ hashFiles('apps/horix-one/desktop/**') }}
-          restore-keys: horix-one-desktop-${{ runner.os }}-
-      - uses: actions/download-artifact@v4
-        with:
-          name: horix-one-web
-          path: web
-      - name: Test
-        if: runner.os == 'Windows'
-        run: cd apps/horix-one/desktop && cargo test --locked
+          key: horix-one-native-${{ runner.os }}-${{ hashFiles('apps/horix-one/native/**', 'apps/sg-ps/patches/**', 'archive/photocraft/*.tar.gz', 'archive/vectorcraft/*.tar.gz') }}
+          restore-keys: horix-one-native-${{ runner.os }}-
       - name: Build and package
-        run: apps/horix-one/desktop/package.sh ${{ runner.os == 'macOS' && 'macos' || 'windows' }} "$(ls web/*.zip | head -1)"
+        run: apps/horix-one/native/package.sh ${{ runner.os == 'macOS' && 'macos' || 'windows' }}
+      - name: Starts and reports its version
+        run: |
+          V="$(tr -d '[:space:]' < apps/horix-one/VERSION).${{ github.run_number }}"
+          W=.horix-build/one-native/pkg
+          if [ "$RUNNER_OS" = Windows ]; then
+            # HORIX Launcher checks the exe's version after unpacking.
+            got="$(powershell -NoProfile -Command "(Get-Item '$W/win/horix-one.exe').VersionInfo.ProductVersion" | tr -d '\r')"
+            [ "$got" = "$V" ] || { echo "::error::horix-one.exe reports version '$got', expected $V"; exit 1; }
+            "$W/win/horix-one.exe" --version
+          else
+            "$W/HORIX One.app/Contents/MacOS/HORIX One" --version
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: horix-one-desktop-${{ runner.os }}

@@ -264,7 +264,7 @@ pub const DETAILS: [AppDetails; 4] = [
             feature("Two personas, one app", "Vector for illustration and logos, Pixel for photos and AI selection, a click apart."),
             feature("Hand your work across", "Vector art opens in Pixel as editable shape layers; Pixel images open in Vector."),
             feature("HORIX AI built in", "Select Subject, Object Selection and Quick Selection with on-device AI models."),
-            feature("Same app on the web", "one.horix.live in the browser, and this desktop app, work the same way."),
+            feature("Native on your computer", "Both engines run natively in one window on Windows and macOS; one.horix.live is the same app in the browser."),
         ],
         shots: &[
             shot("vector", "The Vector persona"),

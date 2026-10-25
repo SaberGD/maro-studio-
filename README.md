@@ -15,7 +15,7 @@
 | HORIX | Photoshop | PhotoCraft 0.15.1 | [`apps/sg-ps/`](apps/sg-ps/README.md) |
 | Horix Vectors | Illustrator | VectorCraft 0.16.0 | [`apps/horix-vectors/`](apps/horix-vectors/README.md) |
 | Horix Light | Lightroom | LightCraft 0.13.0 | [`apps/horix-light/`](apps/horix-light/README.md) |
-| HORIX One | Photoshop + Illustrator (زي Affinity) | HORIX + Horix Vectors | [`apps/horix-one/`](apps/horix-one/README.md): برنامج واحد فيه Vector وPixel، على one.horix.live والديسكتوب |
+| HORIX One | Photoshop + Illustrator (زي Affinity) | HORIX + Horix Vectors | [`apps/horix-one/`](apps/horix-one/README.md): برنامج واحد فيه Vector وPixel، على one.horix.live، وnative على ويندوز وماك |
 | HORIX Launcher | ArtCraft Launcher | craft-launcher 0.4.1 | [`apps/horix-launcher/`](apps/horix-launcher/README.md): بيسطّب البرامج دي ويحدّثها |
 
 كلهم بنفس الطريقة: الكود الأصلي محفوظ في `archive/`، و`rebrand.py` بيغيّر الاسم واللوجو والألوان والروابط وقت البناء. الأدوات المشتركة بين Horix Vectors وHorix Light في `apps/horix-common/`.
