@@ -4,6 +4,8 @@
 
 ## v0.3
 
+- HORIX One: `patches/70-horix-one.diff` بيدّي الصفحة `wasmBindings.horix_command` و`horix_open`، وبيخلّي الملف المتصدَّر يروح لـ`window.horixOneCapture` لو موجود. HORIX لوحده ما اتغيّرش. و`build.sh` بقى بيقبل `HORIX_PUBLIC_URL` (HORIX One بيخدمه من `/pixel/`).
+
 - HORIX بقى مبني على PhotoCraft **0.15.1** بدل 0.9.0 (6 إصدارات وحوالي 3,200 تعديل من الأصل).
 - الجديد اللي جاي من الأصل:
   - Content-Aware Fill كامل، وContent-Aware Move بمعاينة حية، والـCrop بيملا الأطراف بـContent-Aware.

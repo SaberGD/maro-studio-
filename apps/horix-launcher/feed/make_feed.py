@@ -25,6 +25,7 @@ APPS = {
     "horix": ("HORIX", "horix-v"),
     "horix-vectors": ("Horix Vectors", "horix-vectors-v"),
     "horix-light": ("Horix Light", "horix-light-v"),
+    "horix-one": ("HORIX One", "horix-one-v"),
     "horix-launcher": ("HORIX Launcher", "horix-launcher-v"),
 }
 

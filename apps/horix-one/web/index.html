@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ar" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HORIX One</title>
+  <meta name="description" content="HORIX One: Vector and Pixel design in one app, by Saber Group">
+  <meta name="theme-color" content="#141415">
+  <link rel="icon" href="horix-one-icon.svg" type="image/svg+xml">
+  <style>
+    @font-face { font-family: "Barlow Condensed"; font-weight: 800; font-display: swap; src: url(fonts/barlow-condensed-latin-800-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Inter"; font-weight: 500; font-display: swap; src: url(fonts/inter-latin-500-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Inter"; font-weight: 600; font-display: swap; src: url(fonts/inter-latin-600-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Cairo"; font-weight: 700; font-display: swap; src: url(fonts/cairo-arabic-700-normal.woff2) format("woff2");
+      unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF; }
+    :root {
+      --ink: #0E0E0F; --chrome: #141415; --field: #232326; --hover: #2C2C30; --line: #26262A; --line-2: #343439;
+      --ivory: #F3EFE8; --muted: #96969E; --red: #D63C32; --amber: #EA993F; --amber-soft: rgba(234, 153, 63, .16);
+      --body: "Inter", "Cairo", system-ui, "Segoe UI", Tahoma, sans-serif;
+      --bar: 40px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink); color: var(--ivory); font: 13px/1.4 var(--body); }
+    /* The persona bar: HORIX One, the personas, and the hand-off between them. */
+    #bar { position: fixed; inset: 0 0 auto 0; height: var(--bar); display: flex; align-items: center; gap: 14px;
+      padding: 0 10px; background: var(--chrome); border-bottom: 1px solid var(--line); user-select: none; z-index: 2; }
+    #brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--ivory); }
+    #brand img { height: 20px; width: auto; display: block; }
+    #brand b { font: 800 17px/1 "Barlow Condensed", var(--body); letter-spacing: .04em; }
+    #brand b span { color: var(--amber); }
+    #personas { display: flex; gap: 2px; padding: 3px; background: var(--ink); border: 1px solid var(--line); border-radius: 8px; }
+    .persona { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px; border: 0; border-radius: 6px;
+      background: transparent; color: var(--muted); font: 600 13px/1 var(--body); cursor: pointer; }
+    .persona svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+    .persona:hover:not(:disabled) { color: var(--ivory); background: var(--hover); }
+    .persona[aria-pressed="true"] { color: var(--ink); background: var(--amber); }
+    .persona:disabled { cursor: default; opacity: .55; }
+    .persona small { font: 700 10px/1 "Cairo", var(--body); color: var(--muted); }
+    #spacer { flex: 1; }
+    .act { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line-2);
+      background: transparent; color: var(--ivory); font: 700 12px/1 "Cairo", var(--body); cursor: pointer; direction: rtl; }
+    .act svg { transform: scaleX(-1); }
+    .act:hover { background: var(--hover); border-color: var(--muted); }
+    .act:disabled { opacity: .5; cursor: progress; }
+    .act svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    #home { direction: rtl; color: var(--muted); text-decoration: none; font: 700 12px/1 "Cairo", var(--body); }
+    #home:hover { color: var(--ivory); }
+    /* The personas: each app in its own frame, loaded the first time it is shown. */
+    iframe { position: fixed; top: var(--bar); left: 0; width: 100%; height: calc(100% - var(--bar)); border: 0; display: none; background: var(--ink); }
+    iframe.on { display: block; }
+    #toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); max-width: min(560px, 92vw); padding: 10px 16px; border-radius: 8px;
+      background: var(--field); border: 1px solid var(--line-2); color: var(--ivory); font: 700 13px/1.6 "Cairo", var(--body);
+      direction: rtl; text-align: center; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 3; }
+    #toast.on { opacity: 1; }
+    #toast.err { border-color: var(--red); }
+    @media (max-width: 760px) { #brand b, .persona small, .act span, #home { display: none; } }
+  </style>
+</head>
+<body>
+  <header id="bar">
+    <a id="brand" href="./" title="HORIX One"><img src="horix-symbol.svg" alt=""><b>HORIX <span>ONE</span></b></a>
+    <div id="personas" role="tablist" aria-label="Personas">
+      <button class="persona" data-persona="vector" aria-pressed="false" title="Vector: تصميم فيكتور ولوجوهات (بديل Illustrator)">
+        <svg viewBox="0 0 24 24"><path d="M12 19 19 12l3 3-7 7-3-3Z"/><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5Z"/><path d="m2 2 7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+        Vector</button>
+      <button class="persona" data-persona="pixel" aria-pressed="false" title="Pixel: تعديل الصور بالذكاء الاصطناعي (بديل Photoshop)">
+        <svg viewBox="0 0 24 24"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02Z"/></svg>
+        Pixel</button>
+      <button class="persona" data-persona="layout" aria-pressed="false" disabled title="Layout: تصميم صفحات وكتب ومجلات (بديل InDesign) — قريبًا">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        Layout <small>قريبًا</small></button>
+    </div>
+    <div id="spacer"></div>
+    <button class="act" id="handoff" hidden></button>
+    <a id="home" href="https://horix.si/" target="_blank" rel="noopener">نسخة الديسكتوب</a>
+  </header>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script>
+    // HORIX One on the web: one page, two personas (each a full app in its own same-origin frame,
+    // loaded on first use), and the hand-off between them:
+    //  - Vector → Pixel: the drawing as SVG with its text as outlines (window.vectorcraft), opened
+    //    in Pixel as editable shape layers (wasmBindings.horix_open).
+    //  - Pixel → Vector: the image as PNG (wasmBindings.horix_command "file.export.quickExportAsPng",
+    //    caught by window.horixOneCapture instead of downloading), opened in Vector.
+    (function () {
+      var PERSONAS = { vector: 'vector/', pixel: 'pixel/' };
+      var frames = {}, current = null;
+      var bar = document.getElementById('personas'), handoff = document.getElementById('handoff');
+      var toastEl = document.getElementById('toast'), toastTimer = 0;
+      var ICON_TO_PIXEL = '<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
+      function toast(text, err) {
+        toastEl.textContent = text;
+        toastEl.className = 'on' + (err ? ' err' : '');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { toastEl.className = ''; }, err ? 6000 : 3500);
+      }
+      function frame(name) {
+        if (!frames[name]) {
+          var f = document.createElement('iframe');
+          f.src = PERSONAS[name];
+          f.title = name === 'vector' ? 'HORIX One Vector' : 'HORIX One Pixel';
+          f.allow = 'clipboard-read; clipboard-write; fullscreen; local-fonts';
+          document.body.appendChild(f);
+          frames[name] = f;
+        }
+        return frames[name];
+      }
+      function show(name) {
+        if (!PERSONAS[name]) name = 'vector';
+        var f = frame(name);
+        Object.keys(frames).forEach(function (k) { frames[k].classList.toggle('on', k === name); });
+        bar.querySelectorAll('.persona').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.persona === name)); });
+        current = name;
+        handoff.hidden = false;
+        handoff.innerHTML = '<span>' + (name === 'vector' ? 'افتح التصميم في <bdi>Pixel</bdi>' : 'افتح الصورة في <bdi>Vector</bdi>') + '</span>' + ICON_TO_PIXEL;
+        handoff.title = name === 'vector' ? 'الرسمة تتنقل لـPixel كطبقات أشكال تقدر تعدّلها' : 'الصورة تتنقل لـVector كصورة في مستند جديد';
+        try { localStorage.setItem('horix-one/persona', name); } catch (e) {}
+        if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
+        try { f.contentWindow.focus(); } catch (e) {}
+      }
+      // Wait until `get()` returns something truthy (an app finishing its start-up).
+      function until(get, secs) {
+        return new Promise(function (res, rej) {
+          var t0 = Date.now();
+          (function tick() {
+            var v; try { v = get(); } catch (e) {}
+            if (v) return res(v);
+            if (Date.now() - t0 > secs * 1000) return rej(new Error('timeout'));
+            setTimeout(tick, 150);
+          })();
+        });
+      }
+      function vectorApi() { var w = frames.vector && frames.vector.contentWindow; return w && w.vectorcraft; }
+      function pixelApi() { var w = frames.pixel && frames.pixel.contentWindow; return w && w.wasmBindings && w.wasmBindings.horix_command && w.wasmBindings; }
+      async function toPixel() {
+        var v = vectorApi();
+        if (!v) return toast('Vector لسه بيحمّل، استنى ثانية وجرّب تاني', true);
+        var out;
+        try { out = await v.execute('document.export', { format: 'svg', outlineText: true }); }
+        catch (e) { return toast('مفيش تصميم مفتوح في Vector', true); }
+        var bytes = out && out.dataBase64 ? Uint8Array.from(atob(out.dataBase64), function (c) { return c.charCodeAt(0); }) : new TextEncoder().encode((out && out.text) || '');
+        if (!bytes.length) return toast('التصميم فاضي', true);
+        frame('pixel'); show('pixel');
+        toast('بنفتح التصميم في Pixel…');
+        try { (await until(pixelApi, 120)).horix_open('from-vector.svg', bytes); toast('التصميم اتفتح في Pixel كطبقات أشكال'); }
+        catch (e) { toast('Pixel لسه بيحمّل، جرّب تاني بعد شوية', true); }
+      }
+      async function toVector() {
+        var p = pixelApi(), w = frames.pixel && frames.pixel.contentWindow;
+        if (!p) return toast('Pixel لسه بيحمّل، استنى ثانية وجرّب تاني', true);
+        var got = null;
+        w.horixOneCapture = function (name, data) { got = new Uint8Array(data); };
+        try { await p.horix_command('file.export.quickExportAsPng', '{}'); }
+        catch (e) { delete w.horixOneCapture; return toast('مفيش صورة مفتوحة في Pixel', true); }
+        delete w.horixOneCapture;
+        if (!got) return toast('الصورة ما اتصدّرتش، جرّب تاني', true);
+        frame('vector'); show('vector');
+        toast('بنفتح الصورة في Vector…');
+        try { (await until(vectorApi, 120)).openFile('from-pixel.png', got); toast('الصورة اتفتحت في Vector'); }
+        catch (e) { toast('Vector لسه بيحمّل، جرّب تاني بعد شوية', true); }
+      }
+      handoff.addEventListener('click', async function () {
+        handoff.disabled = true;
+        try { await (current === 'vector' ? toPixel() : toVector()); } finally { handoff.disabled = false; }
+      });
+      bar.addEventListener('click', function (e) {
+        var b = e.target.closest('.persona');
+        if (b && !b.disabled) show(b.dataset.persona);
+      });
+      window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });
+      // For automation and tests: horixOne.show('pixel'), horixOne.toPixel(), horixOne.toVector().
+      window.horixOne = { show: show, toPixel: toPixel, toVector: toVector, frames: frames };
+      var saved = null;
+      try { saved = localStorage.getItem('horix-one/persona'); } catch (e) {}
+      show(location.hash.slice(1) || saved || 'vector');
+    })();
+  </script>
+</body>
+</html>

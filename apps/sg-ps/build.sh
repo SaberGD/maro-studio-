@@ -24,11 +24,11 @@ VERSION="$(tr -d "[:space:]" < "$HERE/VERSION")${HORIX_BUILD_NUMBER:+.$HORIX_BUI
 
 python3 -I "$HERE/rebrand.py" "$WORK/src"
 
-# The editor lives at its own domain's root. File names carry no hash: the deploy can only
-# add and overwrite files there (never delete), so each deploy replaces the same few files, and
-# .htaccess makes browsers revalidate them.
+# The editor lives at its own domain's root (HORIX One serves it under /pixel/: HORIX_PUBLIC_URL).
+# File names carry no hash: the deploy can only add and overwrite files there (never delete), so
+# each deploy replaces the same few files, and .htaccess makes browsers revalidate them.
 (cd "$WORK/src/apps/photocraft-web" && CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$WORK/target}" \
-  trunk build --release --public-url / --filehash false)
+  trunk build --release --public-url "${HORIX_PUBLIC_URL:-/}" --filehash false)
 
 APP="$WORK/site/horix"
 mkdir -p "$APP"

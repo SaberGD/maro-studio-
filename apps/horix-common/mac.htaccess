@@ -1,0 +1,16 @@
+# horix.si/mac/: the Mac disk images, uploaded by .github/workflows/horix-mac.yml.
+# Served as disk images, as they are: without this the host takes .dmg for text and compresses it on
+# the fly, with no Content-Length (no progress bar, and the publish check cannot see the size).
+AddType application/x-apple-diskimage .dmg
+<IfModule mod_env.c>
+  SetEnvIf Request_URI "\.dmg$" no-gzip=1
+</IfModule>
+<IfModule mod_headers.c>
+  <FilesMatch "\.dmg$">
+    Header set Content-Disposition attachment
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  <FilesMatch "\.json$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

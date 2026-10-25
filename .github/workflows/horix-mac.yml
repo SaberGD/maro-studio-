@@ -38,11 +38,15 @@ jobs:
             [ -n "$f" ] && apps/horix-common/upload-file.sh "out/$f" "$DOMAIN" "mac/$f"
           done < changed.txt
           apps/horix-common/upload-file.sh out/latest.json "$DOMAIN" mac/latest.json
+          # How the host serves them (as disk images, with their size).
+          apps/horix-common/upload-file.sh apps/horix-common/mac.htaccess "$DOMAIN" mac/.htaccess
           # What visitors get (a browser user agent: the host's bot protection answers curl with 403).
           UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
           python3 -c 'import json,sys; [print(e["file"], e["size"]) for e in json.load(open(sys.argv[1])).values()]' out/latest.json |
           while read -r name want; do
             got="$(curl -fsSI -A "$UA" "https://$DOMAIN/mac/$name?v=$RANDOM" | tr -d '\r' | awk 'tolower($1)=="content-length:" {print $2}' | tail -1)"
+            # No size in the headers (a compressing edge): count what a download gets.
+            [ -n "$got" ] || got="$(curl -fsS -A "$UA" -o /dev/null -w '%{size_download}' "https://$DOMAIN/mac/$name?v=$RANDOM")"
             [ "$got" = "$want" ] || { echo "::error::https://$DOMAIN/mac/$name serves ${got:-nothing}, expected $want bytes"; exit 1; }
             echo "live: https://$DOMAIN/mac/$name ($got bytes)"
           done
