@@ -279,7 +279,7 @@ def install_home(root: Path, app_dir: Path, version: str, ui_src: str = "crates/
     assets = dest / "horix_home_assets"
     assets.mkdir(exist_ok=True)
     for f in sorted((HERE / "home/assets").iterdir()):
-        if f.suffix in (".a8", ".ttf"):
+        if f.suffix in (".a8", ".rgba", ".ttf"):
             (assets / f.name).write_bytes(f.read_bytes())
     glue = (app_dir / "home/horix_app_home.rs").read_text(encoding="utf-8")
     (dest / "horix_app_home.rs").write_text(glue.replace("@HORIX_APP_VERSION@", version), encoding="utf-8")

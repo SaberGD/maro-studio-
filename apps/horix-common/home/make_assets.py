@@ -7,6 +7,8 @@ Usage: python3 make_assets.py <HORIX-Saber-Group-UI-Kit dir>
   draws them tinted, so every app shows them the same without an image decoder.
 - inter-*.ttf, barlow-condensed-700.ttf: the kit's interface and display faces (SIL OFL), as
   TrueType for egui (the kit ships WOFF2).
+- saber-group-logo.rgba: Saber Group's logo (brand/saber-group-logo.png, white with the amber
+  +AI tab) at LOGO_SIZE, straight RGBA, for the Academy band.
 """
 import shutil
 import sys
@@ -22,6 +24,7 @@ ICONS = [
     "print", "sliders", "whatsapp", "facebook", "instagram", "telegram", "x", "check",
 ]
 ICON_SIZE = 48
+LOGO_SIZE = (376, 64)
 ICON_COLUMNS = 8
 FONTS = {
     "inter-latin-400-normal.woff2": "inter-400.ttf",
@@ -48,6 +51,9 @@ def main() -> None:
         font = TTFont(kit / "assets/fonts" / src)
         font.flavor = None
         font.save(out / dst)
+    here = Path(__file__).resolve().parent
+    logo = Image.open(here / "brand/saber-group-logo.png").convert("RGBA").resize(LOGO_SIZE, Image.LANCZOS)
+    (out / "saber-group-logo.rgba").write_bytes(logo.tobytes())
     for name in LICENSES:
         shutil.copy(kit / "licenses" / name, out / name)
     print(f"assets: {len(ICONS)} icons ({atlas.size[0]}x{atlas.size[1]}), {len(FONTS)} fonts")

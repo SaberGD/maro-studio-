@@ -30,7 +30,7 @@ pub const FAMILY: &[(&str, &str, Icon, &str)] = &[
 ];
 
 // HORIX's own dark theme (the same in every HORIX app): Horus Ink, its greys, Falcon Ivory for
-// what is primary and Vision Amber for what is on. Saber Group's wordmark keeps its red.
+// what is primary and Vision Amber for what is on. Saber Group's logo keeps its own colours.
 const INK: Color32 = Color32::from_rgb(0x0e, 0x0e, 0x0f);
 const SIDEBAR: Color32 = Color32::from_rgb(0x14, 0x14, 0x15);
 const SURFACE: Color32 = Color32::from_rgb(0x1a, 0x1a, 0x1c);
@@ -49,7 +49,6 @@ const PRIMARY: Color32 = Color32::from_rgb(0xf3, 0xef, 0xe8);
 const ON_PRIMARY: Color32 = Color32::from_rgb(0x14, 0x13, 0x14);
 /// Vision Amber: what is on, and what the pointer is over.
 const AMBER: Color32 = Color32::from_rgb(0xea, 0x99, 0x3f);
-const RED_WORDMARK: Color32 = Color32::from_rgb(0xed, 0x4b, 0x3e);
 const THUMB: Color32 = Color32::from_rgb(0x23, 0x23, 0x26);
 const SIDEBAR_W: f32 = 232.0;
 /// Sharp corners, as HORIX's.
@@ -95,6 +94,7 @@ pub enum Icon {
 const ICON_PX: usize = 48;
 const ICON_COLUMNS: usize = 8;
 const ICON_ROWS: usize = 4;
+const LOGO_SIZE: [usize; 2] = [376, 64];
 
 /// One of the things the app starts with, as a card under "Start with a tool".
 pub struct Tool<'a> {
@@ -203,6 +203,8 @@ pub fn show(ui: &mut Ui, home: &Home<'_>) -> Option<Action> {
 /// The kit's icons and faces on this context.
 struct Kit {
     icons: egui::TextureHandle,
+    /// Saber Group's logo (assets/saber-group-logo.rgba), LOGO_SIZE.
+    logo: egui::TextureHandle,
     /// The faces are installed (the app's own font setup can replace them; they come back the
     /// next frame, and the app's face stands in meanwhile).
     fonts: bool,
@@ -226,6 +228,13 @@ impl Kit {
             ctx.data_mut(|d| d.insert_temp(id, tex.clone()));
             tex
         });
+        let logo_id = egui::Id::new("horix-home-logo");
+        let logo = ctx.data_mut(|d| d.get_temp::<egui::TextureHandle>(logo_id)).unwrap_or_else(|| {
+            let image = egui::ColorImage::from_rgba_unmultiplied(LOGO_SIZE, include_bytes!("horix_home_assets/saber-group-logo.rgba"));
+            let tex = ctx.load_texture("horix-home-logo", image, egui::TextureOptions::LINEAR);
+            ctx.data_mut(|d| d.insert_temp(logo_id, tex.clone()));
+            tex
+        });
         let families = ctx.fonts(|f| f.families());
         let fonts = FACES.iter().all(|(name, _)| families.contains(&FontFamily::Name((*name).into())));
         if !fonts {
@@ -238,7 +247,7 @@ impl Kit {
             }
             ctx.request_repaint();
         }
-        Self { icons, fonts }
+        Self { icons, logo, fonts }
     }
 
     /// The kit's face at `weight` (400, 500, 600; 700 is the display face).
@@ -742,14 +751,14 @@ fn academy(ui: &mut Ui, k: &Kit, action: &mut Option<Action>) {
     p.rect_filled(r, RADIUS, CARD);
     p.rect_stroke(r, RADIUS, Stroke::new(1.0, BORDER), StrokeKind::Inside);
     p.rect_filled(Rect::from_min_max(pos2(r.left(), r.top() + 14.0), pos2(r.left() + 3.0, r.bottom() - 14.0)), CornerRadius { ne: 1, se: 1, ..Default::default() }, AMBER);
-    // SABER GROUP  ACADEMY
+    // Saber Group's logo, then ACADEMY.
     let x = r.left() + 24.0;
     let top = r.top() + 18.0;
-    let mark = p.layout_no_wrap("SABER GROUP".into(), k.font(700, 21.0), RED_WORDMARK);
-    let mw = mark.size().x;
-    let mh = mark.size().y;
-    p.galley(pos2(x, top), mark, RED_WORDMARK);
-    p.text(pos2(x + mw + 9.0, top + mh - 3.0), Align2::LEFT_BOTTOM, "ACADEMY", k.font(400, 8.5), Color32::from_rgb(0xad, 0xad, 0xb5));
+    let mh = 24.0;
+    let mw = mh * LOGO_SIZE[0] as f32 / LOGO_SIZE[1] as f32;
+    let logo = Rect::from_min_size(pos2(x, top), vec2(mw, mh));
+    p.image(k.logo.id(), logo, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), Color32::WHITE);
+    p.text(pos2(x + mw + 9.0, top + mh - 1.0), Align2::LEFT_BOTTOM, "ACADEMY", k.font(500, 9.0), Color32::from_rgb(0xad, 0xad, 0xb5));
     p.text(pos2(x, top + mh + 6.0), Align2::LEFT_TOP, "Learn with the team behind HORIX.", k.font(500, 17.0), TEXT);
     p.text(pos2(x, top + mh + 32.0), Align2::LEFT_TOP, "Courses, workshops and creative support in Arabic.", k.font(400, 10.5), Color32::from_rgb(0xa8, 0xa8, 0xb2));
     // Explore courses →, and the accounts under it.
