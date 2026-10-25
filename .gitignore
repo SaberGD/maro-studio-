@@ -15,3 +15,5 @@ deploy/horix-vectors/*.zip
 deploy/horix-light/*.zip
 __pycache__/
 deploy/horix-launcher/*.zip
+deploy/horix-one/*.zip
+deploy/horix-one-desktop/
