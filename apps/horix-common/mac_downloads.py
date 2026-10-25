@@ -22,6 +22,7 @@ APPS = [
     ("horix", "horix-v", "HORIX.dmg"),
     ("horix-vectors", "horix-vectors-v", "Horix-Vectors.dmg"),
     ("horix-light", "horix-light-v", "Horix-Light.dmg"),
+    ("horix-one", "horix-one-v", "HORIX-One.dmg"),
 ]
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 
