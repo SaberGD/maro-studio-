@@ -68,10 +68,6 @@ impl One {
         one
     }
 
-    pub fn persona(&self) -> Persona {
-        self.persona
-    }
-
     /// Show `to`, with its own fonts and style from the next frame.
     pub fn switch(&mut self, to: Persona) {
         if to == self.persona {
