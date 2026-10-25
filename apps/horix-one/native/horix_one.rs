@@ -1,12 +1,20 @@
-//! HORIX One: HORIX (Pixel) and Horix Vectors (Vector) in one window, the way Affinity's personas
-//! are. Both apps run natively in this process on the window's graphics device; the persona bar at
-//! the top shows one of them at a time, and its hand-off button opens the active persona's work in
-//! the other one (Vector → Pixel as SVG with the type as outlines, Pixel → Vector as PNG).
+//! HORIX One: Horix Vectors (Vector), HORIX (Pixel) and Horix Layout (Layout) in one window, the
+//! way Affinity's personas are. The three apps run natively in this process on the window's
+//! graphics device; the persona bar at the top shows one of them at a time, and its hand-off
+//! buttons take the shown persona's work to another one:
+//!
+//! - Vector → Pixel as SVG (type as outlines, it opens as shape layers), Vector → Layout as PDF.
+//! - Pixel → Vector as PNG, Pixel → Layout as PNG.
+//! - Layout → Vector as PDF (the first page).
+//!
+//! What goes to Layout is placed on the spread in view (a new document when none is open).
 //!
 //! Each persona keeps its own documents, preferences, fonts and style: switching puts the shown
 //! one's fonts and style back on the context ([`PhotocraftApp::horix_one_restyle`]). Only the shown
-//! persona runs its frame. Quitting asks about Vector's unsaved documents, then Pixel's.
+//! persona runs its frame. Quitting asks about Layout's unsaved documents, then Vector's, then
+//! Pixel's.
 
+use horix_layout_app as layout;
 use horix_vectors_app as vectors;
 use photocraft_ui_egui::PhotocraftApp;
 
@@ -19,7 +27,6 @@ const PERSONA_KEY: &str = "horix-one-persona";
 
 const BACKGROUND: egui::Color32 = egui::Color32::from_rgb(14, 14, 15);
 const TEXT: egui::Color32 = egui::Color32::from_rgb(232, 232, 234);
-const DIM: egui::Color32 = egui::Color32::from_rgb(130, 130, 136);
 const ACCENT: egui::Color32 = egui::Color32::from_rgb(245, 166, 35);
 const ON_ACCENT: egui::Color32 = egui::Color32::from_rgb(24, 18, 8);
 
@@ -27,6 +34,7 @@ const ON_ACCENT: egui::Color32 = egui::Color32::from_rgb(24, 18, 8);
 pub enum Persona {
     Vector,
     Pixel,
+    Layout,
 }
 
 impl Persona {
@@ -34,6 +42,7 @@ impl Persona {
         match self {
             Self::Vector => "vector",
             Self::Pixel => "pixel",
+            Self::Layout => "layout",
         }
     }
 
@@ -41,6 +50,7 @@ impl Persona {
         match key {
             "vector" => Some(Self::Vector),
             "pixel" => Some(Self::Pixel),
+            "layout" => Some(Self::Layout),
             _ => None,
         }
     }
@@ -49,6 +59,7 @@ impl Persona {
 pub struct One {
     pixel: PhotocraftApp,
     vector: vectors::App,
+    layout: layout::Persona,
     persona: Persona,
     /// A message from the last hand-off and when it went up (the context's time).
     note: Option<(String, f64)>,
@@ -57,14 +68,13 @@ pub struct One {
 impl One {
     pub fn new(cc: &eframe::CreationContext<'_>, pixel: PhotocraftApp, custom_titlebar: bool, opened_files: bool) -> Self {
         let vector = vectors::horix_one_persona(cc, custom_titlebar);
+        let layout = layout::horix_one_persona(custom_titlebar);
         // Files from the command line or the OS open in Pixel; otherwise the persona shown last.
         let saved = cc.storage.and_then(|s| s.get_string(PERSONA_KEY)).and_then(|k| Persona::from_key(&k));
         let persona = if opened_files { Persona::Pixel } else { saved.unwrap_or(Persona::Pixel) };
-        let mut one = Self { pixel, vector, persona, note: None };
-        // Pixel's start-up styled nothing yet; Vector styles itself on its first frame.
-        if persona == Persona::Vector {
-            one.vector.app().horix_one_restyle();
-        }
+        // Pixel's start-up styled nothing yet; Vector and Layout style themselves on their first frame.
+        let mut one = Self { pixel, vector, layout, persona: Persona::Pixel, note: None };
+        one.switch(persona);
         one
     }
 
@@ -77,6 +87,7 @@ impl One {
         match to {
             Persona::Pixel => self.pixel.horix_one_restyle(),
             Persona::Vector => self.vector.app().horix_one_restyle(),
+            Persona::Layout => self.layout.app().horix_one_restyle(),
         }
     }
 
@@ -85,11 +96,24 @@ impl One {
         ctx.request_repaint();
     }
 
-    /// The hand-off button: the shown persona's document opens in the other one.
-    pub fn hand_off(&mut self, ctx: &egui::Context) {
-        let result = match self.persona {
-            Persona::Vector => self.vector_to_pixel(),
-            Persona::Pixel => self.pixel_to_vector(),
+    /// The persona each hand-off button of the shown persona goes to.
+    fn targets(&self) -> &'static [Persona] {
+        match self.persona {
+            Persona::Vector => &[Persona::Pixel, Persona::Layout],
+            Persona::Pixel => &[Persona::Vector, Persona::Layout],
+            Persona::Layout => &[Persona::Vector],
+        }
+    }
+
+    /// A hand-off button: the shown persona's document goes to `to`.
+    pub fn hand_off(&mut self, ctx: &egui::Context, to: Persona) {
+        let result = match (self.persona, to) {
+            (Persona::Vector, Persona::Pixel) => self.vector_to_pixel(),
+            (Persona::Pixel, Persona::Vector) => self.pixel_to_vector(),
+            (Persona::Vector, Persona::Layout) => self.vector_to_layout(),
+            (Persona::Pixel, Persona::Layout) => self.pixel_to_layout(),
+            (Persona::Layout, Persona::Vector) => self.layout_to_vector(),
+            _ => return,
         };
         match result {
             Ok(message) => self.say(ctx, message),
@@ -98,13 +122,7 @@ impl One {
     }
 
     fn vector_to_pixel(&mut self) -> Result<String, String> {
-        let stem = self
-            .vector
-            .app()
-            .session
-            .active()
-            .and_then(|d| d.path.as_deref().map(file_stem))
-            .unwrap_or_else(|| "from-vector".into());
+        let stem = self.vector_stem();
         let svg = match self.vector.export_svg() {
             Ok(Some(svg)) => svg,
             Ok(None) => return Err("Nothing to open: open or make a drawing in Vector first.".into()),
@@ -115,9 +133,10 @@ impl One {
         Ok("The drawing opened in Pixel as shape layers.".into())
     }
 
-    fn pixel_to_vector(&mut self) -> Result<String, String> {
+    /// Pixel's active image as PNG, and its name without the extension.
+    fn pixel_png(&mut self) -> Result<(String, Vec<u8>), String> {
         let Some(name) = self.pixel.session.active().map(|d| d.doc.name.clone()) else {
-            return Err("Nothing to open: open or make an image in Pixel first.".into());
+            return Err("Nothing to send: open or make an image in Pixel first.".into());
         };
         let stem = file_stem(&name);
         let path = std::env::temp_dir().join(format!("horix-one-{}-{stem}.png", std::process::id()));
@@ -125,9 +144,52 @@ impl One {
         let bytes = exported.and_then(|_| std::fs::read(&path).map_err(|e| e.to_string()));
         let _ = std::fs::remove_file(&path);
         let bytes = bytes.map_err(|e| format!("The image couldn't be exported: {e}"))?;
+        Ok((stem, bytes))
+    }
+
+    fn pixel_to_vector(&mut self) -> Result<String, String> {
+        let (stem, bytes) = self.pixel_png()?;
         self.vector.open_bytes(&format!("{stem}.png"), &bytes).map_err(|e| format!("Vector couldn't open the image: {e}"))?;
         self.switch(Persona::Vector);
         Ok("The image opened in Vector.".into())
+    }
+
+    fn pixel_to_layout(&mut self) -> Result<String, String> {
+        let (stem, bytes) = self.pixel_png()?;
+        self.layout.place_bytes(&format!("{stem}.png"), &bytes).map_err(|e| format!("Layout couldn't place the image: {e}"))?;
+        self.switch(Persona::Layout);
+        Ok("The image is placed in Layout.".into())
+    }
+
+    fn vector_to_layout(&mut self) -> Result<String, String> {
+        let stem = self.vector_stem();
+        let pdf = match self.vector.export_pdf() {
+            Ok(Some(pdf)) => pdf,
+            Ok(None) => return Err("Nothing to send: open or make a drawing in Vector first.".into()),
+            Err(e) => return Err(format!("The drawing couldn't be exported: {e}")),
+        };
+        self.layout.place_bytes(&format!("{stem}.pdf"), &pdf).map_err(|e| format!("Layout couldn't place the drawing: {e}"))?;
+        self.switch(Persona::Layout);
+        Ok("The drawing is placed in Layout.".into())
+    }
+
+    fn layout_to_vector(&mut self) -> Result<String, String> {
+        let session = &self.layout.app().session;
+        let active = session.active_index().and_then(|i| session.documents().get(i));
+        let stem = active.map(|d| file_stem(&d.title())).unwrap_or_else(|| "from-layout".into());
+        let pdf = match self.layout.export_pdf() {
+            Ok(Some(pdf)) => pdf,
+            Ok(None) => return Err("Nothing to send: open or make a document in Layout first.".into()),
+            Err(e) => return Err(format!("The page couldn't be exported: {e}")),
+        };
+        self.vector.open_bytes(&format!("{stem}.pdf"), &pdf).map_err(|e| format!("Vector couldn't open the page: {e}"))?;
+        self.switch(Persona::Vector);
+        Ok("The first page opened in Vector.".into())
+    }
+
+    /// The name of Vector's active drawing without its folder and extension.
+    fn vector_stem(&mut self) -> String {
+        self.vector.app().session.active().and_then(|d| d.path.as_deref().map(file_stem)).unwrap_or_else(|| "from-vector".into())
     }
 
     fn bar(&mut self, ui: &mut egui::Ui) {
@@ -151,24 +213,28 @@ impl One {
                     ui.label(egui::RichText::new("HORIX").strong().size(14.0).color(TEXT));
                     ui.label(egui::RichText::new("ONE").strong().size(14.0).color(ACCENT));
                     ui.add_space(14.0);
-                    for (persona, label) in [(Persona::Vector, "Vector"), (Persona::Pixel, "Pixel")] {
+                    for (persona, label) in [(Persona::Vector, "Vector"), (Persona::Pixel, "Pixel"), (Persona::Layout, "Layout")] {
                         if persona_button(ui, label, self.persona == persona).clicked() {
                             self.switch(persona);
                         }
                     }
-                    ui.add_enabled(false, egui::Button::new(egui::RichText::new("Layout · soon").size(13.0).color(DIM)).frame(false))
-                        .on_disabled_hover_text("Layout, for pages, books and magazines, is the next persona.");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let (label, tip) = match self.persona {
-                            Persona::Vector => ("Open in Pixel  →", "Open this drawing in Pixel as shape layers (type as outlines)"),
-                            Persona::Pixel => ("Open in Vector  →", "Open this image in Vector"),
-                        };
-                        let button = egui::Button::new(egui::RichText::new(label).size(13.0).color(TEXT))
-                            .fill(egui::Color32::from_rgb(34, 34, 38))
-                            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 66)))
-                            .corner_radius(6.0);
-                        if ui.add(button).on_hover_text(tip).clicked() {
-                            self.hand_off(ui.ctx());
+                        // Right to left: the last target first.
+                        for &to in self.targets().iter().rev() {
+                            let (label, tip) = match (self.persona, to) {
+                                (Persona::Vector, Persona::Pixel) => ("Open in Pixel  →", "Open this drawing in Pixel as shape layers (type as outlines)"),
+                                (Persona::Pixel, Persona::Vector) => ("Open in Vector  →", "Open this image in Vector"),
+                                (Persona::Layout, Persona::Vector) => ("Open in Vector  →", "Open this document's first page in Vector"),
+                                (Persona::Vector, _) => ("Place in Layout  →", "Place this drawing on the spread in Layout"),
+                                _ => ("Place in Layout  →", "Place this image on the spread in Layout"),
+                            };
+                            let button = egui::Button::new(egui::RichText::new(label).size(13.0).color(TEXT))
+                                .fill(egui::Color32::from_rgb(34, 34, 38))
+                                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 66)))
+                                .corner_radius(6.0);
+                            if ui.add(button).on_hover_text(tip).clicked() {
+                                self.hand_off(ui.ctx(), to);
+                            }
                         }
                     });
                 });
@@ -215,27 +281,38 @@ fn file_stem(name: &str) -> String {
 
 impl eframe::App for One {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        // Quitting: Vector asks about its unsaved documents first; once it has none, Pixel asks
+        // Quitting: Layout, then Vector, ask about their unsaved documents; once they have none, Pixel asks
         // about its own and leaves (on macOS through AppKit).
         if ctx.input(|i| i.viewport().close_requested()) {
-            let first = if self.vector.app().horix_one_unsaved() { Persona::Vector } else { Persona::Pixel };
+            let first = if self.layout.unsaved() {
+                Persona::Layout
+            } else if self.vector.app().horix_one_unsaved() {
+                Persona::Vector
+            } else {
+                Persona::Pixel
+            };
             self.switch(first);
         }
         match self.persona {
             Persona::Pixel => self.pixel.logic(ctx, frame),
             Persona::Vector => self.vector.logic(ctx, frame),
+            Persona::Layout => self.layout.logic(ctx, frame),
         }
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         match self.persona {
             Persona::Pixel => self.pixel.raw_input_hook(ctx, raw_input),
-            Persona::Vector => {
+            Persona::Vector | Persona::Layout => {
                 // The window stays borderless whichever persona shows (Pixel made it, #2246).
                 if let Some(window_frame) = self.pixel.services.window_frame.as_mut() {
                     window_frame();
                 }
-                self.vector.raw_input_hook(ctx, raw_input);
+                if self.persona == Persona::Vector {
+                    self.vector.raw_input_hook(ctx, raw_input);
+                } else {
+                    self.layout.raw_input_hook(ctx, raw_input);
+                }
             }
         }
     }
@@ -245,6 +322,7 @@ impl eframe::App for One {
         match self.persona {
             Persona::Pixel => self.pixel.ui(ui, frame),
             Persona::Vector => self.vector.ui(ui, frame),
+            Persona::Layout => self.layout.ui(ui, frame),
         }
         self.note(ui.ctx());
     }
@@ -254,6 +332,7 @@ impl eframe::App for One {
     }
 
     fn on_exit(&mut self) {
+        self.layout.on_exit();
         self.vector.on_exit();
         self.pixel.on_exit();
     }
@@ -273,9 +352,9 @@ mod tests {
 
     #[test]
     fn persona_keys_round_trip() {
-        for p in [Persona::Vector, Persona::Pixel] {
+        for p in [Persona::Vector, Persona::Pixel, Persona::Layout] {
             assert_eq!(Persona::from_key(p.key()), Some(p));
         }
-        assert_eq!(Persona::from_key("layout"), None);
+        assert_eq!(Persona::from_key("video"), None);
     }
 }

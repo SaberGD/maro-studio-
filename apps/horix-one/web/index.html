@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HORIX One</title>
-  <meta name="description" content="HORIX One: Vector and Pixel design in one app, by Saber Group">
+  <meta name="description" content="HORIX One: Vector, Pixel and Layout design in one app, by Saber Group">
   <meta name="theme-color" content="#141415">
   <link rel="icon" href="horix-one-icon.svg" type="image/svg+xml">
   <style>
@@ -66,9 +66,9 @@
       <button class="persona" data-persona="pixel" aria-pressed="false" title="Pixel: تعديل الصور بالذكاء الاصطناعي (بديل Photoshop)">
         <svg viewBox="0 0 24 24"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02Z"/></svg>
         Pixel</button>
-      <button class="persona" data-persona="layout" aria-pressed="false" disabled title="Layout: تصميم صفحات وكتب ومجلات (بديل InDesign) — قريبًا">
+      <button class="persona" data-persona="layout" aria-pressed="false" title="Layout: تصميم صفحات وكتب ومجلات (بديل InDesign)">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
-        Layout <small>قريبًا</small></button>
+        Layout</button>
     </div>
     <div id="spacer"></div>
     <button class="act" id="handoff" hidden></button>
@@ -76,14 +76,14 @@
   </header>
   <div id="toast" role="status" aria-live="polite"></div>
   <script>
-    // HORIX One on the web: one page, two personas (each a full app in its own same-origin frame,
+    // HORIX One on the web: one page, three personas (each a full app in its own same-origin frame,
     // loaded on first use), and the hand-off between them:
     //  - Vector → Pixel: the drawing as SVG with its text as outlines (window.vectorcraft), opened
     //    in Pixel as editable shape layers (wasmBindings.horix_open).
     //  - Pixel → Vector: the image as PNG (wasmBindings.horix_command "file.export.quickExportAsPng",
     //    caught by window.horixOneCapture instead of downloading), opened in Vector.
     (function () {
-      var PERSONAS = { vector: 'vector/', pixel: 'pixel/' };
+      var PERSONAS = { vector: 'vector/', pixel: 'pixel/', layout: 'layout/' };
       var frames = {}, current = null;
       var bar = document.getElementById('personas'), handoff = document.getElementById('handoff');
       var toastEl = document.getElementById('toast'), toastTimer = 0;
@@ -98,7 +98,7 @@
         if (!frames[name]) {
           var f = document.createElement('iframe');
           f.src = PERSONAS[name];
-          f.title = name === 'vector' ? 'HORIX One Vector' : 'HORIX One Pixel';
+          f.title = 'HORIX One ' + name.charAt(0).toUpperCase() + name.slice(1);
           f.allow = 'clipboard-read; clipboard-write; fullscreen; local-fonts';
           document.body.appendChild(f);
           frames[name] = f;
@@ -111,7 +111,8 @@
         Object.keys(frames).forEach(function (k) { frames[k].classList.toggle('on', k === name); });
         bar.querySelectorAll('.persona').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.persona === name)); });
         current = name;
-        handoff.hidden = false;
+        // Layout has no hand-off on the web yet (the desktop app has them).
+        handoff.hidden = name === 'layout';
         handoff.innerHTML = '<span>' + (name === 'vector' ? 'افتح التصميم في <bdi>Pixel</bdi>' : 'افتح الصورة في <bdi>Vector</bdi>') + '</span>' + ICON_TO_PIXEL;
         handoff.title = name === 'vector' ? 'الرسمة تتنقل لـPixel كطبقات أشكال تقدر تعدّلها' : 'الصورة تتنقل لـVector كصورة في مستند جديد';
         try { localStorage.setItem('horix-one/persona', name); } catch (e) {}

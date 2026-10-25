@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Build HORIX One for the web: one site with the persona bar (web/index.html) and its two
-# personas, Vector (Horix Vectors, under vector/) and Pixel (HORIX, under pixel/). All three are
-# on one origin, so the bar hands documents from one persona to the other.
+# Build HORIX One for the web: one site with the persona bar (web/index.html) and its three
+# personas, Vector (Horix Vectors, under vector/), Pixel (HORIX, under pixel/) and Layout (Horix
+# Layout, under layout/). All are on one origin, so the bar hands documents from one persona to
+# the other.
 #
 # Usage: apps/horix-one/build.sh
-# Env:   HORIX_ONE_PIXEL / HORIX_ONE_VECTOR: sites already built (HORIX with
-#        HORIX_PUBLIC_URL=/pixel/, Horix Vectors as is) to use instead of building them here.
-# Needs: what apps/sg-ps/build.sh and apps/horix-vectors/build.sh need.
+# Env:   HORIX_ONE_PIXEL / HORIX_ONE_VECTOR / HORIX_ONE_LAYOUT: sites already built (HORIX with
+#        HORIX_PUBLIC_URL=/pixel/, Horix Vectors and Horix Layout as they are) to use instead of
+#        building them here.
+# Needs: what apps/sg-ps/build.sh, apps/horix-vectors/build.sh and apps/horix-layout/build.sh need.
 # Output: deploy/horix-one/horix-one-<version>-web.zip, with the site in horix-one/.
 set -euo pipefail
 
@@ -27,9 +29,15 @@ if [ -z "$VECTOR" ]; then
   HORIX_VECTORS_WORK="$WORK/vector" "$REPO/apps/horix-vectors/build.sh"
   VECTOR="$WORK/vector/site/horix-vectors"
 fi
+LAYOUT="${HORIX_ONE_LAYOUT:-}"
+if [ -z "$LAYOUT" ]; then
+  HORIX_LAYOUT_WORK="$WORK/layout" "$REPO/apps/horix-layout/build.sh"
+  LAYOUT="$WORK/layout/site/horix-layout"
+fi
 # The Pixel site must be built for /pixel/ (its page loads its files from there).
 grep -q '/pixel/' "$PIXEL/index.html" || { echo "error: $PIXEL is not built for /pixel/ (HORIX_PUBLIC_URL)" >&2; exit 1; }
 [ -f "$VECTOR/index.html" ] || { echo "error: no Horix Vectors site in $VECTOR" >&2; exit 1; }
+[ -f "$LAYOUT/index.html" ] || { echo "error: no Horix Layout site in $LAYOUT" >&2; exit 1; }
 
 SITE="$WORK/site/horix-one"
 rm -rf "$WORK/site"
@@ -46,6 +54,7 @@ cp "$REPO/apps/sg-ps/assets/fonts/OFL-BarlowCondensed.txt" "$REPO/apps/sg-ps/ass
 cp "$HERE/web/.htaccess" "$SITE/.htaccess"
 cp -R "$PIXEL" "$SITE/pixel"
 cp -R "$VECTOR" "$SITE/vector"
+cp -R "$LAYOUT" "$SITE/layout"
 ZIP="$OUT/horix-one-$VERSION-web.zip"
 rm -f "$ZIP"
 (cd "$WORK/site" && zip -qr9 "$ZIP" horix-one)
