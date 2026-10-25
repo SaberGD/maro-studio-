@@ -213,6 +213,22 @@ def arabic_on_the_web(root: Path) -> None:
     ])
 
 
+def arabic_text(root: Path) -> None:
+    """Arabic letters the applied font lacks are always drawn from a font that has them (Noto Sans
+    Arabic on the web, the system's on the desktop), whatever Preferences › Composition › Draw
+    Missing Glyphs from Fallback Fonts says: that preference is off in new documents (as in
+    InDesign), and Arabic text would otherwise be a row of boxes in the default Source Serif."""
+    hx.edit(root, "crates/compose/src/shape.rs", [
+        ("    let fallback = |c: char| {\n"
+         "        if auto_leading.glyph_fallback { db.fallback_for(c, primary.id(), lang).unwrap_or_else(|| primary.clone()) } else { primary.clone() }\n"
+         "    };",
+         "    let fallback = |c: char| {\n"
+         "        let arabic = matches!(c as u32, 0x0600..=0x06FF | 0x0750..=0x077F | 0x0870..=0x08FF | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF);\n"
+         "        if auto_leading.glyph_fallback || arabic { db.fallback_for(c, primary.id(), lang).unwrap_or_else(|| primary.clone()) } else { primary.clone() }\n"
+         "    };"),
+    ])
+
+
 def web(root: Path) -> None:
     icons = HERE / "assets/app-icon"
     hx.edit(root, WEB, [
@@ -235,6 +251,7 @@ def main() -> None:
     links(root)
     theme(root)
     arabic_on_the_web(root)
+    arabic_text(root)
     web(root)
     hx.exe_version(root, "apps/designcraft/build.rs")
     n = hx.rename(root, CODE + [WEB], "DesignCraft", APP_NAME)
