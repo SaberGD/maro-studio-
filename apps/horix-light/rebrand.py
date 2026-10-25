@@ -27,6 +27,8 @@ sys.path.insert(0, str(HERE.parent / "horix-common"))
 import horix_rebrand as hx  # noqa: E402
 
 APP_NAME = "Horix Light"
+# The name on the web loading screen (its status line), as the HORIX family writes it.
+LOADER_NAME = "HORIX Light"
 PRODUCT_LINE = "THE PHOTO DEVELOPER"
 CODE = ["crates/**/*.rs", "apps/**/*.rs", "crates/ui-egui/locales/*.json"]
 WEB = "apps/lightcraft-web/index.html"
@@ -121,15 +123,17 @@ def drop_branded_translations_json(root: Path) -> int:
 
 def web(root: Path) -> None:
     icons = HERE / "assets/app-icon"
+    # HORIX's loading screen (horix_rebrand.horix_loader), with this app's badge beside the logo.
+    loading, loader_css, loader_script = hx.horix_loader(
+        LOADER_NAME, PRODUCT_LINE, box="lightcraft_loading", stalled="lightcraft_stalled", status="horix_loading_text", badge=hx.icon_badge(HERE))
     hx.edit(root, WEB, [
         ('<link rel="icon" href="data:,">', f'<link rel="icon" href="{hx.favicon_data_uri(icons)}">'),
-        ("background: #1c1c1c;", "background: #141314;"),
+        ("background: #1c1c1c;", "background: #0E0E0F;"),
         ('color: #b8b8b8; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; pointer-events: none;\n    }',
-         'color: #b8b8b8; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; pointer-events: none;\n'
-         '      background: #141314; flex-direction: column;\n    }\n'
-         '    #horix_loading_text { margin-top: 18px; font-size: 13px; color: #9e9891; }' + hx.LOADER_CSS),
-        ('<div id="lightcraft_loading">Loading LightCraft…</div>',
-         f'<div id="lightcraft_loading">{hx.loader_html(APP_NAME, PRODUCT_LINE)}\n    <div id="horix_loading_text">Loading LightCraft…</div>\n  </div>'),
+         'color: #96969E; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; pointer-events: none;\n'
+         '      background: #0E0E0F; flex-direction: column;\n    }\n' + loader_css),
+        # The script right after the screen (patches/50-horix-ai edits the end of the page).
+        ('<div id="lightcraft_loading">Loading LightCraft…</div>', f'<div id="lightcraft_loading">\n    {loading}\n  </div>\n' + loader_script.rstrip("\n")),
         ('const el = document.getElementById("lightcraft_loading");', 'const el = document.getElementById("horix_loading_text");'),
     ])
 

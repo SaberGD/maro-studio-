@@ -29,6 +29,8 @@ mkdir -p "$SITE"
 cp -R "$CARGO_TARGET_DIR/web-site/." "$SITE/"
 BUILD_ID="${HORIX_BUILD_ID:-$(date -u +%Y%m%d%H%M%S)}"
 python3 -c 'import sys; p, b = sys.argv[1:3]; t = open(p, encoding="utf-8").read(); open(p, "w", encoding="utf-8").write(t.replace("<head>", "<head>\n  <meta name=\"horix-build\" content=\"" + b + "\">", 1))' "$SITE/index.html" "$BUILD_ID"
+# HORIX's loading screen: its fonts, and the WebAssembly size for its progress.
+"$HERE/../horix-common/loader-site.sh" "$SITE"
 # Upstream's pre-compressed copies of the page would still hold the old page: redo them.
 [ -f "$SITE/index.html.gz" ] && gzip -9 -k -f "$SITE/index.html"
 if [ -f "$SITE/index.html.br" ]; then

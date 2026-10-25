@@ -26,6 +26,8 @@ sys.path.insert(0, str(HERE.parent / "horix-common"))
 import horix_rebrand as hx  # noqa: E402
 
 APP_NAME = "Horix Vectors"
+# The name on the web loading screen (its status line), as the HORIX family writes it.
+LOADER_NAME = "HORIX Vectors"
 PRODUCT_LINE = "THE VECTOR STUDIO"
 CODE = ["crates/**/*.rs", "apps/**/*.rs", "crates/ui-egui/src/i18n/*.tsv"]
 WEB = "apps/vectorcraft-web/index.html"
@@ -128,15 +130,17 @@ def theme(root: Path) -> None:
 
 def web(root: Path) -> None:
     icons = HERE / "assets/app-icon"
+    # HORIX's loading screen (horix_rebrand.horix_loader), with this app's badge beside the logo.
+    loading, loader_css, loader_script = hx.horix_loader(
+        LOADER_NAME, PRODUCT_LINE, box="vectorcraft_loading", stalled="vectorcraft_stalled", status="horix_loading_text", badge=hx.icon_badge(HERE))
     hx.edit(root, WEB, [
         ('<meta name="theme-color" content="#262626">', '<meta name="theme-color" content="#141314">'),
         ("<title>VectorCraft</title>", f'<title>{APP_NAME}</title>\n  <link rel="icon" href="{hx.favicon_data_uri(icons)}">'),
-        ("background: #262626;", "background: #141314;"),
+        ("background: #262626;", "background: #0E0E0F;"),
         ("color: #b8b8b8; font: 14px system-ui, sans-serif; pointer-events: none; }",
-         "color: #b8b8b8; font: 14px system-ui, sans-serif; pointer-events: none; background: #141314; }\n"
-         "    #horix_loading_text { margin-top: 18px; font-size: 13px; color: #9e9891; }" + hx.LOADER_CSS),
-        ('<div id="vectorcraft_loading">Loading VectorCraft&hellip;</div>',
-         f'<div id="vectorcraft_loading">{hx.loader_html(APP_NAME, PRODUCT_LINE)}\n    <div id="horix_loading_text">Loading VectorCraft&hellip;</div>\n  </div>'),
+         "color: #96969E; font: 14px system-ui, sans-serif; pointer-events: none; background: #0E0E0F; }\n" + loader_css),
+        ('<div id="vectorcraft_loading">Loading VectorCraft&hellip;</div>', f'<div id="vectorcraft_loading">\n    {loading}\n  </div>'),
+        ("</body>", loader_script + "</body>"),
     ])
     # The app writes the translated loading text into the page: into the status line, so the logo
     # stays; the whole loader is still removed once the app runs.

@@ -864,26 +864,12 @@ def web_page_behaviour(root: Path) -> None:
 def web(root: Path) -> None:
     edit(root, "apps/photocraft-web/Cargo.toml", [('name = "photocraft-web"\npath = "src/main.rs"', 'name = "sg-ps"\npath = "src/main.rs"')])
     shutil.copyfile(HERE / "assets" / "horix-favicon.svg", root / "apps/photocraft-web/horix-favicon.svg")
-    # The loading screen: the HORIX logo inline (it shows before anything else downloads), built from
-    # the lockup's own shapes: a faint copy, a lit copy revealed by a clip, and the eye on its own.
-    lockup = (HERE / "assets" / "horix-lockup.svg").read_text(encoding="utf-8")
-    shapes = re.findall(r"<(?:path|polygon|rect)[^>]*/>", lockup)
-    eyes = [s for s in shapes if 'fill="#EA993F"' in s]
-    if len(eyes) != 1:
-        sys.exit("rebrand: horix-lockup.svg: expected exactly one amber eye shape")
-    body = "".join(s.replace(' fill="#F3EFE8"', "").replace(' fill="#D63C32"', ' class="x"') for s in shapes if s not in eyes)
-    eye = eyes[0].replace(' fill="#EA993F"', ' class="hx-eye"')
-    view = re.search(r'viewBox="([^"]+)"', lockup).group(1)
-    vx, vy, vw, vh = (float(v) for v in view.split())
-    loading = (
-        f'<svg class="hx-mark" viewBox="{view}" data-w="{vw:g}" role="img" aria-label="HORIX">'
-        f'<defs><clipPath id="hx_reveal"><rect id="hx_wipe" x="{vx:g}" y="{vy - 20:g}" width="0" height="{vh + 40:g}"/></clipPath></defs>'
-        f'<g class="hx-dim">{body}</g><g class="hx-lit" clip-path="url(#hx_reveal)">{body}</g>{eye}</svg>\n'
-        '    <div class="hx-desc">THE VISIONARY AI EDITOR</div>\n'
-        '    <div class="hx-rule"></div>\n'
-        '    <div class="hx-by">BY SABER GROUP</div>\n'
-        '    <div class="hx-track"><div class="hx-bar"></div></div>\n'
-        '    <p class="hx-status" id="hx_status">بنحمّل HORIX…</p>')
+    # The loading screen: HORIX's, shared by the HORIX family (horix-common/horix_rebrand.py).
+    sys.path.insert(0, str(HERE.parent / "horix-common"))
+    import horix_rebrand as hx
+    loading, loader_css, loader_script = hx.horix_loader(
+        "HORIX", "THE VISIONARY AI EDITOR", box="photocraft_loading", stalled="photocraft_stalled",
+        box_js="sgps_loading", stalled_js="sgps_stalled")
     edit(root, "apps/photocraft-web/index.html", [
         ('data-bin="photocraft-web"', 'data-bin="sg-ps"'),
         ("<title>PhotoCraft</title>", f'<title>{APP_NAME}</title>\n  <link data-trunk rel="icon" href="horix-favicon.svg">\n'
@@ -898,8 +884,8 @@ def web(root: Path) -> None:
       download or come from a different version of this page. <a href="">Reload</a> to try again; the browser
       console lists what failed.</p>""",
          """    <p id="photocraft_stalled">التحميل واقف من شوية. اتأكد من النت و<a href="">اعمل Reload</a>، ولو فضلت المشكلة كلّمنا.</p>"""),
-        ("  </style>\n</head>", LOADER_CSS + "  </style>\n</head>"),
-        ("</body>", LOADER_SCRIPT + "</body>"),
+        ("  </style>\n</head>", loader_css + "  </style>\n</head>"),
+        ("</body>", loader_script + "</body>"),
     ])
     edit(root, "apps/photocraft-web/src/web.rs", [(
         '"<p>PhotoCraft failed to start: {e:?}</p><p>A browser with WebGPU or WebGL2 is required.</p>"',
@@ -914,119 +900,6 @@ def web(root: Path) -> None:
         path.write_text(text, encoding="utf-8")
 
 
-LOADER_CSS = """
-    /* HORIX loading screen: the start screen's own card (same canvas and dot grid, lockup, descriptor,
-       red rule, "BY SABER GROUP"), so the app opens on the same picture. The logo is revealed toward the
-       beak as the app downloads (real bytes, see LOADER_SCRIPT), a thin bar under it is the progress, and
-       the amber eye opens when the app is ready. Inter comes from the downloads page's fonts. */
-    @font-face { font-family: HorixInter; font-weight: 500; font-display: swap; src: url(fonts/inter-latin-500-normal.woff2) format('woff2'); }
-    @font-face { font-family: HorixCairo; font-weight: 700; font-display: swap; src: url(fonts/cairo-arabic-700-normal.woff2) format('woff2'); }
-    #photocraft_loading { font-family: HorixCairo, Cairo, 'Segoe UI', Tahoma, system-ui, sans-serif; transition: opacity .45s ease;
-      background-image: radial-gradient(circle, #1C1C1F 1.3px, transparent 1.8px); background-size: 22px 22px; background-position: 11px 11px; }
-    #photocraft_loading.hx-out { opacity: 0; }
-    .hx-mark { display: block; width: 190px; height: auto; overflow: visible; }
-    .hx-dim path, .hx-dim polygon, .hx-dim rect { fill: rgba(242, 239, 233, .07); }
-    .hx-dim .x { fill: rgba(214, 60, 50, .12); }
-    .hx-lit path, .hx-lit polygon, .hx-lit rect { fill: #F2EFE9; }
-    .hx-lit .x { fill: #D63C32; }
-    #hx_wipe { transition: width .35s cubic-bezier(.2, .8, .2, 1); }
-    .hx-eye { fill: #EA993F; opacity: .55; transform-box: fill-box; transform-origin: 50% 40%; transform: scaleY(.12);
-      transition: transform .55s cubic-bezier(.3, 1.6, .5, 1), opacity .3s; }
-    .hx-ready .hx-eye { opacity: 1; transform: none; }
-    .hx-desc { margin-top: 12px; color: #F2EFE9; font: 500 12px/1.2 HorixInter, Inter, 'Segoe UI', system-ui, sans-serif; letter-spacing: 0; direction: ltr; }
-    .hx-rule { width: 28px; height: 2px; margin: 7px 0 6px; background: #D63C32; }
-    .hx-by { color: #606067; font: 500 10.5px/1.2 HorixInter, Inter, 'Segoe UI', system-ui, sans-serif; direction: ltr; }
-    .hx-track { position: relative; width: 160px; height: 2px; margin: 22px 0 14px; border-radius: 1px; overflow: hidden; background: #232326; }
-    .hx-bar { position: absolute; inset: 0 auto 0 0; width: 0; background: #D63C32; transition: width .35s cubic-bezier(.2, .8, .2, 1); }
-    .hx-busy .hx-bar { width: 100% !important; animation: hx-breathe 1.1s ease-in-out infinite; }
-    @keyframes hx-breathe { 50% { opacity: .45; } }
-    .hx-status { min-height: 1.6em; margin: 0 0 8px; font-size: 13px; line-height: 1.5; direction: rtl; }
-    .hx-status bdi { unicode-bidi: isolate; direction: ltr; color: #606067; font: 12px HorixInter, Inter, system-ui, sans-serif; }
-    /* While bytes keep arriving the "taking long" hint stays hidden; the script shows it after 15 s without progress. */
-    #photocraft_loading.hx-flowing #photocraft_stalled { visibility: hidden; animation: none; }
-    #photocraft_loading.hx-stuck #photocraft_stalled { visibility: visible; animation: none; }
-    #photocraft_stalled { direction: rtl; }
-    @media (prefers-reduced-motion: reduce) {
-      #hx_wipe, .hx-bar, .hx-eye, #photocraft_loading { transition: none; }
-      .hx-busy .hx-bar { animation: none; }
-    }
-"""
-
-LOADER_SCRIPT = """  <script>
-    // HORIX loading screen: real download progress of the WebAssembly file. The page's own loader
-    // (trunk / wasm-bindgen) fetches it; fetch is wrapped for that one URL to count the bytes as they
-    // arrive (already decompressed, so they compare to the file's size written at build time).
-    (function () {
-      var SIZE = Number('__HORIX_WASM_SIZE__') || 0;
-      var box = document.getElementById('sgps_loading');
-      if (!box || !window.fetch || !window.ReadableStream) return;
-      var wipe = document.getElementById('hx_wipe'), mark = wipe && wipe.ownerSVGElement;
-      var bar = box.querySelector('.hx-bar'), status = document.getElementById('hx_status');
-      var full = mark ? Number(mark.getAttribute('data-w')) : 0, last = Date.now();
-      function mb(n) { return (n / 1048576).toFixed(1); }
-      function show(got, total) {
-        last = Date.now();
-        box.classList.add('hx-flowing'); box.classList.remove('hx-stuck');
-        var p = total ? Math.min(1, got / total) : 0;
-        if (wipe) wipe.setAttribute('width', String(full * p + 2));
-        if (bar) bar.style.width = (p * 100).toFixed(1) + '%';
-        // A percentage: the bytes counted here are decompressed, so megabytes would not match the download.
-        status.innerHTML = 'بنحمّل HORIX… <bdi>' + (total ? Math.floor(p * 100) + '%' : mb(got) + ' MB') + '</bdi>';
-      }
-      function busy() {
-        if (wipe) wipe.setAttribute('width', String(full + 2));
-        box.classList.add('hx-busy');
-        status.textContent = 'بنجهّز الأدوات…';
-      }
-      var watch = setInterval(function () {
-        if (!document.body.contains(box)) return clearInterval(watch);
-        if (box.classList.contains('hx-flowing') && !box.classList.contains('hx-busy') && Date.now() - last > 15000) {
-          box.classList.remove('hx-flowing'); box.classList.add('hx-stuck');
-        }
-      }, 1000);
-      var realFetch = window.fetch;
-      window.fetch = function (input, init) {
-        var url = typeof input === 'string' ? input : (input && input.url) || '';
-        var res = realFetch.apply(this, arguments);
-        if (!/_bg\\.wasm(\\?|$)/.test(url)) return res;
-        return res.then(function (r) {
-          if (!r.ok || !r.body) return r;
-          var total = SIZE || Number(r.headers.get('Content-Length')) || 0, got = 0, reader = r.body.getReader();
-          show(0, total);
-          var counted = new ReadableStream({
-            pull: function (ctl) {
-              return reader.read().then(function (c) {
-                if (c.done) { busy(); ctl.close(); return; }
-                got += c.value.byteLength; show(got, total); ctl.enqueue(c.value);
-              }, function (e) { ctl.error(e); });
-            },
-            cancel: function (why) { return reader.cancel(why); }
-          });
-          return new Response(counted, { status: r.status, statusText: r.statusText, headers: r.headers });
-        });
-      };
-      // The app removes the loading screen when it starts: a copy stays a moment so the eye opens
-      // and the screen fades out over the app.
-      new MutationObserver(function (_, obs) {
-        if (document.body.contains(box)) return;
-        obs.disconnect(); window.fetch = realFetch;
-        if (box.querySelector('.hx-mark') === null) return;
-        var out = box.cloneNode(true);
-        out.removeAttribute('id'); out.id = 'hx_loading_out';
-        out.className = 'hx-flowing hx-busy';
-        out.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-          'background:#0E0E0F radial-gradient(circle, #1C1C1F 1.3px, transparent 1.8px) 11px 11px / 22px 22px;color:#96969E;' +
-          'font:14px HorixCairo,Cairo,system-ui,sans-serif;pointer-events:none;z-index:5;transition:opacity .45s ease';
-        var st = out.querySelector('.hx-status'); if (st) st.textContent = 'جاهز';
-        var stalled = out.querySelector('#sgps_stalled'); if (stalled) { stalled.removeAttribute('id'); stalled.style.visibility = 'hidden'; }
-        document.body.appendChild(out);
-        requestAnimationFrame(function () { out.classList.add('hx-ready'); });
-        setTimeout(function () { out.style.opacity = '0'; }, 650);
-        setTimeout(function () { out.remove(); }, 1150);
-      }).observe(document.body, { childList: true });
-    })();
-  </script>
-"""
 
 NAME_RE = re.compile(r"(?<![A-Za-z0-9_])Photo[cC]raft(?![A-Za-z0-9_])")
 
