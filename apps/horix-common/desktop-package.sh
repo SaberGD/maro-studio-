@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build Horix Vectors or Horix Light for the desktop, named the way HORIX Launcher reads releases.
+# Build Horix Vectors, Horix Light or Horix Layout for the desktop, named the way HORIX Launcher reads releases.
 #
-# Usage: apps/horix-common/desktop-package.sh vectors|light windows|macos
+# Usage: apps/horix-common/desktop-package.sh vectors|light|layout windows|macos
 #   windows -> deploy/horix-<app>-desktop/horix-<app>-<v>-windows-x64-portable.zip
 #              (horix-<app>.exe at the top, portable.txt beside it)
 #   macos   -> deploy/horix-<app>-desktop/horix-<app>-<v>-macos-universal.dmg ("Horix <App>.app")
@@ -9,14 +9,15 @@
 # Needs: Rust >= 1.95 (macOS: the aarch64 and x86_64 apple-darwin targets), python3.
 set -euo pipefail
 
-APP="${1:?usage: desktop-package.sh vectors|light windows|macos}"
-OS="${2:?usage: desktop-package.sh vectors|light windows|macos}"
+APP="${1:?usage: desktop-package.sh vectors|light|layout windows|macos}"
+OS="${2:?usage: desktop-package.sh vectors|light|layout windows|macos}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 PY="$(command -v python3 || command -v python)"
 case "$APP" in
   vectors) UP=vectorcraft; UPNAME=VectorCraft; NAME="Horix Vectors"; SRC_TGZ="$REPO/archive/vectorcraft/vectorcraft-source-0.16.0.tar.gz" ;;
   light) UP=lightcraft; UPNAME=LightCraft; NAME="Horix Light"; SRC_TGZ="$REPO/archive/lightcraft/lightcraft-source-0.13.0.tar.gz" ;;
+  layout) UP=designcraft; UPNAME=DesignCraft; NAME="Horix Layout"; SRC_TGZ="$REPO/archive/designcraft/designcraft-source-0.12.0.tar.gz" ;;
   *) echo "unknown app $APP" >&2; exit 2 ;;
 esac
 ID="horix-$APP"
@@ -113,7 +114,7 @@ PYEOF
     ls -l "$DMG"
     ;;
   *)
-    echo "usage: desktop-package.sh vectors|light windows|macos" >&2
+    echo "usage: desktop-package.sh vectors|light|layout windows|macos" >&2
     exit 2
     ;;
 esac

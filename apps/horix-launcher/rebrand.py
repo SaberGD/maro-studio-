@@ -42,6 +42,8 @@ APPS = [
      "https://vectors.horix.live", "horix-vectors-v"),
     ("horix-light", "Horix Light", "Photo library and raw development", [[0x4a, 0x44, 0x40], [0x4a, 0x44, 0x40], [0xd8, 0xd0, 0xc6]],
      "https://light.horix.live", "horix-light-v"),
+    ("horix-layout", "Horix Layout", "Page layout and publishing", [[0xf3, 0xef, 0xe8], [0x5a, 0x52, 0x4a], [0xf3, 0xef, 0xe8]],
+     "https://layout.horix.live", "horix-layout-v"),
 ]
 
 
@@ -252,7 +254,7 @@ SCREENSHOTS_BASE = "https://horix.si/launcher/screenshots"
 
 DETAILS = """const PLATFORMS: &str = "Windows, macOS, web";
 
-pub const DETAILS: [AppDetails; 4] = [
+pub const DETAILS: [AppDetails; 5] = [
     AppDetails {
         id: "horix-one",
         headline: "Vector and Pixel in one app.",
@@ -326,6 +328,24 @@ pub const DETAILS: [AppDetails; 4] = [
             shot("ai-mask", "A Subject mask with HORIX AI, in the browser"),
             shot("start", "Horix Light's library"),
             shot("develop", "Developing a photo"),
+        ],
+        platforms: PLATFORMS,
+    },
+    AppDetails {
+        id: "horix-layout",
+        headline: "Pages, books and magazines.",
+        about: "Page layout and publishing in the spirit of InDesign, from the HORIX family: spreads and \\
+            parent pages, threaded text and styles, with type set as carefully on screen as in the PDF. It \\
+            runs on the desktop and in the browser at layout.horix.live, and becomes HORIX One's Layout persona next.",
+        features: &[
+            feature("Spreads and parent pages", "Facing pages, parent pages, sections, page numbers and a baseline grid."),
+            feature("Beautiful type", "Threaded text frames, paragraph and character styles, columns, text wrap and Arabic text."),
+            feature("Familiar files", "Opens IDML and InDesign files, and exports PDF (PDF/X-4), EPUB, PNG and PowerPoint."),
+            feature("Tables and colour", "Tables, named swatches and CMYK colour, ready for print."),
+        ],
+        shots: &[
+            shot("spread", "A magazine spread in Horix Layout"),
+            shot("start", "Horix Layout, ready for a new document"),
         ],
         platforms: PLATFORMS,
     },

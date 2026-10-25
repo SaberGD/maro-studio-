@@ -9,6 +9,7 @@
 | `photocraft/photocraft-source-0.15.1.tar.gz` | `git archive` لـ[storytold/photocraft](https://github.com/storytold/photocraft) عند tag `v0.15.1` (commit `60c87b9884fdae0e464614d482a3bc435cbbc578`)، أساس HORIX v0.3 | `c00833051f8e369195bfad2446d8a851315bd00527259d32ea0752f3f0bd40b1` |
 | `vectorcraft/vectorcraft-source-0.16.0.tar.gz` | `git archive` لـ[storytold/vectorcraft](https://github.com/storytold/vectorcraft) عند tag `v0.16.0` (commit `10190753ef356ce8de7592626bcb99fd69db467c`)، أساس Horix Vectors | `70b4d4189198dd6855926182fbdc4c104ba55a54036ba343ee4bfb53ed74c2c5` |
 | `lightcraft/lightcraft-source-0.13.0.tar.gz` | `git archive` لـ[storytold/lightcraft](https://github.com/storytold/lightcraft) عند tag `v0.13.0` (commit `23e181283cb448205d865e8cd288b56afe987986`)، أساس Horix Light | `ce9bd1a81669c1ddf23ed7108948ded8e43614eb7aa4b97a3edf75c9b4102df6` |
+| `designcraft/designcraft-source-0.12.0.tar.gz` | `git archive` لـ[storytold/designcraft](https://github.com/storytold/designcraft) عند tag `v0.12.0` (commit `5e8ef678321cfdd2d18927e2af94d58e5f9d8836`)، أساس Horix Layout | `edb1364ff8187b5304fe2abb41c306d3fff792b726c8caf8ba77ff9b8fa147fa` |
 
 البناء من الكود (محتاج Rust ≥ 1.95):
 

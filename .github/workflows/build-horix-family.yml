@@ -1,11 +1,12 @@
-# Builds the web versions of Horix Vectors (apps/horix-vectors, rebranded VectorCraft) and
-# Horix Light (apps/horix-light, rebranded LightCraft), keeps each zip as a build artifact, and on
-# the default branch publishes them to https://vectors.horix.live/ and https://light.horix.live/.
+# Builds the web versions of Horix Vectors (apps/horix-vectors, rebranded VectorCraft), Horix
+# Light (apps/horix-light, rebranded LightCraft) and Horix Layout (apps/horix-layout, rebranded
+# DesignCraft), keeps each zip as a build artifact, and on the default branch publishes them to
+# https://vectors.horix.live/, https://light.horix.live/ and https://layout.horix.live/.
 # Needs the repository secret HOSTINGER_API_TOKEN (the same one HORIX uses). The first deploy
 # creates each subdomain through the Hostinger API (ensure-subdomain.sh). Optional repository
-# variables: HORIX_VECTORS_DOMAIN, HORIX_LIGHT_DOMAIN, and, to upload somewhere else than where the
+# variables: HORIX_VECTORS_DOMAIN, HORIX_LIGHT_DOMAIN, HORIX_LAYOUT_DOMAIN, and, to upload somewhere else than where the
 # subdomain was found, HORIX_<APP>_UPLOAD_DOMAIN and HORIX_<APP>_UPLOAD_DIR.
-name: Build Horix Vectors and Horix Light
+name: Build Horix Vectors, Light and Layout
 
 on:
   push:
@@ -13,8 +14,10 @@ on:
       - "apps/horix-common/**"
       - "apps/horix-vectors/**"
       - "apps/horix-light/**"
+      - "apps/horix-layout/**"
       - "archive/vectorcraft/**"
       - "archive/lightcraft/**"
+      - "archive/designcraft/**"
       - "apps/sg-ps/ai/fetch.py"
       - ".github/workflows/build-horix-family.yml"
   workflow_dispatch:
@@ -28,7 +31,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [vectors, light]
+        include:
+          - { app: vectors, up: vectorcraft }
+          - { app: light, up: lightcraft }
+          - { app: layout, up: designcraft }
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -45,8 +51,8 @@ jobs:
       - name: Brotli (pre-compressed WebAssembly)
         run: command -v brotli >/dev/null || sudo apt-get install -y --no-install-recommends brotli
 
-      - name: trunk (Horix Vectors)
-        if: matrix.app == 'vectors'
+      - name: trunk (Horix Vectors, Horix Layout)
+        if: matrix.app != 'light'
         run: |
           curl -fsSL https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-x86_64-unknown-linux-gnu.tar.gz | sudo tar -xz -C /usr/local/bin trunk
           trunk --version
@@ -71,9 +77,9 @@ jobs:
             ~/.cargo/git
             ~/.cache/trunk
             .horix-target-${{ matrix.app }}
-          key: horix-${{ matrix.app }}-${{ runner.os }}-${{ hashFiles(format('archive/{0}craft/*.tar.gz', matrix.app == 'vectors' && 'vector' || 'light')) }}-${{ hashFiles('apps/horix-common/**', format('apps/horix-{0}/**', matrix.app)) }}
+          key: horix-${{ matrix.app }}-${{ runner.os }}-${{ hashFiles(format('archive/{0}/*.tar.gz', matrix.up)) }}-${{ hashFiles('apps/horix-common/**', format('apps/horix-{0}/**', matrix.app)) }}
           restore-keys: |
-            horix-${{ matrix.app }}-${{ runner.os }}-${{ hashFiles(format('archive/{0}craft/*.tar.gz', matrix.app == 'vectors' && 'vector' || 'light')) }}-
+            horix-${{ matrix.app }}-${{ runner.os }}-${{ hashFiles(format('archive/{0}/*.tar.gz', matrix.up)) }}-
 
       - name: Build
         run: apps/horix-${{ matrix.app }}/build.sh
@@ -90,9 +96,9 @@ jobs:
         env:
           HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
           HOSTINGER_USERNAME: ${{ vars.HOSTINGER_USERNAME || 'u570689065' }}
-          DOMAIN: ${{ matrix.app == 'vectors' && (vars.HORIX_VECTORS_DOMAIN || 'vectors.horix.live') || (vars.HORIX_LIGHT_DOMAIN || 'light.horix.live') }}
-          SET_UPLOAD_DOMAIN: ${{ matrix.app == 'vectors' && vars.HORIX_VECTORS_UPLOAD_DOMAIN || matrix.app == 'light' && vars.HORIX_LIGHT_UPLOAD_DOMAIN || '' }}
-          SET_UPLOAD_DIR: ${{ matrix.app == 'vectors' && vars.HORIX_VECTORS_UPLOAD_DIR || matrix.app == 'light' && vars.HORIX_LIGHT_UPLOAD_DIR || '' }}
+          DOMAIN: ${{ matrix.app == 'vectors' && (vars.HORIX_VECTORS_DOMAIN || 'vectors.horix.live') || matrix.app == 'light' && (vars.HORIX_LIGHT_DOMAIN || 'light.horix.live') || (vars.HORIX_LAYOUT_DOMAIN || 'layout.horix.live') }}
+          SET_UPLOAD_DOMAIN: ${{ matrix.app == 'vectors' && vars.HORIX_VECTORS_UPLOAD_DOMAIN || matrix.app == 'light' && vars.HORIX_LIGHT_UPLOAD_DOMAIN || matrix.app == 'layout' && vars.HORIX_LAYOUT_UPLOAD_DOMAIN || '' }}
+          SET_UPLOAD_DIR: ${{ matrix.app == 'vectors' && vars.HORIX_VECTORS_UPLOAD_DIR || matrix.app == 'light' && vars.HORIX_LIGHT_UPLOAD_DIR || matrix.app == 'layout' && vars.HORIX_LAYOUT_UPLOAD_DIR || '' }}
         run: |
           echo "DOMAIN=$DOMAIN" >> "$GITHUB_ENV"
           if [ -n "$SET_UPLOAD_DOMAIN" ]; then
