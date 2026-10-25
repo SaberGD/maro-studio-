@@ -101,25 +101,26 @@ def links(root: Path) -> None:
 
 TAINTED = re.compile(r"ArtCraft|Discord|discord|getartcraft|GitHub")
 STR = r'"(?:[^"\\]|\\.)*"'
-# Arabic for the labels this build wrote (the app's interface is translated into Arabic).
+# Every label this build wrote: their upstream translations say something else.
+RELABELED = {
+    "Saber Group Academy", "Saber Group Academy on Facebook", "Saber Group Academy on Facebook…", "Follow us on Facebook",
+    f"{FACEBOOK_SHORT} — courses, help and news", "Saber Group Academy Website", "Saber Group Academy Website…",
+    "Download the Desktop App", "Download the Desktop App…", "Download the Desktop App (Windows / Mac)",
+    "Download the Desktop App (Windows / Mac)…", "Contact Us on WhatsApp", "Contact Us on WhatsApp…",
+    "By Saber Group. Built on open-source software.", "The HORIX family", "Desktop app", "WhatsApp",
+}
+# Arabic for those of them the interface looks up (the app's interface is translated into Arabic).
 ARABIC = [
     ("Saber Group Academy", "أكاديمية صابر جروب"),
-    ("Saber Group Academy on Facebook", "أكاديمية صابر جروب على فيسبوك"),
     ("Saber Group Academy on Facebook…", "أكاديمية صابر جروب على فيسبوك…"),
     ("Follow us on Facebook", "تابعنا على فيسبوك"),
     (f"{FACEBOOK_SHORT} — courses, help and news", f"{FACEBOOK_SHORT} — كورسات ومساعدة وأخبار"),
-    ("Saber Group Academy Website", "موقع أكاديمية صابر جروب"),
     ("Saber Group Academy Website…", "موقع أكاديمية صابر جروب…"),
-    ("Download the Desktop App", "حمّل نسخة الديسكتوب"),
     ("Download the Desktop App…", "حمّل نسخة الديسكتوب…"),
-    ("Download the Desktop App (Windows / Mac)", "حمّل نسخة الديسكتوب (ويندوز / ماك)"),
     ("Download the Desktop App (Windows / Mac)…", "حمّل نسخة الديسكتوب (ويندوز / ماك)…"),
-    ("Contact Us on WhatsApp", "كلّمنا على واتساب"),
     ("Contact Us on WhatsApp…", "كلّمنا على واتساب…"),
     ("By Saber Group. Built on open-source software.", "من صابر جروب. مبني على برمجيات مفتوحة المصدر."),
     ("The HORIX family", "عائلة HORIX"),
-    ("Desktop app", "نسخة الديسكتوب"),
-    ("WhatsApp", "واتساب"),
 ]
 
 
@@ -128,7 +129,7 @@ def translations(root: Path) -> None:
     Discord, GitHub, the app's website): the language catalogs drop those entries (the labels show
     the new English wording), the shared table keeps them with the English text in every column,
     and Arabic gets its own wording of the new labels."""
-    new_keys = {k for k, _ in ARABIC}
+    new_keys = RELABELED | {k for k, _ in ARABIC}
     stale = lambda key, text: key[1:-1] in new_keys or bool(TAINTED.search(text))
     pair = re.compile(rf"[ \t]*\(\s*({STR})\s*,\s*({STR})\s*,?\s*\),[ \t]*\n")
     for path in sorted((root / "crates/ui-egui/src/i18n").glob("*.rs")):
