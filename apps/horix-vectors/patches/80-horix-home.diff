@@ -1,0 +1,104 @@
+diff --git a/crates/ui-egui/src/brand.rs b/crates/ui-egui/src/brand.rs
+index b2bc14e..2631aab 100644
+--- a/crates/ui-egui/src/brand.rs
++++ b/crates/ui-egui/src/brand.rs
+@@ -19,7 +19,7 @@ fn decode() -> egui::ColorImage {
+ }
+ 
+ /// The icon texture, uploaded on first use and kept in the context.
+-fn texture(ctx: &Context) -> TextureHandle {
++pub(crate) fn texture(ctx: &Context) -> TextureHandle {
+     let id = Id::new("vectorcraft-brand-mark");
+     if let Some(tex) = ctx.data(|d| d.get_temp::<TextureHandle>(id)) {
+         return tex;
+diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
+index aee1925..a987857 100644
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -246,8 +246,8 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
+     if app.ui.home.is_some_and(|k| k != crate::menus::home_key(app)) {
+         app.ui.home = None;
+     }
+-    if crate::menus::home_showing(app) {
+-        home(app, ui, full);
++    if crate::horix_app_home::showing(app) {
++        // HORIX Home is drawn over the window instead (horix_app_home.rs).
+         return;
+     }
+     if app.session.active().is_none() {
+@@ -3096,6 +3096,7 @@ fn draw_overlays(p: &egui::Painter, xf: &Xf, overlays: &[Overlay], t: &Tokens, l
+ }
+ 
+ /// The Home screen (`app.home`; with no document open, unless its preference is off).
++#[allow(dead_code)] // HORIX Home replaced it (horix_app_home.rs).
+ fn home(app: &mut VectorcraftApp, ui: &mut Ui, rect: egui::Rect) {
+     let t = Tokens::get(ui.ctx());
+     ui.painter().rect_filled(rect, 0.0, t.panel_darker);
+diff --git a/crates/ui-egui/src/chrome.rs b/crates/ui-egui/src/chrome.rs
+index 0d504ce..b118ea2 100644
+--- a/crates/ui-egui/src/chrome.rs
++++ b/crates/ui-egui/src/chrome.rs
+@@ -45,9 +45,9 @@ pub fn app_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
+                 crate::brand::paint_mark(ui, r);
+                 ui.add_space(6.0);
+             }
+-            let on_home = menus::home_showing(app);
++            let on_home = crate::horix_app_home::showing(app);
+             if widgets::icon_button(ui, "house", tl!("Home"), on_home, 20.0).clicked() {
+-                app.run("app.home", json!({})).ok();
++                crate::horix_app_home::toggle(app);
+             }
+             ui.add_space(2.0);
+             // With the macOS menu bar the menus are at the top of the screen instead.
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index d9540db..8eab013 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -14,6 +14,9 @@ macro_rules! tl {
+ }
+ 
+ pub mod background;
++/// HORIX Home (shared by the HORIX family) and Horix Vectors' use of it.
++pub mod horix_app_home;
++pub mod horix_home;
+ mod brand;
+ pub mod canvas;
+ pub mod chrome;
+@@ -1545,27 +1548,33 @@ impl VectorcraftApp {
+         // A selection move released over a panel ends before any panel sees the release (#2826).
+         canvas::release_over_panel(self, &ctx);
+         let t = theme::Tokens::get(&ctx);
++        // HORIX Home covers everything below the app bar, as Photoshop's does.
++        let home = self.ui.screen_mode < 3 && horix_app_home::showing(self);
+         if self.ui.screen_mode < 2 {
+             chrome::app_bar(self, ui);
+-            if self.ui.control_bar {
++            if self.ui.control_bar && !home {
+                 chrome::control_bar(self, ui);
+             }
+         }
+-        if self.ui.status_bar && self.ui.screen_mode < 3 {
++        if self.ui.status_bar && self.ui.screen_mode < 3 && !home {
+             chrome::status_bar(self, ui);
+             chrome::hint_bar(self, ui);
+         } else {
+             // Keeps the previous frame's value valid for menus drawn above, before the bars.
+             widgets::set_menu_floor(&ctx, ctx.content_rect().bottom());
+         }
+-        if self.ui.toolbar && self.ui.screen_mode < 3 {
++        if self.ui.toolbar && self.ui.screen_mode < 3 && !home {
+             toolbar::show(self, ui);
+         }
+         panels::library_panel::tidy(self);
+-        if self.ui.dock && self.ui.screen_mode < 3 {
++        if self.ui.dock && self.ui.screen_mode < 3 && !home {
+             dock::show(self, ui);
+         }
+         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.pasteboard)).show(ui, |ui| {
++            if home {
++                horix_app_home::show(self, ui);
++                return;
++            }
+             if self.ui.screen_mode < 3 {
+                 chrome::doc_tabs(self, ui);
+             }

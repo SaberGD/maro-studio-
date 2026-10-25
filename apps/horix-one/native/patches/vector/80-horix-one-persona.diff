@@ -1,8 +1,7 @@
 diff --git a/apps/vectorcraft/Cargo.toml b/apps/vectorcraft/Cargo.toml
-index 196e167..c3a27fb 100644
 --- a/apps/vectorcraft/Cargo.toml
 +++ b/apps/vectorcraft/Cargo.toml
-@@ -9,6 +9,18 @@ default-run = "vectorcraft"
+@@ -9,6 +9,18 @@
  [lints]
  workspace = true
  
@@ -21,7 +20,7 @@ index 196e167..c3a27fb 100644
  [features]
  default = ["wgpu", "accessibility"]
  wgpu = ["eframe/wgpu", "dep:winsafe"]
-@@ -20,6 +32,7 @@ windows7 = ["eframe/glow"]
+@@ -20,6 +32,7 @@
  vectorcraft-engine = { workspace = true, features = ["bundled-fonts"] }
  vectorcraft-ui-egui = { workspace = true }
  vectorcraft-text = { workspace = true }
@@ -30,7 +29,6 @@ index 196e167..c3a27fb 100644
  # so VectorCraft matches the rest on Linux. `egui` adds `craft_window::decorate`. See #217.
  craft-window = { workspace = true }
 diff --git a/apps/vectorcraft/src/main.rs b/apps/vectorcraft/src/main.rs
-index e8d6f86..7409e39 100644
 --- a/apps/vectorcraft/src/main.rs
 +++ b/apps/vectorcraft/src/main.rs
 @@ -14,6 +14,8 @@
@@ -42,7 +40,7 @@ index e8d6f86..7409e39 100644
  
  #[cfg(all(feature = "windows7", any(feature = "wgpu", feature = "accessibility")))]
  compile_error!("windows7 requires --no-default-features (wgpu and accessibility must be disabled)");
-@@ -62,7 +64,7 @@ use vectorcraft_ui_egui::graphics::GraphicsLoss;
+@@ -62,7 +64,7 @@
  use vectorcraft_ui_egui::picks::PickRequest;
  use vectorcraft_ui_egui::{ClipboardProbeFactory, FilePick, Services, VectorcraftApp};
  
@@ -51,7 +49,7 @@ index e8d6f86..7409e39 100644
      app: VectorcraftApp,
      /// Reported by wgpu when the window's graphics device is lost (a driver reset).
      graphics_loss: GraphicsLoss,
-@@ -80,6 +82,79 @@ struct App {
+@@ -80,6 +82,88 @@
      maximize_tries: u8,
  }
  
@@ -119,10 +117,19 @@ index e8d6f86..7409e39 100644
 +    /// The active document as SVG, its type as outlines (HORIX One's hand-off to Pixel). `None`
 +    /// without a document.
 +    pub fn export_svg(&mut self) -> Result<Option<Vec<u8>>, String> {
++        self.export(serde_json::json!({"format": "svg", "outlineText": true}))
++    }
++
++    /// The active document as PDF (HORIX One's hand-off to Layout). `None` without a document.
++    pub fn export_pdf(&mut self) -> Result<Option<Vec<u8>>, String> {
++        self.export(serde_json::json!({"format": "pdf"}))
++    }
++
++    fn export(&mut self, params: serde_json::Value) -> Result<Option<Vec<u8>>, String> {
 +        if self.app.session.active().is_none() {
 +            return Ok(None);
 +        }
-+        let r = file_access::unconfined(|| self.app.run("document.export", serde_json::json!({"format": "svg", "outlineText": true})))?;
++        let r = file_access::unconfined(|| self.app.run("document.export", params))?;
 +        let data = r["dataBase64"].as_str().ok_or("the export returned no data")?;
 +        vectorcraft_format::base64_decode(data).map(Some).ok_or_else(|| "the export data is not base64".to_string())
 +    }
@@ -132,10 +139,9 @@ index e8d6f86..7409e39 100644
      // Each frame runs unconfined: it is the person at the keyboard's. The app confines what the
      // control channel asks for, and the frames carrying input it injected, to the automation roots
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index d9540db..d3dc8e5 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
-@@ -1272,6 +1272,20 @@ impl VectorcraftApp {
+@@ -1275,6 +1275,20 @@
  
      /// Per-frame logic before layout (control channel, shortcuts, inbox). A bug that panics costs
      /// one frame and shows an error, instead of closing the app with unsaved work.

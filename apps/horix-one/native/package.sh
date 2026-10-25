@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build HORIX One for the desktop: HORIX (Pixel) and Horix Vectors (Vector) natively in one window,
+# Build HORIX One for the desktop: HORIX (Pixel), Horix Vectors (Vector) and Horix Layout (Layout)
+# natively in one window,
 # named the way HORIX Launcher reads releases.
 #
 # Usage: apps/horix-one/native/package.sh windows|macos
@@ -7,11 +8,12 @@
 #              (horix-one.exe at the top, the AI runtime beside it, the models in models/)
 #   macos   -> deploy/horix-one-desktop/horix-one-<v>-macos-universal.dmg ("HORIX One.app")
 #
-# prepare.sh makes the two apps' sources as their own builds do (rebrand.py and its patches), side
-# by side in <work>/pixel and <work>/vector; then:
-#   - patches/vector makes Horix Vectors' app a library too (`horix_one_persona`, the Vector persona);
-#   - patches/pixel makes HORIX's window host it (horix_one.rs: the persona bar and the hand-off), with
-#     HORIX One's names, and Cargo.lock is both apps' dependencies together.
+# prepare.sh makes the three apps' sources as their own builds do (rebrand.py and its patches), side
+# by side in <work>/pixel, <work>/vector and <work>/layout; then:
+#   - patches/vector and patches/layout make Horix Vectors' and Horix Layout's apps libraries too
+#     (`horix_one_persona`, the Vector and Layout personas);
+#   - patches/pixel makes HORIX's window host them (horix_one.rs: the persona bar and the hand-offs),
+#     with HORIX One's names, and Cargo.lock is the three apps' dependencies together.
 # The version is apps/horix-one/VERSION plus HORIX_BUILD_NUMBER (CI's run number).
 # Needs: Rust >= 1.95 (macOS: the aarch64 and x86_64 apple-darwin targets), python3, git, 7z (Windows).
 set -euo pipefail
@@ -36,6 +38,7 @@ command -v cygpath >/dev/null 2>&1 && TARGET_DIR="$(cygpath -u "$CARGO_TARGET_DI
 "$HERE/prepare.sh" "$WORK"
 PIXEL="$WORK/pixel"
 VECTOR="$WORK/vector"
+LAYOUT="$WORK/layout"
 
 licences() {
   cp "$PIXEL/LICENSE-MIT" "$1/LICENSE.txt"
@@ -50,6 +53,8 @@ licences() {
     cat "$REPO/apps/sg-ps/assets/fonts/OFL-BarlowCondensed.txt"
     printf '\n==== Horix Vectors (the Vector persona) ====\n\n'
     cat "$VECTOR/NOTICE"
+    printf '\n==== Horix Layout (the Layout persona) ====\n\n'
+    cat "$LAYOUT/NOTICE"
     printf '\n==== MobileSAM (models/mobile_sam_image_encoder.onnx, models/sam_mask_decoder_multi.onnx) ====\n\n'
     printf 'MobileSAM, Copyright the MobileSAM authors (github.com/ChaoningZhang/MobileSAM). ONNX export by\nhuggingface.co/Acly/MobileSAM (MIT). Mask decoder from Segment Anything, Copyright Meta Platforms, Inc.\n\n'
     cat "$REPO/apps/sg-ps/ai/LICENSE-MobileSAM.txt"

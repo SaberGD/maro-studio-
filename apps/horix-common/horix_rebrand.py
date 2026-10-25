@@ -19,10 +19,12 @@ REPO = HERE.parent.parent
 
 SABER_SITE = "https://sabergroupacademy.com"
 DOWNLOADS_PAGE = "https://horix.si/"
-FACEBOOK = "https://www.facebook.com/SABERGROUP.Courses/"
+FACEBOOK = "https://www.facebook.com/sabergroup.academy/"
+INSTAGRAM = "https://www.instagram.com/sabergroup.academy"
+TELEGRAM = "https://t.me/SABERGROUPEG"
 # WhatsApp with a ready message ("Hello, I am coming from HORIX and want to know about the courses
 # and services"), as in HORIX.
-WHATSAPP = ("https://wa.me/201103221873?text=%D9%85%D8%B1%D8%AD%D8%A8%D9%8B%D8%A7%D8%8C%20%D8%AC%D8%A7%D9%8A%20%D9%85%D9%86%20"
+WHATSAPP = ("https://wa.me/201040784390?text=%D9%85%D8%B1%D8%AD%D8%A8%D9%8B%D8%A7%D8%8C%20%D8%AC%D8%A7%D9%8A%20%D9%85%D9%86%20"
             "HORIX%20%D9%88%D8%B9%D8%A7%D9%8A%D8%B2%20%D8%A3%D8%B9%D8%B1%D9%81%20%D8%B9%D9%86%20%D8%A7%D9%84%D9%83%D9%88%D8%B1%D8%B3%D8%A7%D8%AA%20"
             "%D9%88%D8%A7%D9%84%D8%AE%D8%AF%D9%85%D8%A7%D8%AA")
 
@@ -32,6 +34,28 @@ GRAPHITE = 0x2A2727
 AMBER = 0xEA993F
 RED = 0xD63C32
 IVORY = 0xF3EFE8
+# HORIX's own dark theme (apps/sg-ps, theme.rs `Horix`): the colours every HORIX app's interface
+# takes, so the family looks like one program.
+UI = {
+    "canvas": 0x0E0E0F,  # the page behind documents
+    "chrome": 0x141415,  # bars
+    "dock": 0x111112,  # docked panels' ground
+    "card": 0x1A1A1C,  # panels
+    "border": 0x28282C,
+    "field": 0x232326,
+    "field_border": 0x343439,
+    "hover": 0x2C2C30,
+    "pressed": 0x38383E,
+    "separator": 0x26262A,
+    "text": 0xF3EFE8,
+    "text_dim": 0x96969E,
+    "text_faint": 0x606068,
+    "icon": 0xC4C4CC,
+    "accent": 0xEA993F,
+    "accent_text": 0xF6C894,
+    "selected": 0x2C2C30,
+    "edge": 0x0A0A0B,  # hairlines between bars
+}
 
 # Files that carry licence or attribution text: left exactly as upstream wrote them.
 LICENCE_FILES = re.compile(r"(^|/)(LICEN[CS]E[^/]*|NOTICE[^/]*|ASSETS\.md|ATTRIBUTION\.md|OFL-[^/]*)$", re.I)
@@ -113,6 +137,11 @@ def rename(root: Path, globs: list[str], old: str, new: str) -> int:
     if count == 0:
         fail(f"the name {old} was not found")
     return count
+
+
+def ui(name: str) -> str:
+    """HORIX's dark theme colour `name` as a Rust hex literal."""
+    return hexrgb(UI[name])
 
 
 def hexrgb(v: int) -> str:
@@ -236,3 +265,25 @@ def apply_patches(root: Path, patches: Path) -> int:
         print(f"rebrand: applied {diff.name}")
         n += 1
     return n
+
+
+def install_home(root: Path, app_dir: Path, version: str, ui_src: str = "crates/ui-egui/src") -> None:
+    """HORIX Home, the start screen the HORIX family shares (home/horix_home.rs), and the app's use
+    of it (<app>/home/horix_app_home.rs, its version filled in, and its other files), into the app's UI crate. The app's
+    patches (patches/*-horix-home.diff) declare the modules and show the screen."""
+    dest = root / ui_src
+    if not dest.is_dir():
+        fail(f"{ui_src}: not found")
+    (dest / "horix_home.rs").write_bytes((HERE / "home/horix_home.rs").read_bytes())
+    # Its icons and faces (home/make_assets.py), beside it.
+    assets = dest / "horix_home_assets"
+    assets.mkdir(exist_ok=True)
+    for f in sorted((HERE / "home/assets").iterdir()):
+        if f.suffix in (".a8", ".rgba", ".ttf"):
+            (assets / f.name).write_bytes(f.read_bytes())
+    glue = (app_dir / "home/horix_app_home.rs").read_text(encoding="utf-8")
+    (dest / "horix_app_home.rs").write_text(glue.replace("@HORIX_APP_VERSION@", version), encoding="utf-8")
+    # Anything else the glue includes (a logo), as is.
+    for extra in sorted((app_dir / "home").iterdir()):
+        if extra.is_file() and extra.name != "horix_app_home.rs":
+            (dest / extra.name).write_bytes(extra.read_bytes())

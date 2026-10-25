@@ -1,0 +1,110 @@
+diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
+index 47ff137..694ac0e 100644
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -2489,8 +2489,8 @@ fn documents(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+     let n = app.session.documents().len();
+     // Files opening in the background (#210) have tabs before they have documents.
+     let opening = !app.jobs.opens.is_empty();
+-    if !opening && app.ui.chrome.shows_home(n, app.session.prefs().general.auto_show_home_screen) {
+-        start_screen(app, ui);
++    if !opening && crate::horix_app_home::showing(app, ui.ctx()) {
++        // HORIX Home is drawn over the whole window instead (horix_app_home.rs).
+         return;
+     }
+     if n == 0 && !opening {
+@@ -3173,6 +3173,7 @@ const HOME_BUTTON_WIDTH: f32 = 190.0;
+ /// Space between the Home screen's two buttons.
+ const HOME_BUTTON_GAP: f32 = 12.0;
+ 
++#[allow(dead_code)] // HORIX Home replaced it (horix_app_home.rs); its tests still read it.
+ fn start_screen(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+     let t = crate::theme::Tokens::get(ui.ctx());
+     let area = ui.available_rect_before_wrap();
+diff --git a/crates/ui-egui/src/chrome_ui.rs b/crates/ui-egui/src/chrome_ui.rs
+index 10f8686..7841ca6 100644
+--- a/crates/ui-egui/src/chrome_ui.rs
++++ b/crates/ui-egui/src/chrome_ui.rs
+@@ -217,13 +217,10 @@ fn status_message(app: &PhotocraftApp, ui: &mut egui::Ui, t: &Tokens) {
+ /// Home button at the very start of Photoshop 2026's options bar: toggles the Home (start)
+ /// screen over the open documents, which stay open.
+ pub fn home_button(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+-    let n = app.session.documents().len();
+-    let auto = app.session.prefs().general.auto_show_home_screen;
+-    let on = app.ui.chrome.shows_home(n, auto);
+-    // With no documents and auto-show on, Home can't be dismissed (there's nothing behind it).
+-    let can_toggle = n > 0 || !auto;
+-    if icons::button(ui, "house", 26.0, on && can_toggle, tl!("Home")).clicked() && can_toggle {
+-        app.ui.chrome.home = if on { None } else { Some(n) };
++    // HORIX Home: it can always be left for the (empty) workspace and brought back.
++    let on = crate::horix_app_home::showing(app, ui.ctx());
++    if icons::button(ui, "house", 26.0, on, tl!("Home")).clicked() {
++        crate::horix_app_home::toggle(app, ui.ctx());
+     }
+ }
+ 
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 84b2e72..0cd32b3 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -15,6 +15,9 @@ macro_rules! tl {
+ }
+ 
+ pub mod actions;
++/// HORIX Home (shared by the HORIX family) and HORIX's use of it.
++pub mod horix_app_home;
++pub mod horix_home;
+ pub mod ai_segment;
+ pub mod adjust_dialog;
+ pub mod adjust_editors;
+@@ -2445,22 +2448,28 @@ impl eframe::App for PhotocraftApp {
+         if (chrome || tabbed_in) && self.ui.panels.menu_bar {
+             panels::title_bar(self, ui);
+         }
+-        if (chrome && self.ui.panels.options_bar) || tabbed_in {
++        // HORIX Home covers everything below the title bar, as Photoshop's does.
++        let home = chrome && horix_app_home::showing(self, &ctx);
++        if !home && ((chrome && self.ui.panels.options_bar) || tabbed_in) {
+             panels::options_bar(self, ui);
+         }
+-        if chrome && self.ui.panels.status_bar {
++        if !home && chrome && self.ui.panels.status_bar {
+             panels::status_bar(self, ui);
+         }
+-        if (chrome && self.ui.panels.toolbar) || tabbed_in {
++        if !home && ((chrome && self.ui.panels.toolbar) || tabbed_in) {
+             panels::toolbar(self, ui);
+         }
+-        if (chrome && self.ui.panels.dock) || tabbed_in {
++        if !home && ((chrome && self.ui.panels.dock) || tabbed_in) {
+             panels::right_dock(self, ui);
+         }
+         let t = theme::Tokens::get(&ctx);
+         let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };
+         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
+-            canvas::document_area(self, ui);
++            if home {
++                horix_app_home::show(self, ui);
++            } else {
++                canvas::document_area(self, ui);
++            }
+         });
+         panels::properties_window(self, &ctx);
+         brush_panel::window(self, &ctx);
+diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
+index c24ae8a..2f94e1e 100644
+--- a/crates/ui-egui/src/panels.rs
++++ b/crates/ui-egui/src/panels.rs
+@@ -988,10 +988,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+             // Include its gutter in the container layout, including right-aligned actions.
+             egui::Frame::NONE.inner_margin(egui::Margin { right: 2, ..Default::default() }).show(ui, |ui| {
+             crate::direction::horizontal_centered(ui, |ui| {
+-                if t.pro {
+-                    crate::chrome_ui::home_button(app, ui);
+-                    widgets::vline(ui, 22.0);
+-                }
++                crate::chrome_ui::home_button(app, ui);
++                widgets::vline(ui, 22.0);
+                 let tool_icon = icons::button(ui, icons::tool_icon(app.ui.tool), if t.pro { 26.0 } else { 28.0 }, !t.pro, tl!(app.ui.tool.label()));
+                 // Photoshop: right-click the tool icon for Reset Tool / Reset All Tools (#2825).
+                 let mut reset = None;

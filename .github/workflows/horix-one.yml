@@ -1,9 +1,9 @@
-# HORIX One: Vector and Pixel in one app.
+# HORIX One: Vector, Pixel and Layout in one app.
 # - web: builds the site (apps/horix-one/build.sh: the persona bar, HORIX under pixel/, Horix
-#   Vectors under vector/) and, on the default branch, publishes it to https://one.horix.live/
+#   Vectors under vector/, Horix Layout under layout/) and, on the default branch, publishes it to https://one.horix.live/
 #   (Hostinger, the HOSTINGER_API_TOKEN secret; the subdomain is created on the first deploy).
-# - desktop: HORIX One for Windows (portable zip) and macOS (DMG), native: HORIX and Horix Vectors
-#   in one app (apps/horix-one/native), on every run, so a change that breaks either build shows on
+# - desktop: HORIX One for Windows (portable zip) and macOS (DMG), native: HORIX, Horix Vectors
+#   and Horix Layout in one app (apps/horix-one/native), on every run, so a change that breaks either build shows on
 #   its pull request.
 # - release: on the default branch when apps/horix-one/VERSION changes (or by hand), a GitHub
 #   release horix-one-v<v> with SHA256SUMS.txt, which HORIX Launcher installs and updates from;
@@ -16,9 +16,11 @@ on:
       - "apps/horix-one/**"
       - "apps/sg-ps/**"
       - "apps/horix-vectors/**"
+      - "apps/horix-layout/**"
       - "apps/horix-common/**"
       - "archive/photocraft/**"
       - "archive/vectorcraft/**"
+      - "archive/designcraft/**"
       - ".github/workflows/horix-one.yml"
   workflow_dispatch:
     inputs:
@@ -85,9 +87,10 @@ jobs:
             .sgps-build/ai-cache
             .horix-build/one/pixel/target
             .horix-build/one/vector/target
-          key: horix-one-web-${{ hashFiles('archive/photocraft/*.tar.gz', 'archive/vectorcraft/*.tar.gz') }}-${{ hashFiles('apps/sg-ps/**', 'apps/horix-vectors/**', 'apps/horix-common/**', 'apps/horix-one/**') }}
+            .horix-build/one/layout/target
+          key: horix-one-web-${{ hashFiles('archive/photocraft/*.tar.gz', 'archive/vectorcraft/*.tar.gz', 'archive/designcraft/*.tar.gz') }}-${{ hashFiles('apps/sg-ps/**', 'apps/horix-vectors/**', 'apps/horix-layout/**', 'apps/horix-common/**', 'apps/horix-one/**') }}
           restore-keys: |
-            horix-one-web-${{ hashFiles('archive/photocraft/*.tar.gz', 'archive/vectorcraft/*.tar.gz') }}-
+            horix-one-web-${{ hashFiles('archive/photocraft/*.tar.gz', 'archive/vectorcraft/*.tar.gz', 'archive/designcraft/*.tar.gz') }}-
 
       - name: Build
         env:
@@ -125,7 +128,8 @@ jobs:
           apps/horix-common/deploy-static.sh "$zip" horix-one "$DOMAIN"
 
   desktop:
-    # Native: HORIX (Pixel) and Horix Vectors (Vector) built into one app (apps/horix-one/native).
+    # Native: HORIX (Pixel), Horix Vectors (Vector) and Horix Layout (Layout) built into one app
+    # (apps/horix-one/native).
     strategy:
       fail-fast: false
       matrix:
@@ -151,7 +155,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             .horix-target-one
-          key: horix-one-native-${{ runner.os }}-${{ hashFiles('apps/horix-one/native/**', 'apps/sg-ps/patches/**', 'archive/photocraft/*.tar.gz', 'archive/vectorcraft/*.tar.gz') }}
+          key: horix-one-native-${{ runner.os }}-${{ hashFiles('apps/horix-one/native/**', 'apps/sg-ps/patches/**', 'archive/photocraft/*.tar.gz', 'archive/vectorcraft/*.tar.gz', 'archive/designcraft/*.tar.gz') }}
           restore-keys: horix-one-native-${{ runner.os }}-
       - name: Build and package
         run: apps/horix-one/native/package.sh ${{ runner.os == 'macOS' && 'macos' || 'windows' }}
@@ -199,7 +203,7 @@ jobs:
           cat SHA256SUMS.txt
           gh release create "horix-one-v$V" "${files[@]}" SHA256SUMS.txt \
             --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "HORIX One $V" \
-            --notes "HORIX One $V for Windows and macOS: Vector and Pixel in one app. Easiest: install it from HORIX Launcher, which keeps it up to date. In the browser: https://one.horix.live/
+            --notes "HORIX One $V for Windows and macOS: Vector, Pixel and Layout in one app. Easiest: install it from HORIX Launcher, which keeps it up to date. In the browser: https://one.horix.live/
 
           Windows: unzip horix-one-$V-windows-x64-portable.zip and run horix-one.exe (More info > Run anyway on the first run).
           macOS: open the .dmg and drag HORIX One into Applications (System Settings > Privacy & Security > Open Anyway on the first run)."

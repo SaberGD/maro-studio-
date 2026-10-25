@@ -35,7 +35,7 @@ CODE = ["crates/**/*.rs", "apps/**/*.rs"]
 
 # (id, name, tagline, colour [surface, ink on light, ink on dark], website, tag prefix)
 APPS = [
-    ("horix-one", "HORIX One", "Vector and Pixel in one app", [[0x2a, 0x27, 0x27], [0x2a, 0x27, 0x27], [0xea, 0x99, 0x3f]],
+    ("horix-one", "HORIX One", "Vector, Pixel and Layout in one app", [[0x2a, 0x27, 0x27], [0x2a, 0x27, 0x27], [0xea, 0x99, 0x3f]],
      "https://one.horix.live", "horix-one-v"),
     ("horix", "HORIX", "Image editing with AI", [[0xd6, 0x3c, 0x32], [0xb0, 0x2e, 0x25], [0xff, 0x8a, 0x70]], "https://horix.live", "horix-v"),
     ("horix-vectors", "Horix Vectors", "Vector illustration", [[0xea, 0x99, 0x3f], [0x9a, 0x5a, 0x12], [0xf2, 0xb3, 0x6e]],
@@ -257,16 +257,16 @@ DETAILS = """const PLATFORMS: &str = "Windows, macOS, web";
 pub const DETAILS: [AppDetails; 5] = [
     AppDetails {
         id: "horix-one",
-        headline: "Vector and Pixel in one app.",
-        about: "HORIX One brings Horix Vectors and HORIX together in one window: switch personas from the bar \\
-            at the top, and send your work from one to the other in a click.\\n\\n\\
+        headline: "Vector, Pixel and Layout in one app.",
+        about: "HORIX One brings Horix Vectors, HORIX and Horix Layout together in one window: switch \\
+            personas from the bar at the top, and send your work from one to the other in a click.\\n\\n\\
             Draw a logo in Vector, open it in Pixel as editable shape layers, retouch with HORIX AI, and \\
-            bring the image back to Vector. Layout, for pages and books, comes next.",
+            place both on the pages of a magazine in Layout.",
         features: &[
-            feature("Two personas, one app", "Vector for illustration and logos, Pixel for photos and AI selection, a click apart."),
-            feature("Hand your work across", "Vector art opens in Pixel as editable shape layers; Pixel images open in Vector."),
+            feature("Three personas, one app", "Vector for illustration and logos, Pixel for photos and AI selection, Layout for pages and books, a click apart."),
+            feature("Hand your work across", "Vector art opens in Pixel as editable shape layers; Pixel images open in Vector; both place in Layout."),
             feature("HORIX AI built in", "Select Subject, Object Selection and Quick Selection with on-device AI models."),
-            feature("Native on your computer", "Both engines run natively in one window on Windows and macOS; one.horix.live is the same app in the browser."),
+            feature("Native on your computer", "All three engines run natively in one window on Windows and macOS; one.horix.live is the same app in the browser."),
         ],
         shots: &[
             shot("vector", "The Vector persona"),

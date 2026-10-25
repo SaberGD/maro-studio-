@@ -23,8 +23,8 @@ HORIX محرر صور احترافي من صابر جروب، مصمم ليمن�
 -------------------------------------------
 الموقع الرسمي: https://sabergroupacademy.com/
 HORIX: https://horix.live/
-الدورات والخدمات: https://www.facebook.com/SABERGROUP.Courses/
-التواصل عبر WhatsApp: https://wa.me/201103221873
+الدورات والخدمات: https://www.facebook.com/sabergroup.academy/
+التواصل عبر WhatsApp: https://wa.me/201040784390
 
 Legal notices are available from Help > About HORIX > Open-source licences.
 

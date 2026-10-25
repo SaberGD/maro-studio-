@@ -1,0 +1,135 @@
+diff --git a/apps/designcraft/Cargo.toml b/apps/designcraft/Cargo.toml
+index 7dc83bc..5768938 100644
+--- a/apps/designcraft/Cargo.toml
++++ b/apps/designcraft/Cargo.toml
+@@ -10,6 +10,18 @@ default-run = "designcraft"
+ [lints]
+ workspace = true
+ 
++# HORIX One: the same app as a library, which HORIX's window shows as its Layout persona
++# (`horix_one_persona` in src/main.rs).
++[lib]
++name = "horix_layout_app"
++path = "src/main.rs"
++test = false
++doctest = false
++
++[[bin]]
++name = "designcraft"
++path = "src/main.rs"
++
+ [dependencies]
+ designcraft-engine = { workspace = true }
+ designcraft-ui-egui = { workspace = true }
+diff --git a/apps/designcraft/src/main.rs b/apps/designcraft/src/main.rs
+index de4f1f6..d79e916 100644
+--- a/apps/designcraft/src/main.rs
++++ b/apps/designcraft/src/main.rs
+@@ -11,6 +11,8 @@
+ //! `WGPU_BACKEND`, `WGPU_POWER_PREF` and `WGPU_ADAPTER_NAME` override them. Why the app stopped
+ //! is logged (`logging`), also when the window never opened.
+ #![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
++// HORIX One builds this file as a library too (`horix_one_persona`), where `main` is unused.
++#![allow(dead_code)]
+ #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+ 
+ #[cfg(target_os = "macos")]
+@@ -48,6 +50,79 @@ struct App {
+     log_errors_after_startup: Option<eframe::wgpu::Device>,
+ }
+ 
++/// HORIX One: Horix Layout as the Layout persona of HORIX's window. HORIX's start-up made the
++/// window, its graphics device and the log; this is the part of [`main`]'s app creation that
++/// belongs to Horix Layout (its preferences and crash recovery, which it shares with the
++/// standalone app). The menus stay inside the window.
++pub struct Persona {
++    app: DesignApp,
++}
++
++pub fn horix_one_persona(custom_titlebar: bool) -> Persona {
++    let mut session = Session::new();
++    session.recovery_dir = profile::recovery_dir();
++    let recovered = session.execute("file.recovery.open", &serde_json::json!({})).ok();
++    let mut app = DesignApp::new(session, services());
++    load_prefs(&mut app);
++    if let Some(n) = recovered.as_ref().and_then(|r| r["opened"].as_array()).map(Vec::len).filter(|n| *n > 0) {
++        app.status(format!("Recovered {n} unsaved document{} from the last session.", if n == 1 { "" } else { "s" }));
++    }
++    app.integrated_titlebar = false;
++    app.custom_titlebar = custom_titlebar;
++    Persona { app }
++}
++
++impl Persona {
++    /// The app, for HORIX One's persona bar.
++    pub fn app(&mut self) -> &mut DesignApp {
++        &mut self.app
++    }
++
++    /// Whether a document has unsaved changes (quitting asks about them first).
++    pub fn unsaved(&self) -> bool {
++        self.app.session.documents().iter().any(|d| d.is_dirty())
++    }
++
++    /// Place `bytes` named `name` (a PNG or PDF another persona exported) on the spread in view,
++    /// in a new document when none is open.
++    pub fn place_bytes(&mut self, name: &str, bytes: &[u8]) -> Result<(), String> {
++        if self.app.session.documents().is_empty() {
++            self.app.run("file.new", serde_json::json!({}))?;
++        }
++        let base64 = designcraft_engine::cmd::base64_encode(bytes);
++        self.app.run("file.place", serde_json::json!({"base64": base64, "name": name, "x": 36, "y": 36})).map(|_| ())
++    }
++
++    /// The active document's first page as PDF (HORIX One's hand-off to Vector). `None` without a
++    /// document.
++    pub fn export_pdf(&mut self) -> Result<Option<Vec<u8>>, String> {
++        if self.app.session.documents().is_empty() {
++            return Ok(None);
++        }
++        let r = self.app.run("file.exportPdf", serde_json::json!({"pages": "1"}))?;
++        let data = r["base64"].as_str().ok_or("the export returned no data")?;
++        Ok(Some(designcraft_engine::cmd::base64_decode(data)))
++    }
++}
++
++impl eframe::App for Persona {
++    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
++        self.app.logic(ctx);
++    }
++    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
++        self.app.raw_input_hook(raw);
++    }
++    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
++        self.app.ui(ui);
++    }
++    fn on_exit(&mut self) {
++        if let Err(e) = preserve_documents_on_exit(&mut self.app) {
++            log::error!("Couldn't preserve Layout's documents on exit: {e}");
++        }
++        save_prefs(&self.app);
++    }
++}
++
+ impl eframe::App for App {
+     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+         self.startup.enter();
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 2e2a59f..a4d52c8 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -1102,6 +1102,14 @@ impl DesignApp {
+     }
+ 
+     /// Per-frame logic before layout.
++    /// HORIX One: its window shows another persona's interface too, with that persona's fonts and
++    /// style. Before this one shows again, its fonts and style go back on the context (from the
++    /// next frame, as on the first).
++    pub fn horix_one_restyle(&mut self) {
++        self.styled = false;
++        self.fonts_ready = false;
++    }
++
+     pub fn logic(&mut self, ctx: &egui::Context) {
+         if self.egui_ctx.is_none() {
+             self.egui_ctx = Some(ctx.clone());

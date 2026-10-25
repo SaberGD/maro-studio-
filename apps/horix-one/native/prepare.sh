@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Prepare HORIX One's native sources in <work>: <work>/pixel (HORIX, which builds the app) and
-# <work>/vector (Horix Vectors, the Vector persona), side by side as pixel/apps/photocraft's
-# Cargo.toml expects. package.sh runs this; on Linux it is enough to try the app:
+# Prepare HORIX One's native sources in <work>: <work>/pixel (HORIX, which builds the app),
+# <work>/vector (Horix Vectors, the Vector persona) and <work>/layout (Horix Layout, the Layout
+# persona), side by side as pixel/apps/photocraft's Cargo.toml expects. package.sh runs this; on Linux it is enough to try the app:
 #   apps/horix-one/native/prepare.sh /tmp/one && (cd /tmp/one/pixel && cargo run -p photocraft)
 set -euo pipefail
 
@@ -12,22 +12,26 @@ REPO="$(cd "$APP/../.." && pwd)"
 PY="$(command -v python3 || command -v python)"
 PIXEL_TGZ="$REPO/archive/photocraft/photocraft-source-0.15.1.tar.gz"
 VECTOR_TGZ="$REPO/archive/vectorcraft/vectorcraft-source-0.16.0.tar.gz"
+LAYOUT_TGZ="$REPO/archive/designcraft/designcraft-source-0.12.0.tar.gz"
 TAR_LOCAL=()
 if command -v cygpath >/dev/null 2>&1; then
   WORK="$(cygpath -u "$WORK")"; PIXEL_TGZ="$(cygpath -u "$PIXEL_TGZ")"; VECTOR_TGZ="$(cygpath -u "$VECTOR_TGZ")"
+  LAYOUT_TGZ="$(cygpath -u "$LAYOUT_TGZ")"
   TAR_LOCAL=(--force-local)
 fi
 
-rm -rf "$WORK/pixel" "$WORK/vector"
-mkdir -p "$WORK/pixel" "$WORK/vector"
+rm -rf "$WORK/pixel" "$WORK/vector" "$WORK/layout"
+mkdir -p "$WORK/pixel" "$WORK/vector" "$WORK/layout"
 tar ${TAR_LOCAL[@]+"${TAR_LOCAL[@]}"} -xzf "$PIXEL_TGZ" -C "$WORK/pixel" --strip-components=1
 tar ${TAR_LOCAL[@]+"${TAR_LOCAL[@]}"} -xzf "$VECTOR_TGZ" -C "$WORK/vector" --strip-components=1
+tar ${TAR_LOCAL[@]+"${TAR_LOCAL[@]}"} -xzf "$LAYOUT_TGZ" -C "$WORK/layout" --strip-components=1
 # Each app as its own build makes it: names, icons, menus and HORIX's patches (AI, UX, the web API).
 "$PY" -I "$REPO/apps/sg-ps/rebrand.py" "$WORK/pixel"
 "$PY" -I "$REPO/apps/horix-vectors/rebrand.py" "$WORK/vector"
+"$PY" -I "$REPO/apps/horix-layout/rebrand.py" "$WORK/layout"
 
 # HORIX One's changes on top.
-for side in vector pixel; do
+for side in vector layout pixel; do
   "$PY" -I - "$REPO/apps/horix-common" "$WORK/$side" "$HERE/patches/$side" <<'PYEOF'
 import sys
 from pathlib import Path
