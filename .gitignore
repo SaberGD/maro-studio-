@@ -13,6 +13,7 @@ deploy/sg-ps/*.zip
 .horix-build/
 deploy/horix-vectors/*.zip
 deploy/horix-light/*.zip
+deploy/horix-layout/*.zip
 __pycache__/
 deploy/horix-launcher/*.zip
 deploy/horix-one/*.zip

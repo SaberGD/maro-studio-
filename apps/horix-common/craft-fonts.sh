@@ -5,12 +5,13 @@
 # the browser, where there are no system fonts to fall back to.
 #
 # Usage: CRAFT_FONTS_DIR="$(apps/horix-common/craft-fonts.sh <unpacked-source> <work-dir>)"
-# The ref is the `craft-fonts-ref:` in <source>/.github/workflows/release.yml.
+# The ref is the `craft-fonts-ref:` in <source>/.github/workflows/release.yml, or CRAFT_FONTS_REF
+# (a newer one, for a build that needs faces upstream's pinned commit lacks).
 set -euo pipefail
 
 SRC="${1:?usage: craft-fonts.sh <unpacked-source> <work-dir>}"
 DEST="${2:?usage: craft-fonts.sh <unpacked-source> <work-dir>}/craft-fonts"
-REF="$(sed -n 's/^ *craft-fonts-ref: *\([0-9a-f]\{40\}\) *$/\1/p' "$SRC/.github/workflows/release.yml" | head -1)"
+REF="${CRAFT_FONTS_REF:-$(sed -n 's/^ *craft-fonts-ref: *\([0-9a-f]\{40\}\) *$/\1/p' "$SRC/.github/workflows/release.yml" | head -1)}"
 if [ -z "$REF" ]; then
   echo "craft-fonts.sh: no craft-fonts-ref in $SRC/.github/workflows/release.yml" >&2
   exit 1

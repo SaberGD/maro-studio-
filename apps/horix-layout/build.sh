@@ -19,9 +19,10 @@ tar -xzf "$SRC_TGZ" -C "$WORK/src" --strip-components=1
 VERSION="$(tr -d '[:space:]' < "$HERE/VERSION")"
 
 python3 -I "$HERE/rebrand.py" "$WORK/src"
-# craft-fonts at the commit upstream's releases pin: the web build embeds its Arabic faces
-# (rebrand.py), so Arabic text shows in the browser, which has no system fonts to fall back to.
-CRAFT_FONTS_DIR="${CRAFT_FONTS_DIR:-$("$HERE/../horix-common/craft-fonts.sh" "$WORK/src" "$WORK")}"
+# craft-fonts at the commit Horix Vectors' upstream pins (DesignCraft 0.12's has no Arabic face):
+# the web build embeds its Arabic faces (rebrand.py), so Arabic text shows in the browser, which
+# has no system fonts to fall back to.
+CRAFT_FONTS_DIR="${CRAFT_FONTS_DIR:-$(CRAFT_FONTS_REF="${CRAFT_FONTS_REF:-a71c20e30af613287c504f7e685ca8fad77752bc}" "$HERE/../horix-common/craft-fonts.sh" "$WORK/src" "$WORK")}"
 export CRAFT_FONTS_DIR
 
 (cd "$WORK/src/apps/designcraft-web" && CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$WORK/target}" trunk build --release)
