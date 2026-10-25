@@ -34,6 +34,28 @@ GRAPHITE = 0x2A2727
 AMBER = 0xEA993F
 RED = 0xD63C32
 IVORY = 0xF3EFE8
+# HORIX's own dark theme (apps/sg-ps, theme.rs `Horix`): the colours every HORIX app's interface
+# takes, so the family looks like one program.
+UI = {
+    "canvas": 0x0E0E0F,  # the page behind documents
+    "chrome": 0x141415,  # bars
+    "dock": 0x111112,  # docked panels' ground
+    "card": 0x1A1A1C,  # panels
+    "border": 0x28282C,
+    "field": 0x232326,
+    "field_border": 0x343439,
+    "hover": 0x2C2C30,
+    "pressed": 0x38383E,
+    "separator": 0x26262A,
+    "text": 0xF3EFE8,
+    "text_dim": 0x96969E,
+    "text_faint": 0x606068,
+    "icon": 0xC4C4CC,
+    "accent": 0xEA993F,
+    "accent_text": 0xF6C894,
+    "selected": 0x2C2C30,
+    "edge": 0x0A0A0B,  # hairlines between bars
+}
 
 # Files that carry licence or attribution text: left exactly as upstream wrote them.
 LICENCE_FILES = re.compile(r"(^|/)(LICEN[CS]E[^/]*|NOTICE[^/]*|ASSETS\.md|ATTRIBUTION\.md|OFL-[^/]*)$", re.I)
@@ -115,6 +137,11 @@ def rename(root: Path, globs: list[str], old: str, new: str) -> int:
     if count == 0:
         fail(f"the name {old} was not found")
     return count
+
+
+def ui(name: str) -> str:
+    """HORIX's dark theme colour `name` as a Rust hex literal."""
+    return hexrgb(UI[name])
 
 
 def hexrgb(v: int) -> str:
@@ -248,6 +275,12 @@ def install_home(root: Path, app_dir: Path, version: str, ui_src: str = "crates/
     if not dest.is_dir():
         fail(f"{ui_src}: not found")
     (dest / "horix_home.rs").write_bytes((HERE / "home/horix_home.rs").read_bytes())
+    # Its icons and faces (home/make_assets.py), beside it.
+    assets = dest / "horix_home_assets"
+    assets.mkdir(exist_ok=True)
+    for f in sorted((HERE / "home/assets").iterdir()):
+        if f.suffix in (".a8", ".ttf"):
+            (assets / f.name).write_bytes(f.read_bytes())
     glue = (app_dir / "home/horix_app_home.rs").read_text(encoding="utf-8")
     (dest / "horix_app_home.rs").write_text(glue.replace("@HORIX_APP_VERSION@", version), encoding="utf-8")
     # Anything else the glue includes (a logo), as is.

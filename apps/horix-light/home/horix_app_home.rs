@@ -1,5 +1,5 @@
 //! Horix Light's Home screen: the shared HORIX Home (horix_home.rs) with Horix Light's names,
-//! colours, recent libraries and commands. It shows at start and from the Home button, and covers
+//! recent libraries and commands. It shows at start and from the Home button, and covers
 //! the window below the top bar, as Photoshop's Home does; closing it leaves the library.
 
 use std::cell::Cell;
@@ -22,38 +22,10 @@ pub fn toggle() {
     SHOWN.set(!SHOWN.get());
 }
 
-fn palette(ctx: &egui::Context) -> home::Palette {
-    let t = crate::theme::Tokens::get(ctx);
-    home::Palette {
-        background: t.grid_bg,
-        chrome: t.chrome,
-        card: t.cell,
-        card_hover: t.hover,
-        border: t.divider,
-        text: t.text,
-        text_strong: t.text,
-        text_dim: t.text_dim,
-        accent: egui::Color32::from_rgb(0xea, 0x99, 0x3f),
-        accent_strong: t.accent,
-    }
-}
-
-/// The Horix Light falcon, 64 x 64 RGBA (the app icon), as the Home's logo.
-fn logo(ctx: &egui::Context) -> egui::Image<'static> {
-    let id = egui::Id::new("horix-light-home-logo");
-    let tex = ctx.data_mut(|d| d.get_temp::<egui::TextureHandle>(id)).unwrap_or_else(|| {
-        let image = egui::ColorImage::from_rgba_unmultiplied([64, 64], include_bytes!("horix-light-logo-64.rgba"));
-        let tex = ctx.load_texture("horix-light-home-logo", image, egui::TextureOptions::LINEAR);
-        ctx.data_mut(|d| d.insert_temp(id, tex.clone()));
-        tex
-    });
-    egui::Image::from_texture(egui::load::SizedTexture::new(tex.id(), egui::vec2(30.0, 30.0))).corner_radius(7.0)
-}
-
-const FEATURES: &[home::Feature<'static>] = &[
-    home::Feature { mark: "AI", title: "AI masks", text: "Subject, Background and Object masks with HORIX AI, on your device." },
-    home::Feature { mark: "RAW", title: "Develop your photos", text: "White balance, tone, curves, colour grading and lens corrections." },
-    home::Feature { mark: "Lr", title: "Bring your library", text: "Import folders and Lightroom catalogs; rate, flag and keyword." },
+const TOOLS: &[home::Tool<'static>] = &[
+    home::Tool { icon: home::Icon::Masks, title: "AI masks", text: "Subject, background and object masks." },
+    home::Tool { icon: home::Icon::Sliders, title: "Develop photos", text: "White balance, tone, curves and color." },
+    home::Tool { icon: home::Icon::Layers, title: "Import Lightroom catalog", text: "Bring your folders, ratings and keywords." },
 ];
 
 pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
@@ -66,22 +38,26 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
             let path = std::path::Path::new(p);
             let folder = path.parent().map(|d| d.display().to_string()).unwrap_or_default();
             let mut r = home::Recent::new(crate::panels::settings::library_name(path), folder);
-            r.when = "Library".into();
+            r.kind = "Photo library".into();
+            r.badge = "LIBRARY".into();
             r
         })
         .collect();
     let screen = home::Home {
         id: "horix-light",
-        name: "Horix Light",
-        tagline: "The photo developer",
+        name: "HORIX Light",
         version: "v@HORIX_APP_VERSION@",
-        logo: Some(logo(&ctx)),
-        paint_logo: None,
+        headline: "Your next edit starts here.",
+        kicker: "THE PHOTO DEVELOPER",
+        drop_title: "Drop photos or folders to start editing",
+        drop_icon: home::Icon::Camera,
+        formats: "RAW / JPEG / PNG / TIFF",
         new_label: "Import photos",
         open_label: if desktop { "Open library" } else { "Add photos" },
-        features: FEATURES,
+        new_shortcut: "",
+        recent_title: "Recent libraries",
         recent: &recent,
-        palette: palette(&ctx),
+        tools: TOOLS,
         web: !desktop,
     };
     let Some(action) = home::show(ui, &screen) else { return };
@@ -95,11 +71,11 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
             let _ = crate::links::open(app, &url);
             return;
         }
-        home::Action::New | home::Action::Feature(0 | 1) => run(app, "file.addPhotos", json!({})),
+        home::Action::New | home::Action::Tool(0 | 1) => run(app, "file.addPhotos", json!({})),
         home::Action::Open if desktop => run(app, "app.openLibrary", json!({})),
         home::Action::Open => run(app, "file.addPhotos", json!({})),
-        home::Action::Feature(_) if desktop => run(app, "file.importLightroom", json!({})),
-        home::Action::Feature(_) => run(app, "file.addPhotos", json!({})),
+        home::Action::Tool(_) if desktop => run(app, "file.importLightroom", json!({})),
+        home::Action::Tool(_) => run(app, "file.addPhotos", json!({})),
         home::Action::OpenRecent(i) => {
             if let Some(path) = paths.get(i) {
                 run(app, "app.openLibrary", json!({"path": path}));

@@ -352,9 +352,10 @@ def theme(root: Path) -> None:
                 primary_text: Color32::from_rgb(20, 19, 20),
                 danger: Color32::from_rgb(240, 96, 96),
                 warning: Color32::from_rgb(240, 190, 90),
-                radius_sm: 6.0,
-                radius: 8.0,
-                radius_lg: 12.0,
+                // Sharp corners (the HORIX UI kit's), the same in every HORIX app.
+                radius_sm: 3.0,
+                radius: 4.0,
+                radius_lg: 6.0,
                 bevel: false,
                 pro: true,
                 round_chips: false,

@@ -173,9 +173,10 @@ def sibling_block(root: Path) -> str:
 
 def theme(root: Path) -> None:
     """The HORIX palette on DesignCraft's tokens: the Dark level (the base the others start from)
-    turns from neutral grey to Horus Ink and Graphite, the accent pair is Vision Amber (on, focus)
+    takes HORIX's own greys (hx.UI, so the family looks like one program), the accent pair is Vision Amber (on, focus)
     and Horix Red (filled buttons), and Dark is the default."""
     a, r = hx.hexrgb(hx.AMBER), hx.hexrgb(hx.RED)
+    u = hx.ui
     rel = "crates/ui-egui/src/theme.rs"
     hx.edit(root, rel, [
         ("            app_bar: hex(0x262626),\n            panel: hex(0x323232),\n            panel_darker: hex(0x282828),\n"
@@ -185,13 +186,13 @@ def theme(root: Path) -> None:
          "            tool_active: hex(0x1b1b1b),\n            accent: hex(0x378ef0),\n            accent_strong: hex(0x1473e6),\n"
          "            row_selected: hex(0x2d4f7c),\n            pasteboard: hex(0x232323),\n            ruler: hex(0x2e2e2e),\n"
          "            ruler_tick: hex(0x9a9a9a),\n            tab_inactive: hex(0x262626),\n            button: hex(0x404040),\n",
-         "            app_bar: hex(0x0e0d0e),\n            panel: hex(0x1d1b1c),\n            panel_darker: hex(0x161415),\n"
-         "            input: hex(0x0f0e0f),\n            input_border: hex(0x423c3c),\n            divider: hex(0x0e0d0e),\n"
-         f"            text: hex(0xe6e1da),\n            text_strong: hex({hx.hexrgb(hx.IVORY)}),\n            text_dim: hex(0x9e9891),\n"
-         "            text_disabled: hex(0x605a56),\n            icon: hex(0xd2ccc4),\n            hover: hex(0x353131),\n"
-         f"            tool_active: hex(0x0c0b0c),\n            accent: hex({a}),\n            accent_strong: hex({r}),\n"
-         f"            row_selected: hex(0x4a3420),\n            pasteboard: hex({hx.hexrgb(hx.INK)}),\n            ruler: hex(0x1a1818),\n"
-         f"            ruler_tick: hex(0x857e77),\n            tab_inactive: hex(0x161415),\n            button: hex({hx.hexrgb(hx.GRAPHITE)}),\n"),
+         f"            app_bar: hex({u('chrome')}),\n            panel: hex({u('card')}),\n            panel_darker: hex({u('dock')}),\n"
+         f"            input: hex({u('field')}),\n            input_border: hex({u('field_border')}),\n            divider: hex({u('edge')}),\n"
+         f"            text: hex(0xe6e3de),\n            text_strong: hex({u('text')}),\n            text_dim: hex({u('text_dim')}),\n"
+         f"            text_disabled: hex({u('text_faint')}),\n            icon: hex({u('icon')}),\n            hover: hex({u('hover')}),\n"
+         f"            tool_active: hex({u('canvas')}),\n            accent: hex({a}),\n            accent_strong: hex({r}),\n"
+         f"            row_selected: hex({u('pressed')}),\n            pasteboard: hex({u('canvas')}),\n            ruler: hex({u('dock')}),\n"
+         f"            ruler_tick: hex(0x7a7a82),\n            tab_inactive: hex({u('dock')}),\n            button: hex({u('field')}),\n"),
     ])
     # Darkest level by default, as in HORIX.
     hx.edit(root, "crates/ui-egui/src/lib.rs", [("            brightness: theme::Brightness::MediumDark,", "            brightness: theme::Brightness::Dark,")])

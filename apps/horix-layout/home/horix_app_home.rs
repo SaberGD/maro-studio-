@@ -1,5 +1,5 @@
 //! Horix Layout's Home screen: the shared HORIX Home (horix_home.rs) with Horix Layout's names,
-//! colours, recent files (with their first-page pictures) and commands. It replaces the old start
+//! recent files (with their first-page pictures) and commands. It replaces the old start
 //! screen and covers the window below the app bar, as Photoshop's Home does; closing it leaves the
 //! empty workspace.
 
@@ -44,26 +44,10 @@ fn leave(n: usize) {
     DISMISSED.set(Some(n));
 }
 
-fn palette(ctx: &egui::Context) -> home::Palette {
-    let t = crate::theme::Tokens::get(ctx);
-    home::Palette {
-        background: t.panel_darker,
-        chrome: t.app_bar,
-        card: t.panel,
-        card_hover: t.hover,
-        border: t.border,
-        text: t.text,
-        text_strong: t.text_strong,
-        text_dim: t.text_dim,
-        accent: t.accent,
-        accent_strong: t.accent_strong,
-    }
-}
-
-const FEATURES: &[home::Feature<'static>] = &[
-    home::Feature { mark: "Mag", title: "Open the sample magazine", text: "A four-page spread with threaded text, styles and swatches to explore." },
-    home::Feature { mark: "Aa", title: "Beautiful type", text: "Threaded frames, paragraph and character styles, columns, wrap and Arabic." },
-    home::Feature { mark: "PDF", title: "Print and share", text: "PDF/X-4 for print, EPUB and PowerPoint; IDML and InDesign files open." },
+const TOOLS: &[home::Tool<'static>] = &[
+    home::Tool { icon: home::Icon::Book, title: "Sample magazine", text: "Explore an editable four-page spread." },
+    home::Tool { icon: home::Icon::Columns, title: "Beautiful type", text: "Text frames, columns and paragraph styles." },
+    home::Tool { icon: home::Icon::Print, title: "Print & share", text: "Prepare publications for print or screen." },
 ];
 
 pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
@@ -73,11 +57,15 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
         .iter()
         .map(|p| {
             let name = crate::menus::recent_label(p);
-            let name = name.strip_suffix(".designcraft").map(str::to_owned).unwrap_or(name);
             let folder = std::path::Path::new(p).parent().map(|d| d.display().to_string()).unwrap_or_default();
             let stat = crate::chrome::recent_file_stat(&ctx, p);
             let thumb = stat.exists.then(|| crate::chrome::recent_preview_texture(&ctx, p, stat.modified)).flatten();
             let mut r = home::Recent::new(name, folder);
+            r.kind = "Publication".into();
+            if r.badge == "DESIGNCRAFT" || r.badge.is_empty() {
+                r.badge = "LAYOUT".into();
+            }
+            r.name = r.name.strip_suffix(".designcraft").map(str::to_owned).unwrap_or(r.name);
             if let Some(tex) = thumb {
                 let [w, h] = tex.size();
                 r.aspect = w as f32 / h.max(1) as f32;
@@ -86,29 +74,31 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
             r
         })
         .collect();
-    let paint_logo = |ui: &egui::Ui, r: egui::Rect| crate::about::paint_mark(ui, r, crate::about::BRAND);
     let screen = home::Home {
         id: "horix-layout",
-        name: "Horix Layout",
-        tagline: "The page layout studio",
+        name: "HORIX Layout",
         version: "v@HORIX_APP_VERSION@",
-        logo: None,
-        paint_logo: Some(&paint_logo),
-        new_label: "New file",
-        open_label: "Open",
-        features: FEATURES,
+        headline: "Give your ideas a place.",
+        kicker: "THE PAGE LAYOUT STUDIO",
+        drop_title: "Start a publication or continue a document",
+        drop_icon: home::Icon::Book,
+        formats: "IDML / INDD / PDF / EPUB",
+        new_label: "New document",
+        open_label: "Open document",
+        new_shortcut: if cfg!(target_os = "macos") { "Cmd N" } else { "Ctrl N" },
+        recent_title: "Recent projects",
         recent: &recent,
-        palette: palette(&ctx),
+        tools: TOOLS,
         web: cfg!(target_arch = "wasm32"),
     };
     match home::show(ui, &screen) {
-        Some(home::Action::New | home::Action::Feature(1)) => {
+        Some(home::Action::New | home::Action::Tool(1)) => {
             let _ = app.run("app.newDocumentDialog", json!({}));
         }
-        Some(home::Action::Feature(0)) => {
+        Some(home::Action::Tool(0)) => {
             let _ = app.run("file.newSample", json!({}));
         }
-        Some(home::Action::Open | home::Action::Feature(_)) => {
+        Some(home::Action::Open | home::Action::Tool(_)) => {
             let _ = app.run("app.openDialog", json!({}));
         }
         Some(home::Action::OpenRecent(i)) => {

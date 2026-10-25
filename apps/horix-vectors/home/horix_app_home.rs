@@ -1,5 +1,5 @@
 //! Horix Vectors' Home screen: the shared HORIX Home (horix_home.rs) with Horix Vectors' names,
-//! colours, recent files and commands. It replaces the old welcome screen and covers the window
+//! recent files and commands. It replaces the old welcome screen and covers the window
 //! below the app bar, as Photoshop's Home does; closing it leaves the empty workspace.
 
 use std::cell::Cell;
@@ -41,30 +41,13 @@ pub fn toggle(app: &mut VectorcraftApp) {
     }
 }
 
-fn palette(ctx: &egui::Context) -> home::Palette {
-    let t = crate::theme::Tokens::get(ctx);
-    home::Palette {
-        background: t.panel_darker,
-        chrome: t.app_bar,
-        card: t.panel,
-        card_hover: t.hover,
-        border: t.border,
-        text: t.text,
-        text_strong: t.text_strong,
-        text_dim: t.text_dim,
-        accent: t.accent,
-        accent_strong: t.accent_strong,
-    }
-}
-
-const FEATURES: &[home::Feature<'static>] = &[
-    home::Feature { mark: "Pen", title: "Draw with precision", text: "Pen, shape builder, live corners and blends for logos and icons." },
-    home::Feature { mark: "Aa", title: "Type, including Arabic", text: "Area and path type, variable fonts, and Arabic text that joins right." },
-    home::Feature { mark: "AI", title: "Open your files", text: "Illustrator .ai, EPS, PDF and SVG in; SVG, PDF and PNG out." },
+const TOOLS: &[home::Tool<'static>] = &[
+    home::Tool { icon: home::Icon::Pen, title: "Draw with precision", text: "Pen tools, shapes and live corners." },
+    home::Tool { icon: home::Icon::Type, title: "Type, including Arabic", text: "Expressive type, on paths or in frames." },
+    home::Tool { icon: home::Icon::Files, title: "Open your files", text: "Illustrator, EPS, PDF and SVG." },
 ];
 
 pub fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) {
-    let ctx = ui.ctx().clone();
     let paths: Vec<String> = if cfg!(target_arch = "wasm32") { Vec::new() } else { crate::io::recent_files(app).iter().take(12).cloned().collect() };
     let recent: Vec<home::Recent> = paths
         .iter()
@@ -72,29 +55,33 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) {
             let path = std::path::Path::new(p);
             let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| p.clone());
             let folder = path.parent().map(|d| d.display().to_string()).unwrap_or_default();
-            home::Recent::new(name, folder)
+            let mut r = home::Recent::new(name, folder);
+            r.kind = "Vector document".into();
+            r
         })
         .collect();
-    let logo = egui::Image::from_texture(egui::load::SizedTexture::new(crate::brand::texture(&ctx).id(), egui::vec2(30.0, 30.0)));
     let screen = home::Home {
         id: "horix-vectors",
-        name: "Horix Vectors",
-        tagline: "The vector studio",
+        name: "HORIX Vectors",
         version: "v@HORIX_APP_VERSION@",
-        logo: Some(logo),
-        paint_logo: None,
+        headline: "Make your next mark.",
+        kicker: "THE VECTOR STUDIO",
+        drop_title: "Drop vector artwork to continue creating",
+        drop_icon: home::Icon::Pen,
+        formats: "AI / EPS / SVG / PDF",
         new_label: "New file",
-        open_label: "Open",
-        features: FEATURES,
+        open_label: "Open file",
+        new_shortcut: if cfg!(target_os = "macos") { "Cmd N" } else { "Ctrl N" },
+        recent_title: "Recent projects",
         recent: &recent,
-        palette: palette(&ctx),
+        tools: TOOLS,
         web: cfg!(target_arch = "wasm32"),
     };
     match home::show(ui, &screen) {
-        Some(home::Action::New | home::Action::Feature(_)) => {
+        Some(home::Action::New | home::Action::Tool(0 | 1)) => {
             app.run("file.newDialog", json!({})).ok();
         }
-        Some(home::Action::Open) => {
+        Some(home::Action::Open | home::Action::Tool(_)) => {
             app.run("file.open", json!({})).ok();
         }
         Some(home::Action::OpenRecent(i)) => {

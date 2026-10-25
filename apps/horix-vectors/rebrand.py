@@ -68,10 +68,11 @@ def links(root: Path) -> None:
 
 def theme(root: Path) -> None:
     """The HORIX palette on VectorCraft's token system. The accent pair is (on / focus, filled
-    button with white lettering): Vision Amber and Horix Red. The greys turn from cool slate to
-    the warm Horus Ink and Graphite of the brand."""
+    button with white lettering): Vision Amber and Horix Red. The greys are HORIX's own (hx.UI),
+    so the family looks like one program, and the corners as sharp."""
     rel = "crates/ui-egui/src/theme.rs"
     a, r = hx.hexrgb(hx.AMBER), hx.hexrgb(hx.RED)
+    u = hx.ui
     hx.edit(root, rel, [
         ("(Accent::Coral, true) => (0xf06a52, 0xe8573f),", f"(Accent::Coral, true) => ({a}, {r}),"),
         ("(Accent::Coral, false) => (0xd9472f, 0xd14a33),", f"(Accent::Coral, false) => (0xb5651a, {r}),"),
@@ -83,18 +84,22 @@ def theme(root: Path) -> None:
          "            tool_active: hex(0x2f3541),\n            accent: hex(0xf06a52),\n            accent_strong: hex(0xe8573f),\n"
          "            row_selected: hex(0x3a2a2c),\n            pasteboard: hex(0x101217),\n            ruler: hex(0x13161c),\n"
          "            ruler_tick: hex(0x6f788a),",
-         f"            app_bar: hex(0x0e0d0e),\n            panel: hex({hx.hexrgb(hx.INK)}),\n            panel_darker: hex(0x100f10),\n"
-         "            input: hex(0x0c0b0c),\n            input_border: hex(0x3a3535),\n            border: hex(0x060506),\n"
-         f"            divider: hex({hx.hexrgb(hx.GRAPHITE)}),\n            text: hex({hx.hexrgb(hx.IVORY)}),\n            text_dim: hex(0x9e9891),\n"
-         "            text_disabled: hex(0x5f5a56),\n            icon: hex(0xd2ccc4),\n            hover: hex(0x2a2727),\n"
-         f"            tool_active: hex(0x353131),\n            accent: hex({a}),\n            accent_strong: hex({r}),\n"
-         "            row_selected: hex(0x3b2a1c),\n            pasteboard: hex(0x0b0a0b),\n            ruler: hex(0x100f10),\n"
-         "            ruler_tick: hex(0x7a736d),"),
+         f"            app_bar: hex({u('chrome')}),\n            panel: hex({u('card')}),\n            panel_darker: hex({u('dock')}),\n"
+         f"            input: hex({u('field')}),\n            input_border: hex({u('field_border')}),\n            border: hex({u('edge')}),\n"
+         f"            divider: hex({u('separator')}),\n            text: hex({u('text')}),\n            text_dim: hex({u('text_dim')}),\n"
+         f"            text_disabled: hex({u('text_faint')}),\n            icon: hex({u('icon')}),\n            hover: hex({u('hover')}),\n"
+         f"            tool_active: hex({u('pressed')}),\n            accent: hex({a}),\n            accent_strong: hex({r}),\n"
+         f"            row_selected: hex({u('selected')}),\n            pasteboard: hex({u('canvas')}),\n            ruler: hex({u('dock')}),\n"
+         "            ruler_tick: hex(0x7a7a82),"),
         ("            flyout_active: hex(0xff8a74),", "            flyout_active: hex(0xf2b36e),"),
         ("            measure_bg: Color32::from_rgba_unmultiplied(24, 27, 34, 235),\n            button: hex(0x282d37),",
-         "            measure_bg: Color32::from_rgba_unmultiplied(20, 19, 20, 235),\n            button: hex(0x2a2727),"),
+         f"            measure_bg: Color32::from_rgba_unmultiplied(20, 20, 21, 235),\n            button: hex({u('field')}),"),
         ("            tab_strip: hex(0x0f1116),\n            button_border: hex(0x4a5363),",
-         "            tab_strip: hex(0x0c0b0c),\n            button_border: hex(0x4f4848),"),
+         f"            tab_strip: hex({u('dock')}),\n            button_border: hex({u('field_border')}),"),
+        # Sharp corners, as HORIX's.
+        ("pub const CARD_RADIUS: u8 = 8;", "pub const CARD_RADIUS: u8 = 4;"),
+        ("    v.window_corner_radius = CornerRadius::same(10);\n    v.menu_corner_radius = CornerRadius::same(8);",
+         "    v.window_corner_radius = CornerRadius::same(6);\n    v.menu_corner_radius = CornerRadius::same(4);"),
         # Medium Dark (Charcoal upstream): Graphite panels.
         ("                app_bar: hex(0x1b1f27),\n                panel: hex(0x272c36),\n                panel_darker: hex(0x21262f),\n"
          "                tab_strip: hex(0x1e222a),\n                input: hex(0x1a1e26),\n                input_border: hex(0x3a414e),\n"

@@ -13,8 +13,8 @@ What it changes (UI only; licence files stay as the licences require):
     the HORIX download page.
   - The HORIX falcon app icon (apps/horix-light/assets/app-icon/) everywhere the app shows or
     packages its icon.
-  - HORIX colours on the default Charcoal theme: Graphite chrome, Horus Ink canvas, Falcon Ivory
-    text, Horix Red accent.
+  - HORIX's own dark theme (hx.UI) on the default Charcoal theme, Vision Amber accent and sharp
+    corners, so the family looks like one program.
   - Web page: title, favicon, HORIX loading screen.
 """
 
@@ -69,28 +69,29 @@ def theme(root: Path) -> None:
     start = text.index("impl Default for Tokens {")
     end = text.index("top_bar_h:", start)
     block = text[start:end]
+    U = hx.UI  # HORIX's own greys and its amber accent: the family looks like one program.
     rgb = lambda v: f"Color32::from_rgb(0x{v >> 16:02x}, 0x{(v >> 8) & 255:02x}, 0x{v & 255:02x})"
     for field, old, new in [
-        ("chrome", 0x2D2D2D, hx.GRAPHITE),
-        ("canvas", 0x1C1C1C, hx.INK),
-        ("grid_bg", 0x0F0F0F, 0x0E0D0E),
-        ("cell", 0x1C1C1C, hx.INK),
-        ("cell_selected", 0x2D2D2D, hx.GRAPHITE),
-        ("divider", 0x1C1C1C, hx.INK),
-        ("inset", 0x232323, 0x1F1C1C),
-        ("field", 0x222222, 0x1E1B1B),
-        ("field_border", 0x3C3C3C, 0x423C3C),
-        ("button", 0x242424, 0x211E1E),
-        ("button_border", 0x4C4C4C, 0x524B4B),
-        ("hover", 0x3A3A3A, 0x3A3535),
-        ("pressed", 0x3F3F3F, 0x433D3D),
-        ("tool_active", 0x3F3F3F, 0x433D3D),
-        ("text", 0xE2E2E2, hx.IVORY),
-        ("text_label", 0xBCBCBC, 0xC4BEB6),
-        ("text_dim", 0x8E8E8E, 0x97918A),
-        ("text_disabled", 0x5C5C5C, 0x605A56),
-        ("icon", 0x9A9A9A, 0xA39D96),
-        ("accent", 0x0165DD, hx.RED),
+        ("chrome", 0x2D2D2D, U["chrome"]),
+        ("canvas", 0x1C1C1C, U["canvas"]),
+        ("grid_bg", 0x0F0F0F, U["canvas"]),
+        ("cell", 0x1C1C1C, U["card"]),
+        ("cell_selected", 0x2D2D2D, U["pressed"]),
+        ("divider", 0x1C1C1C, U["edge"]),
+        ("inset", 0x232323, U["dock"]),
+        ("field", 0x222222, U["field"]),
+        ("field_border", 0x3C3C3C, U["field_border"]),
+        ("button", 0x242424, U["field"]),
+        ("button_border", 0x4C4C4C, U["field_border"]),
+        ("hover", 0x3A3A3A, U["hover"]),
+        ("pressed", 0x3F3F3F, U["pressed"]),
+        ("tool_active", 0x3F3F3F, U["pressed"]),
+        ("text", 0xE2E2E2, U["text"]),
+        ("text_label", 0xBCBCBC, 0xC4C4CC),
+        ("text_dim", 0x8E8E8E, U["text_dim"]),
+        ("text_disabled", 0x5C5C5C, U["text_faint"]),
+        ("icon", 0x9A9A9A, U["icon"]),
+        ("accent", 0x0165DD, hx.AMBER),
         ("caution", 0xE3A83C, hx.AMBER),
     ]:
         old_line = f"            {field}: {rgb(old)},"
@@ -98,7 +99,12 @@ def theme(root: Path) -> None:
             hx.fail(f"{rel}: default tokens: expected once: {old_line}")
         block = block.replace(old_line, f"            {field}: {rgb(new)},")
     path.write_text(text[:start] + block + text[end:], encoding="utf-8")
-    hx.edit(root, rel, [('ThemeKind::Charcoal => "Charcoal",', 'ThemeKind::Charcoal => "HORIX",')])
+    hx.edit(root, rel, [
+        ('ThemeKind::Charcoal => "Charcoal",', 'ThemeKind::Charcoal => "HORIX",'),
+        # Sharp corners, as HORIX's.
+        ("    v.window_corner_radius = CornerRadius::same(6);\n    v.menu_corner_radius = CornerRadius::same(6);",
+         "    v.window_corner_radius = CornerRadius::same(4);\n    v.menu_corner_radius = CornerRadius::same(3);"),
+    ])
 
 
 def drop_branded_translations_json(root: Path) -> int:
