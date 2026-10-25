@@ -54,6 +54,12 @@
     #toast.on { opacity: 1; }
     #toast.err { border-color: var(--red); }
     @media (max-width: 760px) { #brand b, .persona small, .act span, #home { display: none; } }
+    /* HORIX's loading screen with HORIX One's badge, over a persona until it is ready; it mirrors the
+       persona's own screen (its progress), which it covers. build.sh fills it in. */
+    #one_loading { position: fixed; top: var(--bar); left: 0; right: 0; bottom: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; background-color: var(--ink); color: var(--muted); z-index: 1; }
+    #one_loading[hidden] { display: none; }
+/*HORIX_LOADER_CSS*/
   </style>
 </head>
 <body>
@@ -75,6 +81,9 @@
     <a id="home" href="https://horix.si/" target="_blank" rel="noopener">نسخة الديسكتوب</a>
   </header>
   <div id="toast" role="status" aria-live="polite"></div>
+  <div id="one_loading" hidden>
+    <!--HORIX_LOADER-->
+  </div>
   <script>
     // HORIX One on the web: one page, three personas (each a full app in its own same-origin frame,
     // loaded on first use), and the hand-off between them:
@@ -105,9 +114,45 @@
         }
         return frames[name];
       }
+      // HORIX One's loading screen over a persona until it runs: the persona's own screen (it keeps
+      // its id until the app starts) drives the progress shown here.
+      var LOADING_IDS = { vector: 'vectorcraft_loading', pixel: 'sgps_loading', layout: 'designcraft_loading' };
+      var ready = {}, cover = document.getElementById('one_loading'), coverFor = null, coverTimer = 0;
+      var oneWipe = document.getElementById('hx_wipe'), oneMark = oneWipe && oneWipe.ownerSVGElement;
+      var oneBar = cover.querySelector('.hx-bar'), oneStatus = document.getElementById('one_status');
+      function coverPersona(name) {
+        clearInterval(coverTimer);
+        if (ready[name]) { cover.hidden = true; coverFor = null; return; }
+        coverFor = name;
+        cover.hidden = false; cover.style.opacity = ''; cover.classList.remove('hx-ready', 'hx-busy');
+        if (oneWipe) oneWipe.setAttribute('width', '0');
+        if (oneBar) oneBar.style.width = '0';
+        coverTimer = setInterval(function () {
+          var doc; try { doc = frames[name].contentDocument; } catch (e) { return; }
+          if (!doc || !doc.body) return;
+          var box = doc.getElementById(LOADING_IDS[name]);
+          if (box) {
+            var w = doc.getElementById('hx_wipe'), m = w && w.ownerSVGElement;
+            var p = m ? Math.min(1, Number(w.getAttribute('width')) / Number(m.getAttribute('data-w'))) : 0;
+            if (oneWipe && oneMark) oneWipe.setAttribute('width', String(Number(oneMark.getAttribute('data-w')) * p));
+            if (oneBar) oneBar.style.width = (p * 100).toFixed(1) + '%';
+            if (box.classList.contains('hx-busy')) { cover.classList.add('hx-busy'); oneStatus.textContent = 'بنجهّز الأدوات…'; }
+            else if (p > 0) oneStatus.innerHTML = 'بنحمّل <bdi>HORIX One</bdi>… <bdi>' + Math.floor(p * 100) + '%</bdi>';
+            return;
+          }
+          if (doc.readyState !== 'complete') return;
+          // The persona started: the eye opens and the screen fades into it.
+          clearInterval(coverTimer); ready[name] = true;
+          if (oneWipe && oneMark) oneWipe.setAttribute('width', String(Number(oneMark.getAttribute('data-w')) + 2));
+          cover.classList.add('hx-ready'); oneStatus.textContent = 'جاهز';
+          setTimeout(function () { if (coverFor === name) cover.style.opacity = '0'; }, 650);
+          setTimeout(function () { if (coverFor === name) { cover.hidden = true; cover.style.opacity = ''; } }, 1150);
+        }, 120);
+      }
       function show(name) {
         if (!PERSONAS[name]) name = 'vector';
         var f = frame(name);
+        coverPersona(name);
         Object.keys(frames).forEach(function (k) { frames[k].classList.toggle('on', k === name); });
         bar.querySelectorAll('.persona').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.persona === name)); });
         current = name;

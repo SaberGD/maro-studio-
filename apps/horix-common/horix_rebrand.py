@@ -188,33 +188,6 @@ def favicon_data_uri(icon_dir: Path) -> str:
     return "data:image/svg+xml;base64," + base64.b64encode((icon_dir / "favicon.svg").read_bytes()).decode()
 
 
-def loader_html(name: str, product_line: str) -> str:
-    """The loading screen: the HORIX falcon, the product name, a Horix Red rule, BY SABER GROUP."""
-    symbol = (REPO / "apps/sg-ps/assets/horix-symbol.svg").read_text(encoding="utf-8")
-    symbol = symbol.replace('role="img"', 'role="img" width="132" height="95"')
-    return f"""
-    <div class="horix-loader">
-      {symbol.strip()}
-      <div class="horix-name">{name}</div>
-      <div class="horix-line">{product_line}</div>
-      <div class="horix-rule"></div>
-      <div class="horix-by">BY SABER GROUP</div>
-    </div>"""
-
-
-LOADER_CSS = f"""
-    .horix-loader {{ display: flex; flex-direction: column; align-items: center; gap: 10px; color: #{IVORY:06X};
-      font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }}
-    .horix-loader svg {{ animation: horix-breathe 1.8s ease-in-out infinite; }}
-    .horix-name {{ font: 800 34px/1 "Barlow Condensed", "Arial Narrow", Inter, sans-serif; letter-spacing: 0; text-transform: uppercase; }}
-    .horix-line {{ font-size: 12px; font-weight: 500; letter-spacing: .12em; color: #{IVORY:06X}; opacity: .85; }}
-    .horix-rule {{ width: 28px; height: 2px; background: #{RED:06X}; }}
-    .horix-by {{ font-size: 10.5px; font-weight: 500; letter-spacing: .12em; color: #8f8a84; }}
-    @keyframes horix-breathe {{ 0%, 100% {{ opacity: .55; }} 50% {{ opacity: 1; }} }}
-    @media (prefers-reduced-motion: reduce) {{ .horix-loader svg {{ animation: none; }} }}
-"""
-
-
 def check_no_upstream_brand(root: Path, globs: list[str], allowed: list[str]) -> None:
     """No ArtCraft Discord / website link or old product name may be left in user-visible code."""
     bad = re.compile(r"discord\.gg/artcraft|getartcraft\.com|Join (our|Our|the ArtCraft) Discord")
@@ -287,3 +260,175 @@ def install_home(root: Path, app_dir: Path, version: str, ui_src: str = "crates/
     for extra in sorted((app_dir / "home").iterdir()):
         if extra.is_file() and extra.name != "horix_app_home.rs":
             (dest / extra.name).write_bytes(extra.read_bytes())
+
+
+# HORIX's web loading screen, the same in every HORIX app (it was HORIX's own, apps/sg-ps): the HORIX
+# lockup lit toward the beak as the app downloads (real bytes), a thin progress bar, the status in
+# Arabic, and the amber eye opening (with the app's badge, its only difference) when the app is ready.
+LOADER_FULL_CSS = """
+    /* HORIX loading screen: the start screen's own card (same canvas and dot grid, lockup, descriptor,
+       red rule, "BY SABER GROUP"), so the app opens on the same picture. The logo is revealed toward the
+       beak as the app downloads (real bytes, see LOADER_SCRIPT), a thin bar under it is the progress, and
+       the amber eye opens when the app is ready. Inter comes from the downloads page's fonts. */
+    @font-face { font-family: HorixInter; font-weight: 500; font-display: swap; src: url(fonts/inter-latin-500-normal.woff2) format('woff2'); }
+    @font-face { font-family: HorixCairo; font-weight: 700; font-display: swap; src: url(fonts/cairo-arabic-700-normal.woff2) format('woff2'); }
+    #@BOX@ { font-family: HorixCairo, Cairo, 'Segoe UI', Tahoma, system-ui, sans-serif; transition: opacity .45s ease;
+      background-image: radial-gradient(circle, #1C1C1F 1.3px, transparent 1.8px); background-size: 22px 22px; background-position: 11px 11px; }
+    #@BOX@.hx-out { opacity: 0; }
+    .hx-mark { display: block; width: 190px; height: auto; overflow: visible; }
+    .hx-dim path, .hx-dim polygon, .hx-dim rect { fill: rgba(242, 239, 233, .07); }
+    .hx-dim .x { fill: rgba(214, 60, 50, .12); }
+    .hx-lit path, .hx-lit polygon, .hx-lit rect { fill: #F2EFE9; }
+    .hx-lit .x { fill: #D63C32; }
+    #hx_wipe { transition: width .35s cubic-bezier(.2, .8, .2, 1); }
+    .hx-eye { fill: #EA993F; opacity: .55; transform-box: fill-box; transform-origin: 50% 40%; transform: scaleY(.12);
+      transition: transform .55s cubic-bezier(.3, 1.6, .5, 1), opacity .3s; }
+    .hx-ready .hx-eye { opacity: 1; transform: none; }
+    .hx-badge { opacity: .3; transform-box: fill-box; transform-origin: 50% 50%; transform: scale(.86);
+      transition: transform .55s cubic-bezier(.3, 1.6, .5, 1), opacity .3s; }
+    .hx-ready .hx-badge { opacity: 1; transform: none; }
+    .hx-desc { margin-top: 12px; color: #F2EFE9; font: 500 12px/1.2 HorixInter, Inter, 'Segoe UI', system-ui, sans-serif; letter-spacing: 0; direction: ltr; }
+    .hx-rule { width: 28px; height: 2px; margin: 7px 0 6px; background: #D63C32; }
+    .hx-by { color: #606067; font: 500 10.5px/1.2 HorixInter, Inter, 'Segoe UI', system-ui, sans-serif; direction: ltr; }
+    .hx-track { position: relative; width: 160px; height: 2px; margin: 22px 0 14px; border-radius: 1px; overflow: hidden; background: #232326; }
+    .hx-bar { position: absolute; inset: 0 auto 0 0; width: 0; background: #D63C32; transition: width .35s cubic-bezier(.2, .8, .2, 1); }
+    .hx-busy .hx-bar { width: 100% !important; animation: hx-breathe 1.1s ease-in-out infinite; }
+    @keyframes hx-breathe { 50% { opacity: .45; } }
+    .hx-status { min-height: 1.6em; margin: 0 0 8px; font-size: 13px; line-height: 1.5; direction: rtl; }
+    .hx-status bdi { unicode-bidi: isolate; direction: ltr; color: #606067; font: 12px HorixInter, Inter, system-ui, sans-serif; }
+    /* While bytes keep arriving the "taking long" hint stays hidden; the script shows it after 15 s without progress. */
+    #@BOX@.hx-flowing #@STALLED@ { visibility: hidden; animation: none; }
+    #@BOX@.hx-stuck #@STALLED@ { visibility: visible; animation: none; }
+    #@STALLED@ { direction: rtl; }
+    @media (prefers-reduced-motion: reduce) {
+      #hx_wipe, .hx-bar, .hx-eye, .hx-badge, #@BOX@ { transition: none; }
+      .hx-busy .hx-bar { animation: none; }
+    }
+"""
+
+LOADER_FULL_SCRIPT = """  <script>
+    // HORIX loading screen: real download progress of the WebAssembly file. The page's own loader
+    // (trunk / wasm-bindgen) fetches it; fetch is wrapped for that one URL to count the bytes as they
+    // arrive (already decompressed, so they compare to the file's size written at build time).
+    (function () {
+      var SIZE = Number('__HORIX_WASM_SIZE__') || 0;
+      var box = document.getElementById('@BOX_JS@');
+      if (!box || !window.fetch || !window.ReadableStream) return;
+      var wipe = document.getElementById('hx_wipe'), mark = wipe && wipe.ownerSVGElement;
+      var bar = box.querySelector('.hx-bar'), status = document.getElementById('@STATUS@');
+      var full = mark ? Number(mark.getAttribute('data-w')) : 0, last = Date.now();
+      function mb(n) { return (n / 1048576).toFixed(1); }
+      function show(got, total) {
+        last = Date.now();
+        box.classList.add('hx-flowing'); box.classList.remove('hx-stuck');
+        var p = total ? Math.min(1, got / total) : 0;
+        if (wipe) wipe.setAttribute('width', String(full * p + 2));
+        if (bar) bar.style.width = (p * 100).toFixed(1) + '%';
+        // A percentage: the bytes counted here are decompressed, so megabytes would not match the download.
+        status.innerHTML = 'بنحمّل @NAME@… <bdi>' + (total ? Math.floor(p * 100) + '%' : mb(got) + ' MB') + '</bdi>';
+      }
+      function busy() {
+        if (wipe) wipe.setAttribute('width', String(full + 2));
+        box.classList.add('hx-busy');
+        status.textContent = 'بنجهّز الأدوات…';
+      }
+      var watch = setInterval(function () {
+        if (!document.body.contains(box)) return clearInterval(watch);
+        if (box.classList.contains('hx-flowing') && !box.classList.contains('hx-busy') && Date.now() - last > 15000) {
+          box.classList.remove('hx-flowing'); box.classList.add('hx-stuck');
+        }
+      }, 1000);
+      var realFetch = window.fetch;
+      window.fetch = function (input, init) {
+        var url = typeof input === 'string' ? input : (input && input.url) || '';
+        var res = realFetch.apply(this, arguments);
+        if (!/_bg\\.wasm(\\?|$)/.test(url)) return res;
+        return res.then(function (r) {
+          if (!r.ok || !r.body) return r;
+          var total = SIZE || Number(r.headers.get('Content-Length')) || 0, got = 0, reader = r.body.getReader();
+          show(0, total);
+          var counted = new ReadableStream({
+            pull: function (ctl) {
+              return reader.read().then(function (c) {
+                if (c.done) { busy(); ctl.close(); return; }
+                got += c.value.byteLength; show(got, total); ctl.enqueue(c.value);
+              }, function (e) { ctl.error(e); });
+            },
+            cancel: function (why) { return reader.cancel(why); }
+          });
+          return new Response(counted, { status: r.status, statusText: r.statusText, headers: r.headers });
+        });
+      };
+      // The app removes the loading screen when it starts: a copy stays a moment so the eye opens
+      // and the screen fades out over the app.
+      new MutationObserver(function (_, obs) {
+        if (document.body.contains(box)) return;
+        obs.disconnect(); window.fetch = realFetch;
+        if (box.querySelector('.hx-mark') === null) return;
+        var out = box.cloneNode(true);
+        out.removeAttribute('id'); out.id = 'hx_loading_out';
+        out.className = 'hx-flowing hx-busy';
+        out.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+          'background:#0E0E0F radial-gradient(circle, #1C1C1F 1.3px, transparent 1.8px) 11px 11px / 22px 22px;color:#96969E;' +
+          'font:14px HorixCairo,Cairo,system-ui,sans-serif;pointer-events:none;z-index:5;transition:opacity .45s ease';
+        var st = out.querySelector('.hx-status'); if (st) st.textContent = 'جاهز';
+        var stalled = out.querySelector('#@STALLED_JS@'); if (stalled) { stalled.removeAttribute('id'); stalled.style.visibility = 'hidden'; }
+        document.body.appendChild(out);
+        requestAnimationFrame(function () { out.classList.add('hx-ready'); });
+        setTimeout(function () { out.style.opacity = '0'; }, 650);
+        setTimeout(function () { out.remove(); }, 1150);
+      }).observe(document.body, { childList: true });
+    })();
+  </script>
+"""
+
+
+def horix_loader(name: str, desc: str, *, box: str, stalled: str, box_js: str = "", stalled_js: str = "",
+                 status: str = "hx_status", badge: str = "", width: int = 190) -> tuple[str, str, str]:
+    """HORIX's loading screen for app `name` (shown in the status line) described by `desc`
+    ("THE VECTOR STUDIO"): (html for inside the loader element `box`, css, script). `box` / `stalled`
+    are the ids the page's CSS uses, `box_js` / `stalled_js` the ids at run time if a later step renames
+    them; `status` is the status line's id. `badge`: the app icon's badge (an SVG <g> in its 1024 icon's
+    coordinates, centred at 760,760), shown beside the wordmark. The page's build writes the
+    WebAssembly file's size over __HORIX_WASM_SIZE__ (see wasm_size_into)."""
+    lockup = (REPO / "apps/sg-ps/assets/horix-lockup.svg").read_text(encoding="utf-8")
+    shapes = re.findall(r"<(?:path|polygon|rect)[^>]*/>", lockup)
+    eyes = [s for s in shapes if 'fill="#EA993F"' in s]
+    if len(eyes) != 1:
+        fail("horix-lockup.svg: expected exactly one amber eye shape")
+    body = "".join(s.replace(' fill="#F3EFE8"', "").replace(' fill="#D63C32"', ' class="x"') for s in shapes if s not in eyes)
+    eye = eyes[0].replace(' fill="#EA993F"', ' class="hx-eye"')
+    vx, vy, vw, vh = (float(v) for v in re.search(r'viewBox="([^"]+)"', lockup).group(1).split())
+    extra = ""
+    if badge:
+        # The badge (340 units square in the icon) at 0.62 scale, beside the wordmark's baseline.
+        size = 340 * 0.62
+        bx, by = vx + vw + 48, vy + vh - size
+        inner = re.sub(r'^<g transform="translate\(760 760\)">|</g>\s*$', "", badge.strip())
+        extra = (f'<g class="hx-badge"><g transform="translate({bx + size / 2:g} {by + size / 2:g}) scale(0.62)">'
+                 f"{inner}</g></g>")
+        vw += 48 + size
+        width = round(width * vw / (vw - 48 - size))
+    view = f"{vx:g} {vy:g} {vw:g} {vh:g}"
+    html = (
+        f'<svg class="hx-mark" viewBox="{view}" data-w="{vw:g}" role="img" aria-label="{name}" style="width:{width}px">'
+        f'<defs><clipPath id="hx_reveal"><rect id="hx_wipe" x="{vx:g}" y="{vy - 20:g}" width="0" height="{vh + 40:g}"/></clipPath></defs>'
+        f'<g class="hx-dim">{body}</g><g class="hx-lit" clip-path="url(#hx_reveal)">{body}</g>{eye}{extra}</svg>\n'
+        f'    <div class="hx-desc">{desc}</div>\n'
+        '    <div class="hx-rule"></div>\n'
+        '    <div class="hx-by">BY SABER GROUP</div>\n'
+        '    <div class="hx-track"><div class="hx-bar"></div></div>\n'
+        f'    <p class="hx-status" id="{status}">بنحمّل {name}…</p>')
+    css = LOADER_FULL_CSS.replace("@BOX@", box).replace("@STALLED@", stalled)
+    script = (LOADER_FULL_SCRIPT.replace("@BOX_JS@", box_js or box).replace("@STALLED_JS@", stalled_js or stalled)
+              .replace("@STATUS@", status).replace("@NAME@", name))
+    return html, css, script
+
+
+def icon_badge(app_dir: Path) -> str:
+    """The badge group of an app's icon (assets/app-icon/icon.svg): its last <g transform="translate(760 760)">."""
+    svg = (app_dir / "assets/app-icon/icon.svg").read_text(encoding="utf-8")
+    m = re.search(r'<g transform="translate\(760 760\)">.*?</g>\s*(?=</svg>)', svg, re.S)
+    if not m:
+        fail(f"{app_dir.name}: icon.svg has no badge group")
+    return m.group(0)

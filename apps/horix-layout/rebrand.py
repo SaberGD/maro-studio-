@@ -27,6 +27,8 @@ sys.path.insert(0, str(HERE.parent / "horix-common"))
 import horix_rebrand as hx  # noqa: E402
 
 APP_NAME = "Horix Layout"
+# The name on the web loading screen (its status line), as the HORIX family writes it.
+LOADER_NAME = "HORIX Layout"
 PRODUCT_LINE = "THE PAGE LAYOUT STUDIO"
 CODE = ["crates/**/*.rs", "apps/**/*.rs"]
 WEB = "apps/designcraft-web/index.html"
@@ -233,14 +235,16 @@ def arabic_text(root: Path) -> None:
 
 def web(root: Path) -> None:
     icons = HERE / "assets/app-icon"
+    # HORIX's loading screen (horix_rebrand.horix_loader), with this app's badge beside the logo.
+    loading, loader_css, loader_script = hx.horix_loader(
+        LOADER_NAME, PRODUCT_LINE, box="designcraft_loading", stalled="designcraft_stalled", status="horix_loading_text", badge=hx.icon_badge(HERE))
     hx.edit(root, WEB, [
         ("<title>DesignCraft</title>", f'<title>{APP_NAME}</title>\n  <link rel="icon" href="{hx.favicon_data_uri(icons)}">\n  <meta name="theme-color" content="#141314">'),
-        ("background: #262626;", "background: #141314;"),
+        ("background: #262626;", "background: #0E0E0F;"),
         ("      color: #b8b8b8; font: 14px system-ui, sans-serif; pointer-events: none; }",
-         "      color: #b8b8b8; font: 14px system-ui, sans-serif; pointer-events: none; background: #141314; }\n"
-         "    #horix_loading_text { margin-top: 18px; font-size: 13px; color: #9e9891; }" + hx.LOADER_CSS),
-        ('<div id="designcraft_loading">Loading DesignCraft&hellip;</div>',
-         f'<div id="designcraft_loading">{hx.loader_html(APP_NAME, PRODUCT_LINE)}\n    <div id="horix_loading_text">Loading DesignCraft&hellip;</div>\n  </div>'),
+         "      color: #96969E; font: 14px system-ui, sans-serif; pointer-events: none; background: #0E0E0F; }\n" + loader_css),
+        ('<div id="designcraft_loading">Loading DesignCraft&hellip;</div>', f'<div id="designcraft_loading">\n    {loading}\n  </div>'),
+        ("</body>", loader_script + "</body>"),
     ])
 
 

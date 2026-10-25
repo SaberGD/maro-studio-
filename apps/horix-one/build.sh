@@ -43,8 +43,23 @@ SITE="$WORK/site/horix-one"
 rm -rf "$WORK/site"
 mkdir -p "$SITE/fonts"
 BUILD_ID="${HORIX_BUILD_ID:-$(date -u +%Y%m%d%H%M%S)}"
-python3 -c 'import sys; p, o, b = sys.argv[1:4]; t = open(p, encoding="utf-8").read(); open(o, "w", encoding="utf-8").write(t.replace("<head>", "<head>\n  <meta name=\"horix-build\" content=\"" + b + "\">", 1))' \
-  "$HERE/web/index.html" "$SITE/index.html" "$BUILD_ID"
+# The page, with HORIX's loading screen (horix_rebrand.horix_loader, HORIX One's badge) filled in.
+python3 -I - "$REPO/apps/horix-common" "$HERE" "$SITE/index.html" "$BUILD_ID" <<'PYEOF'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import horix_rebrand as hx
+here, out, build = Path(sys.argv[2]), sys.argv[3], sys.argv[4]
+html, css, _ = hx.horix_loader("HORIX One", "VECTOR · PIXEL · LAYOUT", box="one_loading", stalled="one_stalled",
+                               status="one_status", badge=hx.icon_badge(here))
+t = (here / "web/index.html").read_text(encoding="utf-8")
+for mark, value in (("<!--HORIX_LOADER-->", html), ("/*HORIX_LOADER_CSS*/", css),
+                    ("<head>", '<head>\n  <meta name="horix-build" content="' + build + '">')):
+    if t.count(mark) != 1:
+        sys.exit(f"build.sh: {mark} expected once in web/index.html")
+    t = t.replace(mark, value, 1)
+Path(out).write_text(t, encoding="utf-8")
+PYEOF
 cp "$REPO/apps/sg-ps/assets/horix-symbol.svg" "$SITE/horix-symbol.svg"
 cp "$HERE/assets/app-icon/favicon.svg" "$SITE/horix-one-icon.svg"
 for f in barlow-condensed-latin-800-normal inter-latin-500-normal inter-latin-600-normal cairo-arabic-700-normal; do
