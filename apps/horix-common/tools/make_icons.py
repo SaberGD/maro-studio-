@@ -4,13 +4,14 @@
 The falcon is copied from apps/sg-ps/assets/horix-symbol.svg without changing its geometry (brand
 guide). Each product adds one small Horix Red badge in the lower right: a pen anchor with its
 handles (Vectors), an aperture (Light), four app tiles (Launcher), a pixel grid under a pen
-curve (One).
+curve (One), a page with a picture over lines of text (Layout).
 
     pip install cairosvg pillow
     python3 -I apps/horix-common/tools/make_icons.py vectors apps/horix-vectors/assets/app-icon
     python3 -I apps/horix-common/tools/make_icons.py light   apps/horix-light/assets/app-icon
     python3 -I apps/horix-common/tools/make_icons.py launcher apps/horix-launcher/assets/app-icon
     python3 -I apps/horix-common/tools/make_icons.py one     apps/horix-one/assets/app-icon
+    python3 -I apps/horix-common/tools/make_icons.py layout  apps/horix-layout/assets/app-icon
 
 Writes icon.svg (1024 tile), favicon.svg, and PNGs at 16..1024 plus icon.ico; macOS .icns is
 built from the PNGs by Pillow.
@@ -30,6 +31,13 @@ SYMBOL = HERE.parent.parent / "sg-ps/assets/horix-symbol.svg"
 INK, IVORY, RED = "#141314", "#F3EFE8", "#D63C32"
 
 BADGES = {
+    # Layout: a page, its picture frame at the top and lines of text below.
+    "layout": f"""
+  <rect x="-108" y="-132" width="216" height="264" rx="14" fill="none" stroke="{IVORY}" stroke-width="16"/>
+  <rect x="-70" y="-94" width="140" height="74" rx="6" fill="{IVORY}"/>
+  <line x1="-70" y1="12" x2="70" y2="12" stroke="{IVORY}" stroke-width="14" stroke-linecap="round"/>
+  <line x1="-70" y1="50" x2="70" y2="50" stroke="{IVORY}" stroke-width="14" stroke-linecap="round"/>
+  <line x1="-70" y1="88" x2="22" y2="88" stroke="{IVORY}" stroke-width="14" stroke-linecap="round"/>""",
     # Pen anchor: a curve through a square anchor, with its two handles.
     "vectors": f"""
   <path d="M -118 70 C -60 -60, 60 -60, 118 70" fill="none" stroke="{IVORY}" stroke-width="20" stroke-linecap="round"/>

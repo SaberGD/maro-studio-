@@ -1,8 +1,8 @@
-# Desktop builds of Horix Vectors and Horix Light (Windows portable zip, macOS DMG), released as
-# horix-vectors-v<v> / horix-light-v<v> with SHA256SUMS.txt: the names HORIX Launcher installs and
+# Desktop builds of Horix Vectors, Horix Light and Horix Layout (Windows portable zip, macOS DMG),
+# released as horix-vectors-v<v> / horix-light-v<v> / horix-layout-v<v> with SHA256SUMS.txt: the names HORIX Launcher installs and
 # updates from. <v> is apps/horix-<app>/VERSION plus the run number (0.1.12). Runs when a VERSION
-# file changes on the default branch, or by hand (Actions > Desktop Horix Vectors and Horix Light).
-name: Desktop Horix Vectors and Horix Light
+# file changes on the default branch, or by hand (Actions > Desktop Horix Vectors, Light and Layout).
+name: Desktop Horix Vectors, Light and Layout
 
 on:
   workflow_dispatch:
@@ -10,13 +10,14 @@ on:
       apps:
         description: "Which apps"
         type: choice
-        options: [both, vectors, light]
-        default: both
+        options: [all, vectors, light, layout]
+        default: all
   push:
     branches: [claude/nice-shannon-7w6xo5]
     paths:
       - "apps/horix-vectors/VERSION"
       - "apps/horix-light/VERSION"
+      - "apps/horix-layout/VERSION"
 
 permissions:
   contents: write
@@ -33,10 +34,10 @@ jobs:
       - id: p
         run: |
           if [ "${{ github.event_name }}" = workflow_dispatch ]; then
-            case "${{ inputs.apps }}" in both) apps='["vectors","light"]' ;; *) apps='["${{ inputs.apps }}"]' ;; esac
+            case "${{ inputs.apps }}" in all) apps='["vectors","light","layout"]' ;; *) apps='["${{ inputs.apps }}"]' ;; esac
           else
             list=()
-            for a in vectors light; do
+            for a in vectors light layout; do
               git diff --quiet HEAD~1 HEAD -- "apps/horix-$a/VERSION" 2>/dev/null || list+=("\"$a\"")
             done
             apps="[$(IFS=,; echo "${list[*]}")]"
@@ -106,7 +107,7 @@ jobs:
         run: |
           shopt -s nullglob
           V="$(tr -d '[:space:]' < apps/horix-${{ matrix.app }}/VERSION).${{ github.run_number }}"
-          NAME="$([ ${{ matrix.app }} = vectors ] && echo 'Horix Vectors' || echo 'Horix Light')"
+          case "${{ matrix.app }}" in vectors) NAME='Horix Vectors' ;; light) NAME='Horix Light' ;; layout) NAME='Horix Layout' ;; esac
           cd dist
           files=(*.zip *.dmg)
           [ ${#files[@]} -gt 0 ] || { echo "::error::nothing was built"; exit 1; }
