@@ -204,6 +204,13 @@ def arabic_on_the_web(root: Path) -> None:
         ('        if wasm && !(*family == "BIZ UDPGothic" && *style == "Regular") {',
          '        if wasm && !(*family == "BIZ UDPGothic" && *style == "Regular") && !scripts.split(\',\').any(|s| s.trim() == "Arab") {'),
     ])
+    # ...and they are fallbacks for Arabic text, after the bundled faces, as the Japanese ones are
+    # for Japanese (on the desktop the system's fonts cover Arabic too).
+    hx.edit(root, "crates/fonts/src/fontdb.rs", [
+        ("        let craft = crate::japanese_document_fonts().into_iter().map(|f| f.bytes);",
+         "        let arabic = crate::CRAFT_FONTS.iter().filter(|f| f.scripts.contains(&\"Arab\"));\n"
+         "        let craft = crate::japanese_document_fonts().into_iter().chain(arabic).map(|f| f.bytes);"),
+    ])
 
 
 def web(root: Path) -> None:
