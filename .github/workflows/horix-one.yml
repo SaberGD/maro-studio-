@@ -1,0 +1,211 @@
+# HORIX One: Vector and Pixel in one app.
+# - web: builds the site (apps/horix-one/build.sh: the persona bar, HORIX under pixel/, Horix
+#   Vectors under vector/) and, on the default branch, publishes it to https://one.horix.live/
+#   (Hostinger, the HOSTINGER_API_TOKEN secret; the subdomain is created on the first deploy).
+# - desktop: HORIX One for Windows (portable zip) and macOS (DMG) around the same site, on every
+#   run, so a change that breaks either build shows on its pull request.
+# - release: on the default branch when apps/horix-one/VERSION changes (or by hand), a GitHub
+#   release horix-one-v<v> with SHA256SUMS.txt, which HORIX Launcher installs and updates from;
+#   then the launcher feed and the Mac downloads on horix.si are refreshed.
+name: HORIX One
+
+on:
+  push:
+    paths:
+      - "apps/horix-one/**"
+      - "apps/sg-ps/**"
+      - "apps/horix-vectors/**"
+      - "apps/horix-common/**"
+      - "archive/photocraft/**"
+      - "archive/vectorcraft/**"
+      - ".github/workflows/horix-one.yml"
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a desktop release (HORIX Launcher, horix.si/mac)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: horix-one-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+    env:
+      HORIX_BUILD_NUMBER: ${{ github.run_number }}
+      HORIX_BUILD_ID: ${{ github.sha }}
+      HORIX_ONE_WORK: ${{ github.workspace }}/.horix-build/one
+      DOMAIN: ${{ vars.HORIX_ONE_DOMAIN || 'one.horix.live' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: plan
+        name: Release this run?
+        run: |
+          release=false
+          if [ "${{ github.ref_name }}" = "${{ github.event.repository.default_branch }}" ]; then
+            if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+              [ "${{ inputs.release }}" = true ] && release=true
+            elif ! git diff --quiet HEAD~1 HEAD -- apps/horix-one/VERSION 2>/dev/null; then
+              release=true
+            fi
+          fi
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "release: $release"
+
+      - name: Rust with the WebAssembly target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+
+      - name: Tools (brotli, trunk, ONNX for the web model)
+        run: |
+          command -v brotli >/dev/null || sudo apt-get install -y --no-install-recommends brotli
+          curl -fsSL https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-x86_64-unknown-linux-gnu.tar.gz | sudo tar -xz -C /usr/local/bin trunk
+          trunk --version
+          python3 -m pip install --user --quiet "onnx>=1.17" "onnxruntime>=1.20"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/trunk
+            .sgps-build/ai-cache
+            .horix-build/one/pixel/target
+            .horix-build/one/vector/target
+          key: horix-one-web-${{ hashFiles('archive/photocraft/*.tar.gz', 'archive/vectorcraft/*.tar.gz') }}-${{ hashFiles('apps/sg-ps/**', 'apps/horix-vectors/**', 'apps/horix-common/**', 'apps/horix-one/**') }}
+          restore-keys: |
+            horix-one-web-${{ hashFiles('archive/photocraft/*.tar.gz', 'archive/vectorcraft/*.tar.gz') }}-
+
+      - name: Build
+        env:
+          # The waitlist inside Pixel alerts the team as on horix.live (optional).
+          SGPS_LEAD_WEBHOOK: ${{ secrets.SGPS_LEAD_WEBHOOK }}
+        run: apps/horix-one/build.sh
+
+      - name: Keep the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: horix-one-web
+          path: deploy/horix-one/*.zip
+          retention-days: 30
+
+      - name: Subdomain on Hostinger
+        if: github.ref_name == github.event.repository.default_branch
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+          HOSTINGER_USERNAME: ${{ vars.HOSTINGER_USERNAME || 'u570689065' }}
+        run: |
+          if [ -n "${{ vars.HORIX_ONE_UPLOAD_DOMAIN }}" ]; then
+            printf 'UPLOAD_DOMAIN=%s\nUPLOAD_DIR=%s\n' "${{ vars.HORIX_ONE_UPLOAD_DOMAIN }}" "${{ vars.HORIX_ONE_UPLOAD_DIR }}" >> "$GITHUB_ENV"
+          else
+            # Creates the subdomain on the first deploy (a folder inside horix.live), then finds it.
+            apps/horix-common/ensure-subdomain.sh "$DOMAIN" "${DOMAIN#*.}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Deploy to Hostinger
+        if: github.ref_name == github.event.repository.default_branch
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+          HOSTINGER_USERNAME: ${{ vars.HOSTINGER_USERNAME || 'u570689065' }}
+        run: |
+          zip="$(ls -t deploy/horix-one/*.zip | head -1)"
+          apps/horix-common/deploy-static.sh "$zip" horix-one "$DOMAIN"
+
+  desktop:
+    needs: web
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      HORIX_BUILD_NUMBER: ${{ github.run_number }}
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.horix-target-one
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          if [ "$RUNNER_OS" = macOS ]; then rustup target add aarch64-apple-darwin x86_64-apple-darwin; fi
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .horix-target-one
+          key: horix-one-desktop-${{ runner.os }}-${{ hashFiles('apps/horix-one/desktop/**') }}
+          restore-keys: horix-one-desktop-${{ runner.os }}-
+      - uses: actions/download-artifact@v4
+        with:
+          name: horix-one-web
+          path: web
+      - name: Test
+        if: runner.os == 'Windows'
+        run: cd apps/horix-one/desktop && cargo test --locked
+      - name: Build and package
+        run: apps/horix-one/desktop/package.sh ${{ runner.os == 'macOS' && 'macos' || 'windows' }} "$(ls web/*.zip | head -1)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: horix-one-desktop-${{ runner.os }}
+          path: deploy/horix-one-desktop/*
+          retention-days: 30
+
+  release:
+    needs: [web, desktop]
+    if: ${{ !cancelled() && needs.web.outputs.release == 'true' && needs.desktop.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: horix-one-desktop-*
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          V="$(tr -d '[:space:]' < apps/horix-one/VERSION).${{ github.run_number }}"
+          cd dist
+          files=(*.zip *.dmg)
+          [ ${#files[@]} -eq 2 ] || { echo "::error::expected the Windows zip and the macOS DMG, got: ${files[*]}"; exit 1; }
+          sha256sum -- "${files[@]}" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release create "horix-one-v$V" "${files[@]}" SHA256SUMS.txt \
+            --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "HORIX One $V" \
+            --notes "HORIX One $V for Windows and macOS: Vector and Pixel in one app. Easiest: install it from HORIX Launcher, which keeps it up to date. In the browser: https://one.horix.live/
+
+          Windows: unzip horix-one-$V-windows-x64-portable.zip and run horix-one.exe (More info > Run anyway on the first run).
+          macOS: open the .dmg and drag HORIX One into Applications (System Settings > Privacy & Security > Open Anyway on the first run)."
+
+  feed:
+    needs: release
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    uses: ./.github/workflows/horix-feed.yml
+    secrets: inherit
+
+  mac:
+    needs: release
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    uses: ./.github/workflows/horix-mac.yml
+    secrets: inherit

@@ -10,6 +10,10 @@ Diffs here apply in name order after `rebrand.py`, against the rebranded 0.15.1 
 - `60-horix-ux`: P before/after, profile mismatch off by default, overset mark, Ungroup in the
   context menu, group-delete dialog, Color-panel eyedropper, Properties auto-raise,
   Select › Modify preview, and Path Blur's on-canvas controls (`blur_handles.rs`).
+- `70-horix-one`: the web page's channel for HORIX One (apps/horix-one): `horix_command(id,
+  params)` runs a command as the menus do, `horix_open(name, bytes)` opens a file, and a file a
+  command writes goes to `window.horixOneCapture(name, bytes)` when the page defines it, instead
+  of downloading. HORIX on its own is unchanged.
 
 Dropped when moving from 0.9.0 to 0.15.1, because upstream now does them:
 - New Document › Color Profile (upstream 0.12, `new_doc_ui.rs`); keeping ours showed it twice.

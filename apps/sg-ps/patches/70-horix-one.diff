@@ -1,0 +1,104 @@
+diff --git a/apps/photocraft-web/Cargo.toml b/apps/photocraft-web/Cargo.toml
+index b67ae35..1096052 100644
+--- a/apps/photocraft-web/Cargo.toml
++++ b/apps/photocraft-web/Cargo.toml
+@@ -32,6 +32,8 @@ log = { workspace = true }
+ eframe = { workspace = true, features = ["wgpu", "accesskit"] }
+ rfd = { workspace = true }
+ wasm-bindgen = "0.2"
++# HORIX One: the page's command channel (horix_command).
++serde_json = { workspace = true }
+ wasm-bindgen-futures = "0.4"
+ js-sys = "0.3"
+ web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "DomRect", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url", "Location", "CssStyleDeclaration", "Storage", "Event", "EventTarget", "MouseEvent", "PointerEvent", "BeforeUnloadEvent", "AbortController", "AbortSignal", "DomException", "Response", "IdbFactory", "IdbOpenDbRequest", "IdbDatabase", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbObjectStore", "IdbCursor", "IdbCursorWithValue", "RequestInit", "RequestMode", "Navigator"] }
+diff --git a/apps/photocraft-web/src/web.rs b/apps/photocraft-web/src/web.rs
+index dd10ed8..da598c0 100644
+--- a/apps/photocraft-web/src/web.rs
++++ b/apps/photocraft-web/src/web.rs
+@@ -384,6 +384,7 @@ impl eframe::App for WebShell {
+         if let Some(product) = waitlist {
+             call_page("sgpsOpenWaitlist", Some(&product));
+         }
++        self.horix_one(ctx);
+         self.app.logic(ctx, frame);
+         self.save_presets(ctx);
+     }
+@@ -417,6 +418,64 @@ impl eframe::App for WebShell {
+     }
+ }
+ 
++type Reply = (js_sys::Function, js_sys::Function);
++
++thread_local! {
++    /// HORIX One: commands from the page ([`horix_command`]), run on the next frame.
++    static COMMANDS: std::cell::RefCell<Vec<(String, String, Reply)>> = const { std::cell::RefCell::new(Vec::new()) };
++    /// HORIX One: files the page opens ([`horix_open`]).
++    static OPENS: std::cell::RefCell<Vec<(String, Vec<u8>)>> = const { std::cell::RefCell::new(Vec::new()) };
++    static CTX: std::cell::RefCell<Option<egui::Context>> = const { std::cell::RefCell::new(None) };
++}
++
++fn wake() {
++    CTX.with(|c| c.borrow().as_ref().map(|c| c.request_repaint()));
++}
++
++/// HORIX One: run a command by id from the page, as the menus do (`await
++/// wasmBindings.horix_command("file.export.quickExportAsPng", "{}")`); resolves to the result as
++/// JSON text or rejects with the error. With
++/// `window.horixOneCapture(name, bytes)` defined, files the command writes go to it instead of
++/// downloading, so HORIX One hands them to another persona.
++#[wasm_bindgen::prelude::wasm_bindgen]
++pub fn horix_command(id: String, params: String) -> js_sys::Promise {
++    js_sys::Promise::new(&mut |resolve, reject| {
++        COMMANDS.with(|q| q.borrow_mut().push((id.clone(), params.clone(), (resolve, reject))));
++        wake();
++    })
++}
++
++/// HORIX One: open a file as a document, as if it were dropped on the window.
++#[wasm_bindgen::prelude::wasm_bindgen]
++pub fn horix_open(name: String, bytes: Vec<u8>) {
++    OPENS.with(|q| q.borrow_mut().push((name, bytes)));
++    wake();
++}
++
++impl WebShell {
++    /// HORIX One's requests (see [`horix_command`] and [`horix_open`]).
++    fn horix_one(&mut self, ctx: &egui::Context) {
++        CTX.with(|c| {
++            if c.borrow().is_none() {
++                *c.borrow_mut() = Some(ctx.clone());
++            }
++        });
++        let opens = OPENS.with(|q| std::mem::take(&mut *q.borrow_mut()));
++        if !opens.is_empty() {
++            self.inbox.lock().unwrap_or_else(|e| e.into_inner()).extend(opens);
++            ctx.request_repaint();
++        }
++        for (id, params, (resolve, reject)) in COMMANDS.with(|q| std::mem::take(&mut *q.borrow_mut())) {
++            let params: serde_json::Value = serde_json::from_str(&params).unwrap_or(serde_json::json!({}));
++            // As the menus run it: UI commands too (Quick Export as PNG writes through the page).
++            let _ = match photocraft_ui_egui::menus::invoke(&mut self.app, ctx, &id, params) {
++                Ok(v) => resolve.call1(&wasm_bindgen::JsValue::NULL, &v.to_string().into()),
++                Err(e) => reject.call1(&wasm_bindgen::JsValue::NULL, &e.into()),
++            };
++        }
++    }
++}
++
+ fn services(inbox: Inbox, place_inbox: Inbox, cursor_pos: photocraft_ui_egui::CursorPosFn) -> Services {
+     Services {
+         screen_pick: screen_color_service(),
+@@ -556,6 +615,13 @@ fn download(path: &str, bytes: &[u8]) -> Result<(), String> {
+     let js = |e: wasm_bindgen::JsValue| format!("{e:?}");
+     let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "photocraft".into());
+     let window = web_sys::window().ok_or("no window")?;
++    // HORIX One takes the file for another persona instead of downloading it.
++    if let Ok(capture) = js_sys::Reflect::get(&window, &"horixOneCapture".into())
++        && let Some(capture) = capture.dyn_ref::<js_sys::Function>()
++    {
++        capture.call2(&window, &name.as_str().into(), &js_sys::Uint8Array::from(bytes)).map_err(js)?;
++        return Ok(());
++    }
+     let document = window.document().ok_or("no document")?;
+     let parts = js_sys::Array::of1(&js_sys::Uint8Array::from(bytes));
+     let opts = web_sys::BlobPropertyBag::new();
