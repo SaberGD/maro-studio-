@@ -143,6 +143,7 @@ def main() -> None:
     icons = hx.replace_icons(root, HERE / "assets/app-icon", "assets/app-icon")
     hx.check_no_upstream_brand(root, CODE + [WEB], allowed=["apps/lightcraft/src/editors.rs"])
     # HORIX AI masks in the browser (patches/50-horix-ai.diff: Object, Subject, Background).
+    hx.install_home(root, HERE, (HERE / "VERSION").read_text(encoding="utf-8").strip())
     hx.apply_patches(root, HERE / "patches")
     print(f"rebrand: done ({n} name replacements, {icons} icons, {dropped} old-link translations dropped)")
 

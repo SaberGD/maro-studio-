@@ -1,0 +1,96 @@
+diff --git a/crates/ui-egui/src/chrome.rs b/crates/ui-egui/src/chrome.rs
+index 7135a5e..bf4c18b 100644
+--- a/crates/ui-egui/src/chrome.rs
++++ b/crates/ui-egui/src/chrome.rs
+@@ -251,8 +251,8 @@ pub fn app_bar(app: &mut DesignApp, ui: &mut egui::Ui) {
+                 // (Drag-scrolling is touch-only by default, so a mouse drag on the bar moves the window.)
+                 egui::ScrollArea::horizontal().id_salt("app_bar_scroll").auto_shrink([false, false]).show(ui, |ui| {
+                     ui.horizontal_centered(|ui| {
+-                        if icons::button(ui, "home", home, app.session.active().is_none(), crate::i18n::tr(&app.ui.language, "Home")).clicked() {
+-                            app.session_home();
++                        if icons::button(ui, "home", home, crate::horix_app_home::showing(app), crate::i18n::tr(&app.ui.language, "Home")).clicked() {
++                            crate::horix_app_home::toggle(app);
+                         }
+                         ui.add_space(6.0);
+                         if !app.native_menu {
+@@ -439,6 +439,7 @@ pub(crate) fn resize_borders(app: &mut DesignApp, ui: &mut egui::Ui) {
+ }
+ 
+ impl DesignApp {
++    #[allow(dead_code)] // The Home button toggles HORIX Home now.
+     fn session_home(&mut self) {
+         self.ui.status = crate::i18n::tr(&self.ui.language, "Home").into();
+     }
+@@ -841,6 +842,7 @@ pub fn status_bar(app: &mut DesignApp, ui: &mut egui::Ui) {
+     ui.painter().line_segment([r.left_top(), r.right_top()], Stroke::new(1.0, t.border));
+ }
+ 
++#[allow(dead_code)] // HORIX Home replaced it (horix_app_home.rs); its tests still use it.
+ pub fn start_screen(app: &mut DesignApp, ui: &mut egui::Ui) {
+     let t = Tokens::get(ui.ctx());
+     let r = ui.available_rect_before_wrap();
+@@ -1030,7 +1032,7 @@ fn recent_file_stat_at(ctx: &egui::Context, path: &str, now: f64) -> RecentStat
+ }
+ 
+ /// The texture of a recent file's saved first-page picture, decoded once per file version.
+-fn recent_preview_texture(ctx: &egui::Context, path: &str, modified: Option<std::time::SystemTime>) -> Option<egui::TextureHandle> {
++pub(crate) fn recent_preview_texture(ctx: &egui::Context, path: &str, modified: Option<std::time::SystemTime>) -> Option<egui::TextureHandle> {
+     type Cached = (Option<std::time::SystemTime>, Option<egui::TextureHandle>);
+     let key = egui::Id::new(("recent_preview", path));
+     if let Some((m, tex)) = ctx.data(|d| d.get_temp::<Cached>(key))
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index c247dd9..2e2a59f 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -6,6 +6,9 @@
+ #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+ #![forbid(unsafe_code)]
+ 
++/// HORIX Home (shared by the HORIX family) and Horix Layout's use of it.
++pub mod horix_app_home;
++pub mod horix_home;
+ pub mod about;
+ pub mod canvas;
+ pub mod chrome;
+@@ -1488,28 +1491,36 @@ impl DesignApp {
+         if dbg {
+             eprintln!("root start {:?}", ui.available_rect_before_wrap());
+         }
++        // HORIX Home covers everything below the app bar, as Photoshop's does.
++        let home = !presenting && horix_app_home::showing(self);
+         if !presenting {
+             chrome::app_bar(self, ui);
+             if dbg {
+                 eprintln!("after app bar {:?}", ui.available_rect_before_wrap());
+             }
+-            if self.ui.control_bar && self.session.active().is_some() && self.ui.hidden_panels == 0 {
++            if self.ui.control_bar && self.session.active().is_some() && self.ui.hidden_panels == 0 && !home {
+                 chrome::control_bar(self, ui);
+             }
+-            chrome::status_bar(self, ui);
++            if !home {
++                chrome::status_bar(self, ui);
++            }
+             if dbg {
+                 eprintln!("after status {:?}", ui.available_rect_before_wrap());
+             }
+-            if self.ui.hidden_panels != 1 {
++            if self.ui.hidden_panels != 1 && !home {
+                 toolbar::show(self, ui);
+             }
+-            if self.ui.hidden_panels == 0 {
++            if self.ui.hidden_panels == 0 && !home {
+                 dock::show(self, ui);
+             }
+         }
+         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.pasteboard)).show(ui, |ui| {
++            if home {
++                horix_app_home::show(self, ui);
++                return;
++            }
+             if self.session.active().is_none() {
+-                chrome::start_screen(self, ui);
++                // The empty workspace (HORIX Home was left for it).
+                 return;
+             }
+             if !presenting {

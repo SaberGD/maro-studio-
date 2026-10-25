@@ -30,9 +30,11 @@ APP_NAME = "HORIX"
 SABER_SITE = "https://sabergroupacademy.com"
 APP_SITE = "https://horix.live"
 DOWNLOADS_PAGE = "https://horix.si/"
-FACEBOOK = "https://www.facebook.com/SABERGROUP.Courses/"
+FACEBOOK = "https://www.facebook.com/sabergroup.academy/"
+INSTAGRAM = "https://www.instagram.com/sabergroup.academy"
+TELEGRAM = "https://t.me/SABERGROUPEG"
 # WhatsApp with a ready message: "Hello, I am coming from HORIX and want to know about the courses and services".
-WHATSAPP = ("https://wa.me/201103221873?text=%D9%85%D8%B1%D8%AD%D8%A8%D9%8B%D8%A7%D8%8C%20%D8%AC%D8%A7%D9%8A%20%D9%85%D9%86%20"
+WHATSAPP = ("https://wa.me/201040784390?text=%D9%85%D8%B1%D8%AD%D8%A8%D9%8B%D8%A7%D8%8C%20%D8%AC%D8%A7%D9%8A%20%D9%85%D9%86%20"
             "HORIX%20%D9%88%D8%B9%D8%A7%D9%8A%D8%B2%20%D8%A3%D8%B9%D8%B1%D9%81%20%D8%B9%D9%86%20%D8%A7%D9%84%D9%83%D9%88%D8%B1%D8%B3%D8%A7%D8%AA%20"
             "%D9%88%D8%A7%D9%84%D8%AE%D8%AF%D9%85%D8%A7%D8%AA")
 HERE = Path(__file__).resolve().parent
@@ -1302,6 +1304,15 @@ def apply_patches(root: Path) -> None:
         print(f"rebrand: applied {diff.name}")
 
 
+def home(root: Path) -> None:
+    """HORIX Home, the start screen the HORIX family shares (apps/horix-common/home/); patches/
+    80-horix-home.diff shows it."""
+    sys.path.insert(0, str(HERE.parent / "horix-common"))
+    import horix_rebrand as hx
+
+    hx.install_home(root, HERE, (HERE / "VERSION").read_text(encoding="utf-8").strip())
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -1326,6 +1337,7 @@ def main() -> None:
     stability(root)
     version(root)
     exe_version(root)
+    home(root)
     apply_patches(root)
     check(root)
     print(f"rebrand: done ({n} name replacements)")

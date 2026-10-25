@@ -19,10 +19,12 @@ REPO = HERE.parent.parent
 
 SABER_SITE = "https://sabergroupacademy.com"
 DOWNLOADS_PAGE = "https://horix.si/"
-FACEBOOK = "https://www.facebook.com/SABERGROUP.Courses/"
+FACEBOOK = "https://www.facebook.com/sabergroup.academy/"
+INSTAGRAM = "https://www.instagram.com/sabergroup.academy"
+TELEGRAM = "https://t.me/SABERGROUPEG"
 # WhatsApp with a ready message ("Hello, I am coming from HORIX and want to know about the courses
 # and services"), as in HORIX.
-WHATSAPP = ("https://wa.me/201103221873?text=%D9%85%D8%B1%D8%AD%D8%A8%D9%8B%D8%A7%D8%8C%20%D8%AC%D8%A7%D9%8A%20%D9%85%D9%86%20"
+WHATSAPP = ("https://wa.me/201040784390?text=%D9%85%D8%B1%D8%AD%D8%A8%D9%8B%D8%A7%D8%8C%20%D8%AC%D8%A7%D9%8A%20%D9%85%D9%86%20"
             "HORIX%20%D9%88%D8%B9%D8%A7%D9%8A%D8%B2%20%D8%A3%D8%B9%D8%B1%D9%81%20%D8%B9%D9%86%20%D8%A7%D9%84%D9%83%D9%88%D8%B1%D8%B3%D8%A7%D8%AA%20"
             "%D9%88%D8%A7%D9%84%D8%AE%D8%AF%D9%85%D8%A7%D8%AA")
 
@@ -236,3 +238,19 @@ def apply_patches(root: Path, patches: Path) -> int:
         print(f"rebrand: applied {diff.name}")
         n += 1
     return n
+
+
+def install_home(root: Path, app_dir: Path, version: str, ui_src: str = "crates/ui-egui/src") -> None:
+    """HORIX Home, the start screen the HORIX family shares (home/horix_home.rs), and the app's use
+    of it (<app>/home/horix_app_home.rs, its version filled in, and its other files), into the app's UI crate. The app's
+    patches (patches/*-horix-home.diff) declare the modules and show the screen."""
+    dest = root / ui_src
+    if not dest.is_dir():
+        fail(f"{ui_src}: not found")
+    (dest / "horix_home.rs").write_bytes((HERE / "home/horix_home.rs").read_bytes())
+    glue = (app_dir / "home/horix_app_home.rs").read_text(encoding="utf-8")
+    (dest / "horix_app_home.rs").write_text(glue.replace("@HORIX_APP_VERSION@", version), encoding="utf-8")
+    # Anything else the glue includes (a logo), as is.
+    for extra in sorted((app_dir / "home").iterdir()):
+        if extra.is_file() and extra.name != "horix_app_home.rs":
+            (dest / extra.name).write_bytes(extra.read_bytes())

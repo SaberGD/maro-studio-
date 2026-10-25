@@ -30,7 +30,7 @@ APP_NAME = "Horix Layout"
 PRODUCT_LINE = "THE PAGE LAYOUT STUDIO"
 CODE = ["crates/**/*.rs", "apps/**/*.rs"]
 WEB = "apps/designcraft-web/index.html"
-FACEBOOK_SHORT = "facebook.com/SABERGROUP.Courses"
+FACEBOOK_SHORT = "facebook.com/sabergroup.academy"
 # The HORIX family on the About window: (web address, name, what it is). The descriptions are
 # upstream's own translated ones.
 FAMILY = [
@@ -258,8 +258,9 @@ def main() -> None:
     n = hx.rename(root, CODE + [WEB], "DesignCraft", APP_NAME)
     icons = hx.replace_icons(root, HERE / "assets/app-icon", "assets/app-icon")
     hx.check_no_upstream_brand(root, CODE + [WEB], allowed=[])
-    if (HERE / "patches").is_dir():
-        hx.apply_patches(root, HERE / "patches")
+    # HORIX Home, the start screen the family shares (patches/80-horix-home.diff shows it).
+    hx.install_home(root, HERE, (HERE / "VERSION").read_text(encoding="utf-8").strip())
+    hx.apply_patches(root, HERE / "patches")
     print(f"rebrand: done ({n} name replacements, {icons} icons)")
 
 

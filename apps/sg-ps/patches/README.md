@@ -14,6 +14,10 @@ Diffs here apply in name order after `rebrand.py`, against the rebranded 0.15.1 
   params)` runs a command as the menus do, `horix_open(name, bytes)` opens a file, and a file a
   command writes goes to `window.horixOneCapture(name, bytes)` when the page defines it, instead
   of downloading. HORIX on its own is unchanged.
+- `80-horix-home`: the HORIX family's shared Home (`../../horix-common/home/horix_home.rs`, copied
+  in by `rebrand.py` with `horix_app_home.rs`). It replaces the start card and covers the window
+  below the title bar, as Photoshop's Home does; Workspace (or Esc) leaves the empty canvas, and
+  the Home button (now in every workspace) brings it back.
 
 Dropped when moving from 0.9.0 to 0.15.1, because upstream now does them:
 - New Document › Color Profile (upstream 0.12, `new_doc_ui.rs`); keeping ours showed it twice.

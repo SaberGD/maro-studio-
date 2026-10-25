@@ -192,6 +192,9 @@ def main() -> None:
     n = hx.rename(root, CODE + [WEB], "VectorCraft", APP_NAME)
     icons = hx.replace_icons(root, HERE / "assets/app-icon", "assets/app-icon")
     hx.check_no_upstream_brand(root, CODE + [WEB], allowed=["crates/text/"])
+    # HORIX Home, the start screen the family shares (patches/80-horix-home.diff shows it).
+    hx.install_home(root, HERE, (HERE / "VERSION").read_text(encoding="utf-8").strip())
+    hx.apply_patches(root, HERE / "patches")
     print(f"rebrand: done ({n} name replacements, {icons} icons, {dropped} old-link translations dropped)")
 
 

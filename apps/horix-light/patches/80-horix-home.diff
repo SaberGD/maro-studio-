@@ -1,0 +1,51 @@
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 74eb6ae..4877f7f 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -7,6 +7,9 @@
+ #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+ 
+ pub mod album_picker;
++/// HORIX Home (shared by the HORIX family) and Horix Light's use of it.
++pub mod horix_app_home;
++pub mod horix_home;
+ pub mod brush_live;
+ pub mod button;
+ pub mod canvas_keys;
+@@ -1472,11 +1475,16 @@ impl LightcraftApp {
+         // Order matters: earlier panels take the full edge (top bar spans the window; the tool strip,
+         // right panels and left panel run to the bottom; the bottom bar sits between them).
+         panels::topbar::show(self, ui);
+-        panels::library_problem::banner(self, ui);
+-        panels::strip::show(self, ui);
+-        // filled: the gaps the dock leaves between its panes show chrome, not the dark clear colour
+         let chrome = theme::Tokens::get(&ctx).chrome;
+-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(chrome)).show(ui, |ui| docking::show(self, ui));
++        if horix_app_home::showing() {
++            // HORIX Home covers everything below the top bar, as Photoshop's does.
++            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(chrome)).show(ui, |ui| horix_app_home::show(self, ui));
++        } else {
++            panels::library_problem::banner(self, ui);
++            panels::strip::show(self, ui);
++            // filled: the gaps the dock leaves between its panes show chrome, not the dark clear colour
++            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(chrome)).show(ui, |ui| docking::show(self, ui));
++        }
+         self.lights_out(&ctx);
+         panels::second::show(self, &ctx);
+         panels::notices::show(self, &ctx);
+diff --git a/crates/ui-egui/src/panels/topbar.rs b/crates/ui-egui/src/panels/topbar.rs
+index fef5742..1411144 100644
+--- a/crates/ui-egui/src/panels/topbar.rs
++++ b/crates/ui-egui/src/panels/topbar.rs
+@@ -79,6 +79,11 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
+             }
+             ui.horizontal_centered(|ui| {
+                 ui.spacing_mut().item_spacing.x = 4.0;
++                // HORIX Home (horix_app_home.rs).
++                if ui.add(egui::Button::new(crate::i18n::tr("Home")).selected(crate::horix_app_home::showing())).clicked() {
++                    crate::horix_app_home::toggle();
++                }
++                ui.add_space(4.0);
+                 if icon_button(ui, "sidebar", Icon::Sidebar, vec2(30.0, 30.0), app.ui.left_panel, true, crate::i18n::tr("Show/hide My Photos panel"))
+                     .clicked()
+                 {
