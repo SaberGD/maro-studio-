@@ -86,7 +86,7 @@ case "$OS" in
     mkdir -p "$PKG"
     cp "$TARGET_DIR/$T/release/photocraft.exe" "$PKG/$ID.exe"
     cp "$VECTOR/packaging/windows/portable.txt" "$PKG/portable.txt"
-    printf 'HORIX One %s by Saber Group Academy\r\n\r\nRun horix-one.exe: Vector (Horix Vectors) and Pixel (HORIX) in one window; the bar at the top\r\nswitches between them and opens your work in the other one. It is portable: its settings stay\r\nin the HORIX-Data and VectorCraftData folders beside it.\r\n\r\nhttps://one.horix.live/ is HORIX One in the browser.\r\n' "$VERSION" > "$PKG/README.txt"
+    printf 'HORIX One %s by Saber Group Academy\r\n\r\nRun horix-one.exe: Vector (Horix Vectors), Pixel (HORIX) and Layout (Horix Layout) in one window;\r\nthe bar at the top switches between them and takes your work from one to another. It is portable:\r\nVector's and Pixel's settings stay in the HORIX-Data and VectorCraftData folders beside it.\r\n\r\nhttps://one.horix.live/ is HORIX One in the browser.\r\n' "$VERSION" > "$PKG/README.txt"
     # HORIX AI selection: the runtime beside the exe, the models (MobileSAM, IS-Net) in models/.
     "$PY" -I "$REPO/apps/sg-ps/ai/fetch.py" "$PKG" windows
     "$PY" -I "$REPO/apps/sg-ps/ai/fetch.py" "$PKG/models" models
