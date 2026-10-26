@@ -1,0 +1,48 @@
+diff --git a/crates/ui-egui/src/panels/swatches.rs b/crates/ui-egui/src/panels/swatches.rs
+--- a/crates/ui-egui/src/panels/swatches.rs
++++ b/crates/ui-egui/src/panels/swatches.rs
+@@ -471,6 +471,33 @@
+             let _ = app.run("swatch.addToSwatches", json!({"swatch": name, "target": target}));
+         }
+     });
++    horix_chords(app, ui, c.to_rgb(), target, text, &doc);
++}
++
++/// HORIX Colour Chords (Affinity's, crate::horix_chords) under the Color panel, from the colour
++/// shown: a click on a colour applies it as the ramp does, Add to Swatches makes the chord's colours
++/// swatches in a colour group of their own.
++fn horix_chords(app: &mut DesignApp, ui: &mut egui::Ui, base: [f32; 3], target: &str, text: bool, doc: &designcraft_doc::Document) {
++    ui.add_space(10.0);
++    ui.separator();
++    match crate::horix_chords::section(ui, "layout", base, true) {
++        Some(crate::horix_chords::ChordAction::Use(c)) => {
++            let _ = app.run("object.color", json!({"color": {"model": "rgb", "r": c[0], "g": c[1], "b": c[2]}, "target": target, "text": text}));
++        }
++        Some(crate::horix_chords::ChordAction::AddToSwatches { group, colors }) => {
++            let names: Vec<String> = colors
++                .iter()
++                .filter_map(|c| app.run("swatch.create", json!({"color": crate::horix_chords::hex(*c)})).ok())
++                .filter_map(|r| r["name"].as_str().map(str::to_string))
++                .collect();
++            let taken = |n: &str| doc.color_groups.iter().any(|g| g.name == n);
++            let name = (1..).map(|i| if i == 1 { group.clone() } else { format!("{group} {i}") }).find(|n| !taken(n)).unwrap_or(group);
++            if !names.is_empty() {
++                let _ = app.run("swatch.newColorGroup", json!({"name": name, "swatches": names}));
++            }
++        }
++        None => {}
++    }
+ }
+ 
+ /// The Color Picker's fields for `color` (`None`: black): its values in its own model, so OK
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -8,6 +8,7 @@
+ 
+ /// HORIX Home (shared by the HORIX family) and Horix Layout's use of it.
+ pub mod horix_app_home;
++pub mod horix_chords;
+ pub mod horix_home;
+ pub mod about;
+ pub mod canvas;

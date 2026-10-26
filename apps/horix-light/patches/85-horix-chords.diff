@@ -1,0 +1,44 @@
+diff --git a/crates/ui-egui/src/panels/edit.rs b/crates/ui-egui/src/panels/edit.rs
+--- a/crates/ui-egui/src/panels/edit.rs
++++ b/crates/ui-egui/src/panels/edit.rs
+@@ -1506,6 +1506,29 @@
+     for c in ["grading.blending", "grading.balance"] {
+         control(app, ui, d, c, true);
+     }
++    horix_chords(app, ui, d);
++}
++
++/// HORIX Colour Chords (Affinity's, crate::horix_chords) under Color Grading: hues that go together,
++/// from the highlights' hue (else the midtones', the shadows'), set on the wheels in one step. A
++/// wheel without saturation gets a gentle 25 so its new hue shows.
++fn horix_chords(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &DevelopSettings) {
++    let g = &d.grading;
++    let wheels = [g.shadows, g.midtones, g.highlights];
++    let base = [g.highlights, g.midtones, g.shadows].into_iter().find(|w| w.sat > 0.0).map_or(30.0, |w| w.hue as f32);
++    egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 8, bottom: 6 }).show(ui, |ui| {
++        if let Some(hues) = crate::horix_chords::grading_section(ui, "light", base) {
++            let mut values = serde_json::Map::new();
++            for (i, hue) in hues {
++                let key = GRADING_WHEELS[i].0;
++                values.insert(format!("grading.{key}.hue"), json!(hue.round()));
++                if wheels[i].sat <= 0.0 {
++                    values.insert(format!("grading.{key}.sat"), json!(25));
++                }
++            }
++            let _ = app.run("develop.set", json!({"values": values}));
++        }
++    });
+ }
+ 
+ /// One colour grading wheel (`i` into [`GRADING_WHEELS`]) centred on `c`: drag to pick hue and
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -9,6 +9,7 @@
+ pub mod album_picker;
+ /// HORIX Home (shared by the HORIX family) and Horix Light's use of it.
+ pub mod horix_app_home;
++pub mod horix_chords;
+ pub mod horix_home;
+ pub mod brush_live;
+ pub mod button;
