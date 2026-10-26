@@ -129,7 +129,8 @@
         if (oneBar) oneBar.style.width = '0';
         coverTimer = setInterval(function () {
           var doc; try { doc = frames[name].contentDocument; } catch (e) { return; }
-          if (!doc || !doc.body) return;
+          // Until the persona's page arrives the frame holds a blank, already "complete" document.
+          if (!doc || !doc.body || doc.URL.indexOf('/' + PERSONAS[name]) < 0) return;
           var box = doc.getElementById(LOADING_IDS[name]);
           if (box) {
             var w = doc.getElementById('hx_wipe'), m = w && w.ownerSVGElement;
@@ -140,7 +141,8 @@
             else if (p > 0) oneStatus.innerHTML = 'بنحمّل <bdi>HORIX One</bdi>… <bdi>' + Math.floor(p * 100) + '%</bdi>';
             return;
           }
-          if (doc.readyState !== 'complete') return;
+          // Running: the app took its loading screen away (and its canvas is there).
+          if (doc.readyState !== 'complete' || !doc.querySelector('canvas')) return;
           // The persona started: the eye opens and the screen fades into it.
           clearInterval(coverTimer); ready[name] = true;
           if (oneWipe && oneMark) oneWipe.setAttribute('width', String(Number(oneMark.getAttribute('data-w')) + 2));
