@@ -248,6 +248,8 @@ def install_home(root: Path, app_dir: Path, version: str, ui_src: str = "crates/
     if not dest.is_dir():
         fail(f"{ui_src}: not found")
     (dest / "horix_home.rs").write_bytes((HERE / "home/horix_home.rs").read_bytes())
+    # Colour Chords (Affinity's), which every app's colour panel shows (patches/*-horix-chords.diff).
+    (dest / "horix_chords.rs").write_bytes((HERE / "home/horix_chords.rs").read_bytes())
     # Its icons and faces (home/make_assets.py), beside it.
     assets = dest / "horix_home_assets"
     assets.mkdir(exist_ok=True)

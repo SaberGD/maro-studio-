@@ -1,0 +1,54 @@
+diff --git a/crates/ui-egui/src/swatches_ui.rs b/crates/ui-egui/src/swatches_ui.rs
+--- a/crates/ui-egui/src/swatches_ui.rs
++++ b/crates/ui-egui/src/swatches_ui.rs
+@@ -59,8 +59,39 @@
+     }
+ }
+ 
++/// HORIX Colour Chords (Affinity's, crate::horix_chords) at the top of the Swatches panel, from
++/// the foreground: a click on a colour makes it the foreground, Add to Swatches saves the chord as
++/// a group of its own.
++fn horix_chords(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
++    let fg = app.session.tools.foreground;
++    match crate::horix_chords::section(ui, "horix", [fg[0], fg[1], fg[2]], true) {
++        Some(crate::horix_chords::ChordAction::Use(c)) => {
++            app.session.tools.foreground = [c[0], c[1], c[2], 1.0];
++            crate::type_tool::foreground_changed(app);
++            crate::shape_fill_ui::foreground_changed(app, None);
++        }
++        Some(crate::horix_chords::ChordAction::AddToSwatches { group, colors }) => {
++            let mut added = 0;
++            for (i, c) in colors.iter().enumerate() {
++                let p = json!({"color": crate::horix_chords::hex(*c), "group": group, "name": format!("{group} {}", i + 1)});
++                if run(app, "swatches.add", p).is_some() {
++                    added += 1;
++                }
++            }
++            if added > 0 {
++                app.ui.status_error = false;
++                app.ui.status = format!("Added {added} swatches to \"{group}\"");
++            }
++        }
++        None => {}
++    }
++    ui.add_space(6.0);
++    ui.separator();
++}
++
+ /// The Swatches panel body.
+ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
++    horix_chords(app, ui);
+     let lib = &app.session.presets.swatches;
+     let groups: Vec<GroupView> = lib
+         .iter()
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -17,6 +17,7 @@
+ pub mod actions;
+ /// HORIX Home (shared by the HORIX family) and HORIX's use of it.
+ pub mod horix_app_home;
++pub mod horix_chords;
+ pub mod horix_home;
+ pub mod ai_segment;
+ pub mod adjust_dialog;

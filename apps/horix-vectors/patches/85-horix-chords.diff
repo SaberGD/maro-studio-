@@ -1,0 +1,41 @@
+diff --git a/crates/ui-egui/src/panels/color.rs b/crates/ui-egui/src/panels/color.rs
+--- a/crates/ui-egui/src/panels/color.rs
++++ b/crates/ui-egui/src/panels/color.rs
+@@ -696,6 +696,26 @@
+         set_pstate(ui.ctx(), "color-comps", Some((key, comps2)));
+         apply(app, &tgt, c, phase, false);
+     }
++    horix_chords(app, ui, &tgt, color);
++}
++
++/// HORIX Colour Chords (Affinity's, crate::horix_chords) under the panel, from the active colour: a
++/// click on a colour applies it as the panel does, Add to Swatches saves the chord as a swatch
++/// group of the document (one undo step).
++fn horix_chords(app: &mut VectorcraftApp, ui: &mut Ui, tgt: &Target, color: Option<Color>) {
++    let Some(base) = color else { return };
++    ui.add_space(10.0);
++    ui.separator();
++    match crate::horix_chords::section(ui, "vectors", base.to_rgb(), app.session.active().is_some()) {
++        Some(crate::horix_chords::ChordAction::Use(c)) => apply(app, tgt, Color::rgb(c[0], c[1], c[2]), Live::Released, false),
++        Some(crate::horix_chords::ChordAction::AddToSwatches { group, colors }) => {
++            let colors: Vec<String> = colors.into_iter().map(crate::horix_chords::hex).collect();
++            if let Err(e) = app.run("swatch.newGroup", json!({"name": group, "colors": colors})) {
++                app.ui.status = e.to_string();
++            }
++        }
++        None => {}
++    }
+ }
+ 
+ pub fn menu(app: &mut VectorcraftApp, ui: &mut Ui) {
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -16,6 +16,7 @@
+ pub mod background;
+ /// HORIX Home (shared by the HORIX family) and Horix Vectors' use of it.
+ pub mod horix_app_home;
++pub mod horix_chords;
+ pub mod horix_home;
+ mod brand;
+ pub mod canvas;
