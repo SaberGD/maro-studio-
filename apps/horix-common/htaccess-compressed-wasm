@@ -25,3 +25,12 @@
   </FilesMatch>
 </IfModule>
 # <<< compressed-wasm
+
+# Each update keeps some file names (lightcraft_web_bg.wasm, its .js, index.html), so browsers ask
+# the server every time instead of keeping an old copy (304 when the file is unchanged: nothing is
+# downloaded again). Outside the block above, so it stays when that block is removed.
+<IfModule mod_headers.c>
+  <FilesMatch "(\.(wasm|br|gz|js|html|json|onnx)|^)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

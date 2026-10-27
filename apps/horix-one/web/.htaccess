@@ -17,7 +17,7 @@ AddType font/woff2 .woff2
 
 # The page's name never changes between versions: browsers ask every time (304 when unchanged).
 <IfModule mod_headers.c>
-  <FilesMatch "(\.(html|svg)|^)$">
+  <FilesMatch "(\.(html|svg|js|json)|^)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
   Header always set X-Content-Type-Options "nosniff"
