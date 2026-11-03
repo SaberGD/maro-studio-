@@ -3,9 +3,10 @@
 #   Vectors under vector/, Horix Layout under layout/) and, on the default branch, publishes it to https://one.horix.live/
 #   (Hostinger, the HOSTINGER_API_TOKEN secret; the subdomain is created on the first deploy).
 # - desktop: HORIX One for Windows (portable zip) and macOS (DMG), native: HORIX, Horix Vectors
-#   and Horix Layout in one app (apps/horix-one/native), on every run, so a change that breaks either build shows on
-#   its pull request.
-# - release: on the default branch when apps/horix-one/VERSION changes (or by hand), a GitHub
+#   and Horix Layout in one app (apps/horix-one/native), on the default branch and by hand (not on
+#   working branches, to save the Actions minutes).
+# - release: on the default branch when the VERSION of HORIX One, HORIX, Horix Vectors or Horix
+#   Layout changes (or by hand), a GitHub
 #   release horix-one-v<v> with SHA256SUMS.txt, which HORIX Launcher installs and updates from;
 #   then the launcher feed and the Mac downloads on horix.si are refreshed.
 name: HORIX One
@@ -59,7 +60,9 @@ jobs:
           if [ "${{ github.ref_name }}" = "${{ github.event.repository.default_branch }}" ]; then
             if [ "${{ github.event_name }}" = workflow_dispatch ]; then
               [ "${{ inputs.release }}" = true ] && release=true
-            elif ! git diff --quiet HEAD~1 HEAD -- apps/horix-one/VERSION 2>/dev/null; then
+            # HORIX One is HORIX, Horix Vectors and Horix Layout from the same sources and patches:
+            # a new version of any of them is a new HORIX One, without bumping it here too.
+            elif ! git diff --quiet HEAD~1 HEAD -- apps/horix-one/VERSION apps/sg-ps/VERSION apps/horix-vectors/VERSION apps/horix-layout/VERSION 2>/dev/null; then
               release=true
             fi
           fi
@@ -129,7 +132,9 @@ jobs:
 
   desktop:
     # Native: HORIX (Pixel), Horix Vectors (Vector) and Horix Layout (Layout) built into one app
-    # (apps/horix-one/native).
+    # (apps/horix-one/native). On the default branch and by hand only: the Windows and (above all)
+    # macOS runners use up the Actions minutes, so a working branch builds the web site only.
+    if: github.ref_name == github.event.repository.default_branch || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
