@@ -1,0 +1,299 @@
+diff --git a/apps/photocraft-web/Cargo.toml b/apps/photocraft-web/Cargo.toml
+index 811c926..1558d91 100644
+--- a/apps/photocraft-web/Cargo.toml
++++ b/apps/photocraft-web/Cargo.toml
+@@ -36,7 +36,7 @@ wasm-bindgen = "0.2"
+ serde_json = { workspace = true }
+ wasm-bindgen-futures = "0.4"
+ js-sys = "0.3"
+-web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "DomRect", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url", "Location", "CssStyleDeclaration", "Storage", "Event", "EventTarget", "MouseEvent", "PointerEvent", "BeforeUnloadEvent", "AbortController", "AbortSignal", "DomException", "Response", "IdbFactory", "IdbOpenDbRequest", "IdbDatabase", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbObjectStore", "IdbCursor", "IdbCursorWithValue", "RequestInit", "RequestMode", "Navigator"] }
++web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "DomRect", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url", "Location", "CssStyleDeclaration", "Storage", "Event", "EventTarget", "MouseEvent", "PointerEvent", "BeforeUnloadEvent", "AbortController", "AbortSignal", "DomException", "Response", "IdbFactory", "IdbOpenDbRequest", "IdbDatabase", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbObjectStore", "IdbCursor", "IdbCursorWithValue", "RequestInit", "RequestMode", "Navigator", "ClipboardEvent", "DataTransfer"] }
+ 
+ [dev-dependencies]
+ serde_json = { workspace = true }
+diff --git a/apps/photocraft-web/src/web.rs b/apps/photocraft-web/src/web.rs
+index 885a15a..c95a279 100644
+--- a/apps/photocraft-web/src/web.rs
++++ b/apps/photocraft-web/src/web.rs
+@@ -444,6 +444,8 @@ thread_local! {
+     /// HORIX One: files the page opens ([`horix_open`]).
+     static OPENS: std::cell::RefCell<Vec<(String, Vec<u8>)>> = const { std::cell::RefCell::new(Vec::new()) };
+     static CTX: std::cell::RefCell<Option<egui::Context>> = const { std::cell::RefCell::new(None) };
++    /// HORIX: vector art pasted into the page ([`horix_paste_svg`], [`listen_for_svg_pastes`]).
++    static PASTES: std::cell::RefCell<Vec<Vec<u8>>> = const { std::cell::RefCell::new(Vec::new()) };
+ }
+ 
+ fn wake() {
+@@ -470,14 +472,51 @@ pub fn horix_open(name: String, bytes: Vec<u8>) {
+     wake();
+ }
+ 
++/// HORIX: paste vector art (SVG markup), asking how as Photoshop does: Smart Object, Pixels, Path
++/// or Shape Layer (`photocraft_ui_egui::horix_paste_as`).
++#[wasm_bindgen::prelude::wasm_bindgen]
++pub fn horix_paste_svg(svg: String) {
++    PASTES.with(|q| q.borrow_mut().push(svg.into_bytes()));
++    wake();
++}
++
++/// HORIX: a paste whose text is SVG markup (art copied in Horix Vectors, HORIX One's Vector
++/// persona, or Illustrator) goes to the Paste As prompt; egui would take it as text and drop it.
++fn listen_for_svg_pastes() {
++    let Some(window) = web_sys::window() else { return };
++    let on_paste = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::ClipboardEvent)>::new(move |e: web_sys::ClipboardEvent| {
++        let Some(text) = e.clipboard_data().and_then(|d| d.get_data("text/plain").ok()) else { return };
++        if !photocraft_ui_egui::horix_paste_as::is_svg(text.as_bytes()) {
++            return;
++        }
++        // A text field being typed in keeps its paste.
++        if photocraft_ui_egui::horix_paste_as::typing() {
++            return;
++        }
++        e.prevent_default();
++        e.stop_propagation();
++        horix_paste_svg(text);
++    });
++    // Captured before eframe's own listener.
++    if window.add_event_listener_with_callback_and_bool("paste", on_paste.as_ref().unchecked_ref(), true).is_ok() {
++        on_paste.forget();
++    }
++}
++
+ impl WebShell {
+     /// HORIX One's requests (see [`horix_command`] and [`horix_open`]).
+     fn horix_one(&mut self, ctx: &egui::Context) {
+         CTX.with(|c| {
+             if c.borrow().is_none() {
+                 *c.borrow_mut() = Some(ctx.clone());
++                listen_for_svg_pastes();
+             }
+         });
++        photocraft_ui_egui::horix_paste_as::set_typing(ctx.egui_wants_keyboard_input());
++        for svg in PASTES.with(|q| std::mem::take(&mut *q.borrow_mut())) {
++            photocraft_ui_egui::horix_paste_as::open(&mut self.app, svg);
++            ctx.request_repaint();
++        }
+         let opens = OPENS.with(|q| std::mem::take(&mut *q.borrow_mut()));
+         if !opens.is_empty() {
+             self.inbox.lock().unwrap_or_else(|e| e.into_inner()).extend(opens);
+diff --git a/crates/ui-egui/src/app/commands.rs b/crates/ui-egui/src/app/commands.rs
+index 507926e..23aad53 100644
+--- a/crates/ui-egui/src/app/commands.rs
++++ b/crates/ui-egui/src/app/commands.rs
+@@ -6,6 +6,10 @@ use super::{
+ impl PhotocraftApp {
+     /// Run an engine command, reporting errors in the status bar.
+     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
++        // HORIX: vector art on the clipboard asks how to paste it, as in Photoshop.
++        if let Some(result) = crate::horix_paste_as::intercept(self, id, &params) {
++            return result;
++        }
+         // HORIX: a group with layers in it asks what goes (before the trash confirmation).
+         if let Some(result) = crate::group_delete_prompt::intercept(self, id, &params) {
+             return result;
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index b073b1e..786a738 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -300,6 +300,7 @@ fn command_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, d: &Dialog, fields:
+         _ if crate::new_layer_ui::owns(fields) => crate::new_layer_ui::body(ui, fields),
+         _ if crate::mask_trash_prompt::owns(fields) => crate::mask_trash_prompt::body(ui, fields),
+         _ if crate::group_delete_prompt::owns(fields) => crate::group_delete_prompt::body(ui, fields),
++        _ if crate::horix_paste_as::owns(fields) => crate::horix_paste_as::body(ui, fields),
+         _ if crate::rasterize_prompt::owns(fields) => crate::rasterize_prompt::body(ui, fields),
+         _ if crate::duplicate_layer_ui::owns(fields) => crate::duplicate_layer_ui::body(app, ui, fields),
+         _ if crate::stack_dialog::owns(fields) => crate::stack_dialog::body(app, ui, fields, d.id),
+@@ -527,6 +528,8 @@ fn ok_label(d: &Dialog) -> &'static str {
+         tl!("Continue")
+     } else if crate::delete_layer_prompt::owns(&d.fields) {
+         tl!("Delete")
++    } else if crate::horix_paste_as::owns(&d.fields) {
++        tl!("Paste")
+     } else if crate::disk_change_prompt::owns(&d.fields) || crate::replace_prompt::owns(&d.fields) {
+         tl!("Replace")
+     } else if d.fields.contains_key("__export") {
+@@ -869,6 +872,7 @@ const ROUTES: &[fn(&Fields) -> bool] = &[
+     crate::new_group_ui::owns,
+     crate::mask_trash_prompt::owns,
+     crate::group_delete_prompt::owns,
++    crate::horix_paste_as::owns,
+     crate::rasterize_prompt::owns,
+     crate::duplicate_layer_ui::owns,
+     crate::stack_dialog::owns,
+@@ -1028,6 +1032,7 @@ fn confirm_command(app: &mut PhotocraftApp, d: Dialog) -> Result<Value, String>
+         _ if crate::new_layer_ui::owns(&d.fields) => crate::new_layer_ui::confirm(app, &d.fields),
+         _ if crate::mask_trash_prompt::owns(&d.fields) => crate::mask_trash_prompt::confirm(app, &d.fields),
+         _ if crate::group_delete_prompt::owns(&d.fields) => crate::group_delete_prompt::confirm(app, &d.fields),
++        _ if crate::horix_paste_as::owns(&d.fields) => crate::horix_paste_as::confirm(app, &d.fields),
+         _ if crate::rasterize_prompt::owns(&d.fields) => crate::rasterize_prompt::confirm(app, &d.fields),
+         _ if crate::duplicate_layer_ui::owns(&d.fields) => crate::duplicate_layer_ui::confirm(app, &d.fields),
+         _ if crate::stack_dialog::owns(&d.fields) => crate::stack_dialog::confirm(app, &d.fields),
+diff --git a/crates/ui-egui/src/horix_paste_as.rs b/crates/ui-egui/src/horix_paste_as.rs
+new file mode 100644
+index 0000000..46b63c0
+--- /dev/null
++++ b/crates/ui-egui/src/horix_paste_as.rs
+@@ -0,0 +1,150 @@
++//! HORIX: pasting vector art asks how to paste it, as Photoshop does for art copied in Illustrator
++//! ("Paste As: Smart Object, Pixels, Path, Shape Layer"). It comes up for a plain Edit › Paste
++//! (⌘V) when the system clipboard holds SVG markup: art copied in Horix Vectors (HORIX One's
++//! Vector persona among it), in Illustrator or in any app that copies SVG as text. On the web the
++//! page's paste event brings the SVG ([`open`]). Automation, Paste Special and the explicit
++//! `edit.paste {"as": …}` paste at once.
++//!
++//! The prompt is an ordinary dialog: `ui.dialog.set` with `"mode"` (`smart`, `pixels`, `path`,
++//! `shape`) then `ui.dialog.confirm` pastes, `ui.dialog.cancel` pastes nothing.
++
++use std::sync::{Arc, Mutex};
++
++use serde_json::{Map, Value, json};
++
++use crate::PhotocraftApp;
++use crate::state::DialogKind;
++
++const MARK: &str = "__horixPasteAs";
++/// The layer name of a pasted smart object, as in Photoshop.
++const SMART_NAME: &str = "Vector Smart Object.svg";
++
++/// The SVG the open prompt pastes (kept out of the dialog's fields, which are copied each frame).
++static PENDING: Mutex<Option<Arc<Vec<u8>>>> = Mutex::new(None);
++
++/// Whether a text field had the keyboard on the last frame (the web page's paste goes to it then).
++static TYPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++
++pub fn set_typing(on: bool) {
++    TYPING.store(on, std::sync::atomic::Ordering::Relaxed);
++}
++
++pub fn typing() -> bool {
++    TYPING.load(std::sync::atomic::Ordering::Relaxed)
++}
++
++pub fn owns(fields: &Map<String, Value>) -> bool {
++    fields.contains_key(MARK)
++}
++
++/// Whether `bytes` look like SVG markup (an XML preamble or comments may come first).
++pub fn is_svg(bytes: &[u8]) -> bool {
++    photocraft_io::svg::is_svg(bytes)
++}
++
++/// A plain `edit.paste` from the UI with SVG on the system clipboard: the prompt instead.
++pub fn intercept(app: &mut PhotocraftApp, command: &str, params: &Value) -> Option<Result<Value, String>> {
++    if app.automation_input || command != "edit.paste" {
++        return None;
++    }
++    // Only Edit › Paste itself: an explicit mode, a target or a placement pastes as asked.
++    if params.as_object().is_some_and(|p| p.keys().any(|k| k != "center")) {
++        return None;
++    }
++    app.session.active()?;
++    let get = app.services.clipboard_get_svg.as_mut()?;
++    let svg = get().ok().flatten().filter(|s| is_svg(s))?;
++    Some(Ok(open(app, svg)))
++}
++
++/// Ask how to paste `svg` (the web page calls this with a paste event's SVG text).
++pub fn open(app: &mut PhotocraftApp, svg: Vec<u8>) -> Value {
++    if app.session.active().is_none() {
++        // Nothing open to paste into: the art becomes a document of its own, as a drop does.
++        return match app.run("file.newFromClipboard", json!({})) {
++            Ok(v) => v,
++            Err(e) => json!({"error": e}),
++        };
++    }
++    *PENDING.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(svg));
++    if let Some(d) = app.ui.dialogs.iter().find(|d| owns(&d.fields)) {
++        return json!({"dialog": d.id, "pastePending": true});
++    }
++    let fields = json!({MARK: true, "__label": "Paste", "mode": "smart"});
++    let id = app.ui.open_dialog(DialogKind::Command, fields.as_object().cloned().unwrap_or_default());
++    json!({"dialog": id, "pastePending": true})
++}
++
++pub fn body(ui: &mut egui::Ui, fields: &mut Map<String, Value>) {
++    let mut mode = fields.get("mode").and_then(Value::as_str).unwrap_or("smart").to_string();
++    ui.label(egui::RichText::new(tl!("Paste As:")).strong());
++    ui.add_space(4.0);
++    for (value, label) in [("smart", tl!("Smart Object")), ("pixels", tl!("Pixels")), ("path", tl!("Path")), ("shape", tl!("Shape Layer"))] {
++        ui.radio_value(&mut mode, value.to_string(), label);
++    }
++    fields.insert("mode".into(), json!(mode));
++}
++
++/// Paste the pending SVG the chosen way.
++pub fn confirm(app: &mut PhotocraftApp, fields: &Map<String, Value>) -> Result<Value, String> {
++    let svg = PENDING.lock().unwrap_or_else(|e| e.into_inner()).take().ok_or(tl!("Nothing to paste"))?;
++    match fields.get("mode").and_then(Value::as_str).unwrap_or("smart") {
++        "smart" => {
++            let r = photocraft_engine::file_cmds::place_bytes(&mut app.session, SMART_NAME, svg.to_vec(), None, &json!({"smartObject": true}))
++                .map_err(|e| e.to_string());
++            app.sync_views();
++            r
++        }
++        mode @ ("pixels" | "path" | "shape") => {
++            // The engine's own Paste As, from this SVG (the clipboard may have changed since).
++            app.session.clipboard = Some(photocraft_engine::edit_cmds::Clip::from_svg(&svg).map_err(|e| e.to_string())?);
++            app.run_command("edit.paste", json!({"as": mode}))
++        }
++        other => Err(format!("unknown paste mode `{other}`")),
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    const SVG: &[u8] = br##"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="#ff0000"/></svg>"##;
++
++    fn app() -> PhotocraftApp {
++        let services = crate::Services { clipboard_get_svg: Some(Box::new(|| Ok(Some(SVG.to_vec())))), ..Default::default() };
++        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), services);
++        app.run("file.new", json!({"width": 8, "height": 8})).unwrap();
++        app
++    }
++
++    fn layers(app: &PhotocraftApp) -> usize {
++        app.session.active().unwrap().doc.layer_count()
++    }
++
++    #[test]
++    fn a_plain_paste_of_svg_asks_and_each_mode_pastes() {
++        for (mode, smart) in [("smart", true), ("pixels", false), ("shape", false)] {
++            let mut app = app();
++            let before = layers(&app);
++            let r = app.run("edit.paste", json!({})).unwrap();
++            let dialog = r["dialog"].as_u64().expect("the prompt opens");
++            assert_eq!(layers(&app), before, "nothing pasted before OK");
++            app.ui.dialog_mut(dialog).unwrap().fields.insert("mode".into(), json!(mode));
++            crate::dialogs::confirm(&mut app, dialog).unwrap();
++            assert_eq!(layers(&app), before + 1, "{mode} pasted one layer");
++            let st = app.session.active().unwrap();
++            let layer = st.doc.layer(st.active_layer.unwrap()).unwrap();
++            assert_eq!(matches!(layer.content, photocraft_doc::LayerContent::Smart(_)), smart, "{mode}");
++        }
++    }
++
++    #[test]
++    fn explicit_modes_and_automation_paste_at_once() {
++        let mut app = app();
++        let r = app.run("edit.paste", json!({"as": "pixels"})).unwrap();
++        assert!(r.get("dialog").is_none());
++        app.automation_input = true;
++        let r = app.run("edit.paste", json!({})).unwrap();
++        assert!(r.get("dialog").is_none());
++    }
++}
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index fe70216..17dd65f 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -40,6 +40,8 @@ pub mod frame_stages;
+ pub mod blur_handles;
+ pub mod gpu_status;
+ pub mod group_delete_prompt;
++/// HORIX: Paste As (Smart Object, Pixels, Path, Shape Layer) for vector art on the clipboard.
++pub mod horix_paste_as;
+ pub mod horix_ux;
+ pub mod i18n;
+ mod icon_data;

@@ -1,5 +1,5 @@
 diff --git a/apps/designcraft/Cargo.toml b/apps/designcraft/Cargo.toml
-index 7dc83bc..5768938 100644
+index 518c898..1768576 100644
 --- a/apps/designcraft/Cargo.toml
 +++ b/apps/designcraft/Cargo.toml
 @@ -10,6 +10,18 @@ default-run = "designcraft"
@@ -22,7 +22,7 @@ index 7dc83bc..5768938 100644
  designcraft-engine = { workspace = true }
  designcraft-ui-egui = { workspace = true }
 diff --git a/apps/designcraft/src/main.rs b/apps/designcraft/src/main.rs
-index de4f1f6..d79e916 100644
+index cd3d866..007978e 100644
 --- a/apps/designcraft/src/main.rs
 +++ b/apps/designcraft/src/main.rs
 @@ -11,6 +11,8 @@
@@ -34,7 +34,7 @@ index de4f1f6..d79e916 100644
  #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
  
  #[cfg(target_os = "macos")]
-@@ -48,6 +50,79 @@ struct App {
+@@ -47,6 +49,86 @@ struct App {
      log_errors_after_startup: Option<eframe::wgpu::Device>,
  }
  
@@ -97,11 +97,18 @@ index de4f1f6..d79e916 100644
 +    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
 +        self.app.logic(ctx);
 +    }
-+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
-+        self.app.raw_input_hook(raw);
++    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
++        self.app.raw_input_hook(ctx, raw);
 +    }
-+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
++    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
 +        self.app.ui(ui);
++        #[cfg(target_os = "macos")]
++        if self.app.take_ime_discard() {
++            discard_marked_text();
++        }
++        // After the frame, as the standalone app does: Open, Save and message boxes are shown
++        // from here (on macOS as sheets on HORIX's window).
++        self.app.show_file_dialogs(Some(&*frame));
 +    }
 +    fn on_exit(&mut self) {
 +        if let Err(e) = preserve_documents_on_exit(&mut self.app) {
@@ -114,14 +121,14 @@ index de4f1f6..d79e916 100644
  impl eframe::App for App {
      fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
          self.startup.enter();
-diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index 2e2a59f..a4d52c8 100644
---- a/crates/ui-egui/src/lib.rs
-+++ b/crates/ui-egui/src/lib.rs
-@@ -1102,6 +1102,14 @@ impl DesignApp {
+diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
+index ee32e0d..4d2da37 100644
+--- a/crates/ui-egui/src/app.rs
++++ b/crates/ui-egui/src/app.rs
+@@ -164,6 +164,14 @@ impl DesignApp {
+         }
      }
  
-     /// Per-frame logic before layout.
 +    /// HORIX One: its window shows another persona's interface too, with that persona's fonts and
 +    /// style. Before this one shows again, its fonts and style go back on the context (from the
 +    /// next frame, as on the first).
@@ -130,6 +137,6 @@ index 2e2a59f..a4d52c8 100644
 +        self.fonts_ready = false;
 +    }
 +
-     pub fn logic(&mut self, ctx: &egui::Context) {
-         if self.egui_ctx.is_none() {
-             self.egui_ctx = Some(ctx.clone());
+     /// Queue and deadline work, run once per app callback.
+     ///
+     /// `logic_tick` runs on every call (a first pass, a later discarded pass, or a hidden

@@ -33,6 +33,12 @@ re-made against the new layout; what each one does is unchanged unless said belo
 - `85-horix-chords`: Colour Chords at the top of Swatches and under the Color tab (every Color
   panel mode since 0.20's `color_panel_ui`), from the foreground colour; a short docked group
   shows a "Colour Chords →" button to the Swatches tab instead.
+- `90-horix-paste-as`: pasting vector art asks how, as Photoshop does for Illustrator art:
+  Smart Object (a "Vector Smart Object" layer), Pixels, Path or Shape Layer
+  (`horix_paste_as.rs`). It comes up for a plain Edit › Paste when the system clipboard holds SVG
+  markup (Horix Vectors, HORIX One's Vector persona and Illustrator copy art so); on the web the
+  page's paste event brings the SVG (`horix_paste_svg`). Pixels, Path and Shape are upstream's
+  own `edit.paste {"as": …}`.
 
 Dropped when moving from 0.15.1 to 0.20.1, because upstream now does them:
 - `60`: the `TextLayout::overflow` flag and the overset mark drawn while editing paragraph text:

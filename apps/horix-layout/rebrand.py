@@ -16,6 +16,7 @@ What it changes (UI only; licence files stay as the licences require):
   - HORIX colours: Horus Ink greys, Vision Amber for what is on, Horix Red for primary buttons;
     the darkest interface brightness is the default.
   - Web page: title, favicon, HORIX loading screen.
+  - No update check against upstream's releases: Check for Updates opens the HORIX downloads page.
 """
 
 import re
@@ -92,7 +93,8 @@ def links(root: Path) -> None:
         ("    let fill = if resp.hovered() { Color32::from_rgb(0x47, 0x52, 0xc4) } else { DISCORD };",
          "    let fill = if resp.hovered() { Color32::from_rgb(0xb0, 0x2e, 0x25) } else { DISCORD };"),
     ])
-    hx.edit(root, "crates/ui-egui/src/chrome.rs", [
+    # Upstream split chrome.rs (v0.17.0): the app bar is chrome/app_bar.rs.
+    hx.edit(root, "crates/ui-egui/src/chrome/app_bar.rs", [
         ('                            // Always one click away: the ArtCraft community Discord.\n'
          '                            if crate::about::discord_button(ui, "Discord", vec2(78.0, 22.0)) {',
          '                            // Always one click away: Saber Group Academy.\n'
@@ -125,29 +127,48 @@ ARABIC = [
     ("The HORIX family", "عائلة HORIX"),
 ]
 
+# Swedish (new in v0.17.0, whose tests require a Swedish entry for every menu label) for the
+# relabeled menu items and the other labels Arabic has.
+SWEDISH = [
+    ("Saber Group Academy on Facebook…", "Saber Group Academy på Facebook…"),
+    ("Follow us on Facebook", "Följ oss på Facebook"),
+    (f"{FACEBOOK_SHORT} — courses, help and news", f"{FACEBOOK_SHORT} — kurser, hjälp och nyheter"),
+    ("Saber Group Academy Website…", "Saber Group Academys webbplats…"),
+    ("Download the Desktop App…", "Ladda ned skrivbordsappen…"),
+    ("Download the Desktop App (Windows / Mac)…", "Ladda ned skrivbordsappen (Windows / Mac)…"),
+    ("Contact Us on WhatsApp…", "Kontakta oss på WhatsApp…"),
+    ("By Saber Group. Built on open-source software.", "Av Saber Group. Byggt på programvara med öppen källkod."),
+    ("The HORIX family", "HORIX-familjen"),
+]
+
 
 def translations(root: Path) -> None:
     """The labels this build replaced keep upstream's translations of the old wording (ArtCraft,
     Discord, GitHub, the app's website): the language catalogs drop those entries (the labels show
     the new English wording), the shared table keeps them with the English text in every column,
-    and Arabic gets its own wording of the new labels."""
-    new_keys = RELABELED | {k for k, _ in ARABIC}
+    and Arabic and Swedish get their own wording of the new labels."""
+    new_keys = RELABELED | {k for k, _ in ARABIC} | {k for k, _ in SWEDISH}
     stale = lambda key, text: key[1:-1] in new_keys or bool(TAINTED.search(text))
     pair = re.compile(rf"[ \t]*\(\s*({STR})\s*,\s*({STR})\s*,?\s*\),[ \t]*\n")
+    # The language catalogs (one file per language; the shared table and the tests sit beside
+    # them since v0.17.0).
     for path in sorted((root / "crates/ui-egui/src/i18n").glob("*.rs")):
+        if path.name in ("table.rs", "tests.rs"):
+            continue
         text = path.read_text(encoding="utf-8")
         text = pair.sub(lambda m: "" if stale(m.group(1), m.group(2)) else m.group(0), text)
         path.write_text(text, encoding="utf-8")
-    shared = root / "crates/ui-egui/src/i18n.rs"
+    shared = root / "crates/ui-egui/src/i18n/table.rs"  # i18n.rs's TABLE until v0.17.0
     text = shared.read_text(encoding="utf-8")
     entry = re.compile(rf"\(\s*({STR})\s*,\s*\[((?:\s*{STR}\s*,?){{5}})\s*\]\s*,?\s*\)")
     text = entry.sub(lambda m: f"({m.group(1)}, [{', '.join([m.group(1)] * 5)}])" if stale(m.group(1), m.group(2)) else m.group(0), text)
     shared.write_text(text, encoding="utf-8")
-    ar = root / "crates/ui-egui/src/i18n/ar.rs"
-    text = ar.read_text(encoding="utf-8")
-    end = text.index("\n];", text.index("const TABLE")) + 1
-    lines = "".join(f'    ("{k}", "{v}"),\n' for k, v in ARABIC)
-    ar.write_text(text[:end] + lines + text[end:], encoding="utf-8")
+    for lang, table in (("ar", ARABIC), ("sv", SWEDISH)):
+        cat = root / f"crates/ui-egui/src/i18n/{lang}.rs"
+        text = cat.read_text(encoding="utf-8")
+        end = text.index("\n];", text.index("const TABLE")) + 1
+        lines = "".join(f'    ("{k}", "{v}"),\n' for k, v in table)
+        cat.write_text(text[:end] + lines + text[end:], encoding="utf-8")
 
 
 def upstream_mark(root: Path) -> str:
@@ -196,24 +217,33 @@ def theme(root: Path) -> None:
          f"            row_selected: hex({u('pressed')}),\n            pasteboard: hex({u('canvas')}),\n            ruler: hex({u('dock')}),\n"
          f"            ruler_tick: hex(0x7a7a82),\n            tab_inactive: hex({u('dock')}),\n            button: hex({u('field')}),\n"),
     ])
-    # Darkest level by default, as in HORIX.
-    hx.edit(root, "crates/ui-egui/src/lib.rs", [("            brightness: theme::Brightness::MediumDark,", "            brightness: theme::Brightness::Dark,")])
+    # Darkest level by default, as in HORIX: the UI state's default (state.rs since upstream split
+    # lib.rs, v0.17.0) and the enum's own default (what previews and new prefs fall back to).
+    # Preferences › Interface › Color Theme keeps every other level: Dark is HORIX's.
+    hx.edit(root, "crates/ui-egui/src/state.rs", [("            brightness: theme::Brightness::MediumDark,", "            brightness: theme::Brightness::Dark,")])
+    hx.edit(root, rel, [("pub enum Brightness {\n    Dark,\n    #[default]\n    MediumDark,", "pub enum Brightness {\n    #[default]\n    Dark,\n    MediumDark,")])
 
 
 def arabic_on_the_web(root: Path) -> None:
-    """The web build embeds craft-fonts' Arabic faces too (upstream's embeds only the Japanese UI
-    face): the browser has no system fonts to fall back to, so Arabic text in a document would
+    """The web build embeds craft-fonts' Arabic faces too (upstream's embeds only the Japanese and
+    Georgian UI faces): the browser has no system fonts to fall back to, so Arabic text in a document would
     show as boxes. The Chinese, Japanese and Korean faces stay out (the wasm's size)."""
     hx.edit(root, "crates/fonts/build.rs", [
-        ('        if wasm && !(*family == "BIZ UDPGothic" && *style == "Regular") {',
-         '        if wasm && !(*family == "BIZ UDPGothic" && *style == "Regular") && !scripts.split(\',\').any(|s| s.trim() == "Arab") {'),
+        ('        if wasm && !matches!((*family, *style), ("BIZ UDPGothic" | "Noto Sans Georgian", "Regular")) {',
+         '        if wasm && !matches!((*family, *style), ("BIZ UDPGothic" | "Noto Sans Georgian", "Regular")) && !scripts.split(\',\').any(|s| s.trim() == "Arab") {'),
     ])
     # ...and they are fallbacks for Arabic text, after the bundled faces, as the Japanese ones are
     # for Japanese (on the desktop the system's fonts cover Arabic too).
-    hx.edit(root, "crates/fonts/src/fontdb.rs", [
-        ("        let craft = crate::japanese_document_fonts().into_iter().map(|f| f.bytes);",
+    # (fontdb.rs was split in v0.17.0: the database's constructor is fontdb/db.rs; upstream now
+    # adds Hebrew and Devanagari faces there too, and Arabic goes after them.)
+    hx.edit(root, "crates/fonts/src/fontdb/db.rs", [
+        ("        let craft = crate::japanese_document_fonts()\n            .into_iter()\n",
          "        let arabic = crate::CRAFT_FONTS.iter().filter(|f| f.scripts.contains(&\"Arab\"));\n"
-         "        let craft = crate::japanese_document_fonts().into_iter().chain(arabic).map(|f| f.bytes);"),
+         "        let craft = crate::japanese_document_fonts()\n            .into_iter()\n"),
+        ("                    .filter_map(|family| crate::CRAFT_FONTS.iter().find(|f| f.family == family && f.style == \"Regular\")),\n"
+         "            )\n            .map(|f| f.bytes);",
+         "                    .filter_map(|family| crate::CRAFT_FONTS.iter().find(|f| f.family == family && f.style == \"Regular\")),\n"
+         "            )\n            .chain(arabic)\n            .map(|f| f.bytes);"),
     ])
 
 
@@ -248,6 +278,29 @@ def web(root: Path) -> None:
     ])
 
 
+def updates(root: Path) -> None:
+    """Upstream's updater (craft-update, new since v0.12.0) checks DesignCraft's own GitHub
+    releases at start and can install them over the app: Horix Layout takes its new versions from
+    the HORIX downloads page instead. No check at start, and Help > Check for Updates opens the
+    downloads page (links::APP_PAGE), as Horix Vectors does."""
+    hx.edit(root, "apps/designcraft/src/main.rs", [
+        ("                app.set_startup_update_check(true);\n",
+         "                // Horix Layout: no check of upstream's releases (Help > Check for Updates opens the HORIX downloads page).\n"
+         "                app.set_startup_update_check(false);\n"),
+    ])
+    hx.edit(root, "crates/ui-egui/src/menus/run.rs", [
+        ('        "help.checkForUpdates" => crate::updates_ui::check(app),\n',
+         '        "help.checkForUpdates" => {\n'
+         "            let url = designcraft_engine::links::APP_PAGE.to_string();\n"
+         "            app.ui.pending_urls.push(url.clone());\n"
+         '            Ok(json!({"url": url}))\n        }\n'),
+    ])
+    hx.edit(root, "crates/ui-egui/src/updates_ui.rs", [
+        ("pub(crate) fn check(app: &mut DesignApp)",
+         "#[allow(dead_code)] // Horix Layout: Help > Check for Updates opens the HORIX downloads page.\npub(crate) fn check(app: &mut DesignApp)"),
+    ])
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -259,6 +312,7 @@ def main() -> None:
     arabic_on_the_web(root)
     arabic_text(root)
     web(root)
+    updates(root)
     hx.exe_version(root, "apps/designcraft/build.rs")
     n = hx.rename(root, CODE + [WEB], "DesignCraft", APP_NAME)
     icons = hx.replace_icons(root, HERE / "assets/app-icon", "assets/app-icon")
