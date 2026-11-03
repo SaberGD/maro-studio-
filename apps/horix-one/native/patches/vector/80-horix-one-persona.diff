@@ -1,7 +1,20 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 0b55428..5a09ae8 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -6100,6 +6100,7 @@ dependencies = [
+  "smithay-clipboard",
+  "socket2",
+  "vectorcraft-engine",
++ "vectorcraft-format",
+  "vectorcraft-render",
+  "vectorcraft-text",
+  "vectorcraft-ui-egui",
 diff --git a/apps/vectorcraft/Cargo.toml b/apps/vectorcraft/Cargo.toml
+index 47d26eb..bfb0a06 100644
 --- a/apps/vectorcraft/Cargo.toml
 +++ b/apps/vectorcraft/Cargo.toml
-@@ -9,6 +9,18 @@
+@@ -9,6 +9,18 @@ default-run = "vectorcraft"
  [lints]
  workspace = true
  
@@ -20,7 +33,7 @@ diff --git a/apps/vectorcraft/Cargo.toml b/apps/vectorcraft/Cargo.toml
  [features]
  default = ["wgpu", "accessibility"]
  wgpu = ["eframe/wgpu", "dep:winsafe"]
-@@ -20,6 +32,7 @@
+@@ -18,6 +30,7 @@ accessibility = ["eframe/accesskit"]
  vectorcraft-engine = { workspace = true, features = ["bundled-fonts"] }
  vectorcraft-ui-egui = { workspace = true }
  vectorcraft-text = { workspace = true }
@@ -29,27 +42,28 @@ diff --git a/apps/vectorcraft/Cargo.toml b/apps/vectorcraft/Cargo.toml
  # so VectorCraft matches the rest on Linux. `egui` adds `craft_window::decorate`. See #217.
  craft-window = { workspace = true }
 diff --git a/apps/vectorcraft/src/main.rs b/apps/vectorcraft/src/main.rs
+index 28ed833..e189c84 100644
 --- a/apps/vectorcraft/src/main.rs
 +++ b/apps/vectorcraft/src/main.rs
-@@ -14,6 +14,8 @@
+@@ -17,6 +17,8 @@
  //! files its requests read and write (`vectorcraft_engine::file_access`); the person at the
  //! keyboard isn't confined.
  #![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
 +// HORIX One builds this file as a library too (`horix_one_persona`), where `main` is unused.
 +#![allow(dead_code)]
  
- #[cfg(all(feature = "windows7", any(feature = "wgpu", feature = "accessibility")))]
- compile_error!("windows7 requires --no-default-features (wgpu and accessibility must be disabled)");
-@@ -62,7 +64,7 @@
- use vectorcraft_ui_egui::picks::PickRequest;
- use vectorcraft_ui_egui::{ClipboardProbeFactory, FilePick, Services, VectorcraftApp};
+ mod automation_args;
+ mod caps_lock;
+@@ -93,7 +95,7 @@ use titlebar::opted_into_system_title_bar;
+ use titlebar::set_taskbar_icon;
+ use titlebar::{custom_titlebar, native_options};
  
 -struct App {
 +pub struct App {
      app: VectorcraftApp,
+     host_caps_lock: caps_lock::HostCapsLock,
      /// Reported by wgpu when the window's graphics device is lost (a driver reset).
-     graphics_loss: GraphicsLoss,
-@@ -80,6 +82,88 @@
+@@ -112,6 +114,99 @@ struct App {
      maximize_tries: u8,
  }
  
@@ -59,12 +73,15 @@ diff --git a/apps/vectorcraft/src/main.rs b/apps/vectorcraft/src/main.rs
 +/// which it shares with the standalone app). The menus stay inside the window.
 +pub fn horix_one_persona(cc: &eframe::CreationContext<'_>, custom_titlebar: bool) -> App {
 +    vectorcraft_ui_egui::i18n::detect_system_lang_in_background();
-+    #[cfg(all(windows, not(target_vendor = "win7")))]
++    #[cfg(windows)]
++    windows_cores::install();
++    #[cfg(windows)]
 +    system_fonts::install();
 +    #[cfg(target_os = "macos")]
 +    mac_fonts::install();
 +    prefs_dir::install_fonts();
 +    let saved = read_prefs();
++    VectorcraftApp::install_ime_reset_hooks(&cc.egui_ctx);
 +    let mut session = Session::new();
 +    prefs_dir::attach_profile_store(&mut session);
 +    prefs_dir::attach_plugin_store(&mut session);
@@ -75,6 +92,10 @@ diff --git a/apps/vectorcraft/src/main.rs b/apps/vectorcraft/src/main.rs
 +    app.session.swatch_libraries.set_user_dir(swatches);
 +    let styles = prefs_path().and_then(|p| Some(p.parent()?.join("Graphic Styles").to_string_lossy().to_string()));
 +    app.session.style_libraries.set_user_dir(styles);
++    let symbols = prefs_path().and_then(|p| Some(p.parent()?.join("Symbols").to_string_lossy().to_string()));
++    app.session.symbol_libraries.set_user_dir(symbols);
++    let brushes = prefs_path().and_then(|p| Some(p.parent()?.join("Brushes").to_string_lossy().to_string()));
++    app.session.brush_libraries.set_user_dir(brushes);
 +    vectorcraft_ui_egui::panels::library_panel::restore(&mut app);
 +    if prefs_enabled() {
 +        let libraries = prefs_path().and_then(|p| Some(p.parent()?.join("Libraries").to_string_lossy().to_string()));
@@ -89,10 +110,14 @@ diff --git a/apps/vectorcraft/src/main.rs b/apps/vectorcraft/src/main.rs
 +        app.graphics_adapter = Some(adapter_summary(&rs.adapter.get_info()));
 +    }
 +    app.custom_titlebar = custom_titlebar;
++    // Pen input forwarded from floating panels' own windows (Windows Ink); none for the macOS menu
++    // bar, which HORIX's start-up owns.
++    app.services.native_input_hook = native_input_hook(&app);
 +    // HORIX keeps the window's size and place.
 +    app.ui.window = None;
 +    App {
 +        app,
++        host_caps_lock: caps_lock::HostCapsLock::new(None),
 +        graphics_loss: GraphicsLoss::default(),
 +        graphics_lost: false,
 +        frames: 0,
@@ -135,16 +160,17 @@ diff --git a/apps/vectorcraft/src/main.rs b/apps/vectorcraft/src/main.rs
 +    }
 +}
 +
- impl eframe::App for App {
-     // Each frame runs unconfined: it is the person at the keyboard's. The app confines what the
-     // control channel asks for, and the frames carrying input it injected, to the automation roots
-diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
---- a/crates/ui-egui/src/lib.rs
-+++ b/crates/ui-egui/src/lib.rs
-@@ -1275,6 +1275,20 @@
+ /// `vectorcraft --help`. Headless work (convert, run, MCP) is `vectorcraft-cli`'s.
+ const USAGE: &str = "\
+ Usage: vectorcraft [options] [files…]
+diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
+index c6de8d3..606ec67 100644
+--- a/crates/ui-egui/src/app.rs
++++ b/crates/ui-egui/src/app.rs
+@@ -379,6 +379,20 @@ impl VectorcraftApp {
+         }
+     }
  
-     /// Per-frame logic before layout (control channel, shortcuts, inbox). A bug that panics costs
-     /// one frame and shows an error, instead of closing the app with unsaved work.
 +    /// HORIX One: its window shows another persona's interface too, with that persona's fonts and
 +    /// style. Before this one shows again, its fonts and style go back on the context (from the
 +    /// next frame, as on the first; the installed fonts added for missing glyphs come back too).
@@ -156,9 +182,9 @@ diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
 +
 +    /// HORIX One: whether a document has unsaved changes (quitting asks about them first).
 +    pub fn horix_one_unsaved(&self) -> bool {
-+        unsaved::any_dirty(self)
++        crate::unsaved::any_dirty(self)
 +    }
 +
-     pub fn logic(&mut self, ctx: &egui::Context) {
-         let confined = self.synthetic_frame.then(|| self.automation_roots.clone()).flatten();
-         if let Err(msg) = file_access::confine(confined.as_ref(), || vectorcraft_engine::guard::catch_panic(|| self.logic_frame(ctx))) {
+     /// The 0.36-style entry point, kept for the crate's tests, which call one `logic` inside a
+     /// `run_ui` pass and draw a panel afterwards (a UI phase). Production hosts call
+     /// `raw_input_hook`, then `tick` in `App::logic` and `ui` in `App::ui`; `tick` alone never
