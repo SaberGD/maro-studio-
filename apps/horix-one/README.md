@@ -1,6 +1,6 @@
 # HORIX One
 
-**HORIX One** برنامج واحد فيه **Vector** و**Pixel**، بديل Illustrator وPhotoshop مع بعض، بفكرة الـpersonas اللي في Affinity. فوق فيه شريط بتنقل منه بين الاتنين، وزرار بينقل شغلك من واحد للتاني بضغطة. **Layout** (بديل InDesign) هو الخطوة الجاية.
+**HORIX One** برنامج واحد فيه **Vector** و**Pixel** و**Layout**، بديل Illustrator وPhotoshop وInDesign مع بعض، بفكرة الـpersonas اللي في Affinity. فوق فيه شريط بتنقل منه بينهم، وزرار بينقل شغلك من واحد للتاني بضغطة.
 
 - الويب: https://one.horix.live/
 - الديسكتوب (ويندوز وماك): من HORIX Launcher، أو صفحة الماك على https://horix.si/
@@ -9,9 +9,17 @@
 
 | Persona | المحرّك | بيعمل إيه |
 |---|---|---|
-| Vector | Horix Vectors (VectorCraft 0.16) | فيكتور، ولوجوهات، ونص عربي |
-| Pixel | HORIX (PhotoCraft 0.15.1) | تعديل صور، وتحديد بالـAI (MobileSAM وIS-Net) |
-| Layout | قريبًا | صفحات وكتب ومجلات |
+| Vector | Horix Vectors (VectorCraft 0.21.0) | فيكتور، ولوجوهات، ونص عربي |
+| Pixel | HORIX (PhotoCraft 0.20.1) | تعديل صور، وتحديد بالـAI (MobileSAM وIS-Net) |
+| Layout | Horix Layout (DesignCraft 0.17.0) | صفحات وكتب ومجلات |
+
+## مصدر واحد للبرامج
+
+HORIX One مش نسخة تانية: بيتبني من نفس سورس ونفس patches بتوع HORIX وHorix Vectors وHorix Layout (`native/prepare.sh` بيشغّل `rebrand.py` بتاع كل واحد زي ما هو). يعني أي تعديل في Vectors مثلاً بيوصل HORIX One لوحده في البناء الجاي، ولما `VERSION` بتاع أي واحد فيهم يتغيّر، HORIX One بيطلّع release جديد كمان من غير ما نعدّل حاجة هنا.
+
+## النسخ من Vector واللزق في Pixel
+
+زي Illustrator وPhotoshop: انسخ أي حاجة في Vector (⌘C)، وروح Pixel والزق (⌘V)، هيسألك **Paste As**: Smart Object (طبقة «Vector Smart Object»)، أو Pixels، أو Path، أو Shape Layer. ده شغال كمان في HORIX لوحده، ومع أي برنامج بينسخ SVG (Illustrator مثلاً)، وعلى الويب (`apps/sg-ps/patches/90-horix-paste-as.diff`).
 
 ## نقل الشغل بين الـpersonas
 
@@ -33,7 +41,7 @@
     - `wasmBindings.horix_command(id, params)` بيشغّل أي أمر زي القوايم.
     - `wasmBindings.horix_open(name, bytes)` بيفتح ملف.
 - **الديسكتوب (`native/`):** من 0.2 البرنامج native بالكامل.
-  - HORIX نفسه هو البرنامج، وHorix Vectors جواه كمكتبة (library)، والاتنين شغالين في نفس النافذة وعلى نفس كارت الشاشة.
+  - HORIX نفسه هو البرنامج، وHorix Vectors وHorix Layout جواه كمكتبات (libraries)، والتلاتة شغالين في نفس النافذة وعلى نفس كارت الشاشة.
   - الشريط اللي فوق (`native/horix_one.rs`) بيبدّل بين الـpersonas، وبيرجّع لكل واحد الخطوط والشكل بتوعه.
   - نقل الشغل بيحصل جوه البرنامج نفسه من غير متصفح:
     - Vector بيصدّر SVG والنص فيه بيتحوّل لأشكال، وPixel بيفتحه كطبقات أشكال.
@@ -42,12 +50,9 @@
   - كل persona ليه إعداداته ومستنداته. على ويندوز البرنامج portable: الإعدادات في `HORIX-Data` و`VectorCraftData` جنب البرنامج، فما بيشاركش HORIX العادي.
   - على الماك القوايم جوه النافذة، علشان كل persona يبقى ليه قوايمه.
   - إزاي بيتبني:
-    - `native/prepare.sh` بيجهّز سورس HORIX في `pixel/` وسورس Horix Vectors في `vector/`، كل واحد زي ما بيتبني لوحده (rebrand.py وpatches بتاعته).
-    - بعدها بيطبّق patches HORIX One: `patches/vector` بيخلّي Horix Vectors مكتبة (`horix_one_persona`)، و`patches/pixel` بيخلّي نافذة HORIX تشيله، بأسماء HORIX One.
-    - و`native/Cargo.lock` فيه dependencies البرنامجين مع بعض.
-- **في الإصدار ده:**
-  - Layout لسه «قريبًا».
-  - كل persona ليه مستنداته، والنقل بينهم بزرار. مستند واحد مشترك بين الاتنين مرحلة جاية.
+    - `native/prepare.sh` بيجهّز سورس HORIX في `pixel/` وHorix Vectors في `vector/` وHorix Layout في `layout/`، كل واحد زي ما بيتبني لوحده (rebrand.py وpatches بتاعته).
+    - بعدها بيطبّق patches HORIX One: `patches/vector` و`patches/layout` بيخلّوا Horix Vectors وHorix Layout مكتبات (`horix_one_persona`)، و`patches/pixel` بيخلّي نافذة HORIX تشيلهم، بأسماء HORIX One.
+    - و`native/Cargo.lock` فيه dependencies التلاتة مع بعض (egui وwinit نفس النسخة في التلاتة).
 
 ## البناء
 
@@ -61,8 +66,9 @@ apps/horix-one/native/prepare.sh /tmp/one  # السورس بس (تجربة عل�
 `build.sh` بيبني HORIX وHorix Vectors بالسكريبتات بتاعتهم. ولو عندك نسخ متبنية خلاص، استخدمها بـ`HORIX_ONE_PIXEL` و`HORIX_ONE_VECTOR`.
 
 `.github/workflows/horix-one.yml` بيعمل التالي:
-- **مع أي تعديل:** يبني الويب، ونسختي ويندوز وماك الـnative، ويتأكد إن البرنامج بيفتح ورقم إصداره صح.
+- **مع أي تعديل:** يبني الويب.
+- **على الفرع الأساسي (أو يدوي):** يبني نسختي ويندوز وماك الـnative، ويتأكد إن البرنامج بيفتح ورقم إصداره صح (مش على الفروع التانية، علشان دقايق الـActions).
 - **على الفرع الأساسي:** ينشر الويب على `one.horix.live`، والـsubdomain بيتعمل لوحده أول مرة.
-- **لما `VERSION` يتغيّر:** يطلّع release باسم `horix-one-v<v>`، وبعدها يحدّث ملف تحديثات الـLauncher وصفحة الماك.
+- **لما `VERSION` بتاع HORIX One أو HORIX أو Horix Vectors أو Horix Layout يتغيّر:** يطلّع release باسم `horix-one-v<v>`، وبعدها يحدّث ملف تحديثات الـLauncher وصفحة الماك.
 
 الأيقونة متولدة بـ`apps/horix-common/tools/make_icons.py one apps/horix-one/assets/app-icon`.
