@@ -1,17 +1,12 @@
 # Builds HORIX (apps/sg-ps) and publishes it to https://horix.live/ and the download
-# page to https://horix.si/ on every push to the default
-# branch that touches the app. Needs the repository secret HOSTINGER_API_TOKEN
+# page to https://horix.si/. Run by hand only (Actions > Deploy HORIX > Run workflow): building on
+# every push used up the free Actions minutes, and HORIX ships inside HORIX One (one.horix.live). Needs the repository secret HOSTINGER_API_TOKEN
 # (hPanel > Account > API). Optional repository variables: HOSTINGER_USERNAME, HORIX_EDITOR_DOMAIN,
 # HORIX_DOWNLOAD_DOMAIN, HORIX_LEGACY_DOMAIN,
 # HORIX_OLD_DOMAIN (the old address that now redirects; studio.engsaber.space).
 name: Deploy HORIX
 
 on:
-  push:
-    paths:
-      - "apps/sg-ps/**"
-      - "archive/photocraft/**"
-      - ".github/workflows/deploy-sg-ps.yml"
   workflow_dispatch:
 
 # One deploy at a time; a newer push waits for the running one instead of racing it.
