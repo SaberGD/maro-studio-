@@ -1,8 +1,8 @@
-diff --git a/crates/engine/src/color_cmds.rs b/crates/engine/src/color_cmds.rs
-index 4f3435c..26a6bea 100644
---- a/crates/engine/src/color_cmds.rs
-+++ b/crates/engine/src/color_cmds.rs
-@@ -112,6 +112,10 @@ pub struct ColorSettings {
+diff --git a/crates/engine/src/cmd/color_cmds.rs b/crates/engine/src/cmd/color_cmds.rs
+index 7b766ed..cb4bb60 100644
+--- a/crates/engine/src/cmd/color_cmds.rs
++++ b/crates/engine/src/cmd/color_cmds.rs
+@@ -114,6 +114,10 @@ pub struct ColorSettings {
      pub policy_cmyk: Policy,
      pub policy_gray: Policy,
      /// Ask what to do when an opened file's embedded profile differs from the working space.
@@ -13,7 +13,7 @@ index 4f3435c..26a6bea 100644
      pub ask_on_mismatch: bool,
      pub ask_on_paste: bool,
      /// Ask when an opened file has no profile.
-@@ -138,7 +142,7 @@ impl Default for ColorSettings {
+@@ -140,7 +144,7 @@ impl Default for ColorSettings {
              policy_rgb: Policy::Preserve,
              policy_cmyk: Policy::Preserve,
              policy_gray: Policy::Preserve,
@@ -22,7 +22,7 @@ index 4f3435c..26a6bea 100644
              ask_on_paste: true,
              ask_on_missing: false,
              intent: Intent::RelativeColorimetric.id().into(),
-@@ -1171,7 +1175,7 @@ pub fn specs() -> Vec<CommandSpec> {
+@@ -1262,7 +1266,7 @@ pub fn specs() -> Vec<CommandSpec> {
              "edit.colorSettings",
              "Color Settings…",
              ["Edit"],
@@ -31,7 +31,7 @@ index 4f3435c..26a6bea 100644
              always,
              color_settings,
              true,
-@@ -1534,12 +1538,29 @@ mod settings_tests {
+@@ -1625,12 +1629,29 @@ mod settings_tests {
          assert!(s.color.resolve_open(&mut d, "explode").is_err());
      }
  
@@ -63,7 +63,7 @@ index 4f3435c..26a6bea 100644
          assert!(desc(&s.active().unwrap().doc).unwrap().starts_with("Adobe RGB"));
          // Matching profiles never ask.
          let (_, r) = s.open_document(tagged("srgb"), None);
-@@ -1627,7 +1648,7 @@ mod settings_tests {
+@@ -1718,7 +1739,7 @@ mod settings_tests {
          let mut d = tagged("srgb");
          d.icc_profile = Some(input.to_bytes());
          let (photo, r) = s.open_document(d, None);
@@ -72,11 +72,11 @@ index 4f3435c..26a6bea 100644
          let doc = &s.active().unwrap().doc;
          assert!(desc(doc).unwrap().starts_with("sRGB"));
          // Converted from P3, not reinterpreted as sRGB.
-diff --git a/crates/engine/src/extra_cmds.rs b/crates/engine/src/extra_cmds.rs
-index 4e2a265..0ff4304 100644
---- a/crates/engine/src/extra_cmds.rs
-+++ b/crates/engine/src/extra_cmds.rs
-@@ -510,11 +510,22 @@ fn ungroup(s: &mut Session, p: &Value) -> Result<Value> {
+diff --git a/crates/engine/src/cmd/extra_cmds.rs b/crates/engine/src/cmd/extra_cmds.rs
+index 7da8abc..d3ee1e1 100644
+--- a/crates/engine/src/cmd/extra_cmds.rs
++++ b/crates/engine/src/cmd/extra_cmds.rs
+@@ -561,11 +561,22 @@ fn ungroup(s: &mut Session, p: &Value) -> Result<Value> {
      s.edit("Ungroup Layers", |doc, active| {
          let path = doc.path_of(id).ok_or(EngineError::NoLayer(id))?;
          let g = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
@@ -101,7 +101,7 @@ index 4e2a265..0ff4304 100644
          let sib = if parent.is_empty() { &mut doc.layers } else { doc.layer_at_mut(parent).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(id))? };
          sib.remove(idx);
          let top = children.last().map(|l| l.id);
-@@ -976,13 +987,33 @@ pub fn specs() -> Vec<CommandSpec> {
+@@ -1045,13 +1056,33 @@ pub fn specs() -> Vec<CommandSpec> {
              "Ungroup Layers",
              &["Layer"],
              Some("Cmd+Shift+G"),
@@ -139,63 +139,80 @@ index 4e2a265..0ff4304 100644
          spec!(
              "layer.hideLayers",
              "Hide Layers",
-@@ -1722,6 +1753,51 @@ mod tests {
-         assert_eq!(doc(&s).layer_count(), n - 1);
-     }
+diff --git a/crates/engine/src/cmd/extra_cmds/tests.rs b/crates/engine/src/cmd/extra_cmds/tests.rs
+index 97243ef..a356a35 100644
+--- a/crates/engine/src/cmd/extra_cmds/tests.rs
++++ b/crates/engine/src/cmd/extra_cmds/tests.rs
+@@ -701,6 +701,51 @@ fn layer_utilities() {
+     assert_eq!(doc(&s).layer_count(), n - 1);
+ }
  
-+    /// HORIX round 1 #5: Ungroup on a layer inside a group takes it out, just above the group.
-+    #[test]
-+    fn ungroup_on_a_child_takes_it_out() {
-+        let mut s = session(8);
-+        let a = active(&s).id;
-+        s.execute("layer.groupLayers", json!({})).unwrap();
-+        let g = active(&s).id;
-+        s.execute("layer.select", json!({"layer": a.0})).unwrap();
-+        assert!(s.is_enabled("layer.ungroupLayers"), "{:?}", s.disabled_reason("layer.ungroupLayers"));
-+        s.execute("layer.ungroupLayers", json!({})).unwrap();
-+        let d = doc(&s);
-+        assert_eq!(d.path_of(a).unwrap().len(), 1);
-+        assert!(d.layer(g).unwrap().children().unwrap().is_empty());
-+        assert!(d.path_of(a).unwrap()[0] > d.path_of(g).unwrap()[0]);
-+        assert_eq!(s.active().unwrap().active_layer, Some(a));
-+        // A top-level layer that is not a group has nothing to ungroup.
-+        assert!(!s.is_enabled("layer.ungroupLayers"));
-+        s.execute("edit.undo", json!({})).unwrap();
-+        assert_eq!(doc(&s).path_of(a).unwrap().len(), 2);
-+    }
++/// HORIX round 1 #5: Ungroup on a layer inside a group takes it out, just above the group.
++#[test]
++fn ungroup_on_a_child_takes_it_out() {
++    let mut s = session(8);
++    let a = active(&s).id;
++    s.execute("layer.groupLayers", json!({})).unwrap();
++    let g = active(&s).id;
++    s.execute("layer.select", json!({"layer": a.0})).unwrap();
++    assert!(s.is_enabled("layer.ungroupLayers"), "{:?}", s.disabled_reason("layer.ungroupLayers"));
++    s.execute("layer.ungroupLayers", json!({})).unwrap();
++    let d = doc(&s);
++    assert_eq!(d.path_of(a).unwrap().len(), 1);
++    assert!(d.layer(g).unwrap().children().unwrap().is_empty());
++    assert!(d.path_of(a).unwrap()[0] > d.path_of(g).unwrap()[0]);
++    assert_eq!(s.active().unwrap().active_layer, Some(a));
++    // A top-level layer that is not a group has nothing to ungroup.
++    assert!(!s.is_enabled("layer.ungroupLayers"));
++    s.execute("edit.undo", json!({})).unwrap();
++    assert_eq!(doc(&s).path_of(a).unwrap().len(), 2);
++}
 +
-+    /// HORIX: the group-delete question's answers (Group Only, Contents Only).
-+    #[test]
-+    fn delete_group_only_or_its_contents() {
-+        let top = |s: &Session| doc(s).layers.iter().map(|l| (l.is_group(), l.children().map_or(0, <[_]>::len))).collect::<Vec<_>>();
-+        let mut s = session(8);
-+        s.execute("layer.new.layer", json!({})).unwrap();
-+        let ids: Vec<u64> = doc(&s).layers.iter().skip(1).map(|l| l.id.0).collect();
-+        s.execute("layer.select", json!({"layer": ids[0]})).unwrap();
-+        s.execute("layer.select", json!({"layer": ids[1], "mode": "add"})).unwrap();
-+        s.execute("layer.groupLayers", json!({})).unwrap();
-+        assert_eq!(top(&s), vec![(false, 0), (true, 2)]);
-+        s.execute("layer.deleteGroup", json!({"mode": "groupOnly"})).unwrap();
-+        assert_eq!(top(&s), vec![(false, 0), (false, 0), (false, 0)], "the layers stay, the group goes");
-+        s.execute("edit.undo", json!({})).unwrap();
-+        s.execute("layer.deleteGroup", json!({"mode": "contents"})).unwrap();
-+        assert_eq!(top(&s), vec![(false, 0), (true, 0)], "an empty group stays");
-+        s.execute("edit.undo", json!({})).unwrap();
-+        let g = doc(&s).layers[1].id.0;
-+        s.execute("layer.select", json!({"layer": doc(&s).layers[0].id.0})).unwrap();
-+        s.execute("layer.deleteGroup", json!({"mode": "groupOnly", "layer": g})).unwrap();
-+        assert_eq!(top(&s), vec![(false, 0), (false, 0), (false, 0)], "the `layer` param, not the selection");
-+        assert!(s.execute("layer.deleteGroup", json!({"mode": "all"})).is_err());
-+    }
++/// HORIX: the group-delete question's answers (Group Only, Contents Only).
++#[test]
++fn delete_group_only_or_its_contents() {
++    let top = |s: &Session| doc(s).layers.iter().map(|l| (l.is_group(), l.children().map_or(0, <[_]>::len))).collect::<Vec<_>>();
++    let mut s = session(8);
++    s.execute("layer.new.layer", json!({})).unwrap();
++    let ids: Vec<u64> = doc(&s).layers.iter().skip(1).map(|l| l.id.0).collect();
++    s.execute("layer.select", json!({"layer": ids[0]})).unwrap();
++    s.execute("layer.select", json!({"layer": ids[1], "mode": "add"})).unwrap();
++    s.execute("layer.groupLayers", json!({})).unwrap();
++    assert_eq!(top(&s), vec![(false, 0), (true, 2)]);
++    s.execute("layer.deleteGroup", json!({"mode": "groupOnly"})).unwrap();
++    assert_eq!(top(&s), vec![(false, 0), (false, 0), (false, 0)], "the layers stay, the group goes");
++    s.execute("edit.undo", json!({})).unwrap();
++    s.execute("layer.deleteGroup", json!({"mode": "contents"})).unwrap();
++    assert_eq!(top(&s), vec![(false, 0), (true, 0)], "an empty group stays");
++    s.execute("edit.undo", json!({})).unwrap();
++    let g = doc(&s).layers[1].id.0;
++    s.execute("layer.select", json!({"layer": doc(&s).layers[0].id.0})).unwrap();
++    s.execute("layer.deleteGroup", json!({"mode": "groupOnly", "layer": g})).unwrap();
++    assert_eq!(top(&s), vec![(false, 0), (false, 0), (false, 0)], "the `layer` param, not the selection");
++    assert!(s.execute("layer.deleteGroup", json!({"mode": "all"})).is_err());
++}
 +
-     #[test]
-     fn ungroup_restores_children_in_order() {
-         let mut s = session(8);
-diff --git a/crates/engine/src/layer_multi_cmds.rs b/crates/engine/src/layer_multi_cmds.rs
-index 83d4e81..fc974e1 100644
---- a/crates/engine/src/layer_multi_cmds.rs
-+++ b/crates/engine/src/layer_multi_cmds.rs
-@@ -1591,6 +1591,46 @@ pub fn delete_selected(s: &mut Session) -> Result<Value> {
+ #[test]
+ fn ungroup_restores_children_in_order() {
+     let mut s = session(8);
+diff --git a/crates/engine/src/cmd/layer_multi_cmds.rs b/crates/engine/src/cmd/layer_multi_cmds.rs
+index 79abb25..70e310e 100644
+--- a/crates/engine/src/cmd/layer_multi_cmds.rs
++++ b/crates/engine/src/cmd/layer_multi_cmds.rs
+@@ -33,7 +33,7 @@ use selection::{doc_state, find_layers, select_all_layers, select_linked};
+ pub(crate) use selection::{mask_targets, recorded_step, reselect, targets, top_level};
+ pub use selection::{select, selected, set_selection};
+ pub(crate) use structure::{check_group_depth, deletion_neighbours};
+-pub use structure::{delete_selected, duplicate_selected, group_layers, set_visible_selected};
++pub use structure::{delete_groups, delete_selected, duplicate_selected, group_layers, set_visible_selected};
+ use structure::{link_layers, lock_layers, merge_layers, rename_layer, reverse};
+ 
+ // ---------- enabled predicates ----------
+diff --git a/crates/engine/src/cmd/layer_multi_cmds/structure.rs b/crates/engine/src/cmd/layer_multi_cmds/structure.rs
+index 70aa512..a1b019c 100644
+--- a/crates/engine/src/cmd/layer_multi_cmds/structure.rs
++++ b/crates/engine/src/cmd/layer_multi_cmds/structure.rs
+@@ -248,6 +248,46 @@ pub fn delete_selected(s: &mut Session) -> Result<Value> {
      Ok(json!({"deleted": sel.len()}))
  }
  
@@ -203,7 +220,7 @@ index 83d4e81..fc974e1 100644
 +/// (they take its place), otherwise they go and the emptied group stays. The [`targets`] that are
 +/// not groups are deleted either way. One history step.
 +pub fn delete_groups(s: &mut Session, p: &Value, group_only: bool) -> Result<Value> {
-+    let sel = targets(s, p)?;
++    let sel = super::selection::targets(s, p)?;
 +    s.edit(if group_only { "Delete Group" } else { "Delete Group Contents" }, |doc, active| {
 +        let mut keep = None;
 +        let ids = top_level(doc, &sel);
@@ -242,46 +259,36 @@ index 83d4e81..fc974e1 100644
  /// Duplicate Layer with several layers selected: each copy goes above its original and the
  /// copies become the selection. Artboard copies go beside their boards unless `in_place`
  /// ([`crate::artboard_cmds::place_copy`]). `label` names the history step (Layer via Copy reuses
-diff --git a/crates/text/src/layout.rs b/crates/text/src/layout.rs
-index 5809e36..e9578b0 100644
---- a/crates/text/src/layout.rs
-+++ b/crates/text/src/layout.rs
-@@ -233,6 +233,9 @@ pub struct TextLayout {
-     pub px_per_pt: f32,
-     /// Vertical type: line space is turned 90° clockwise into text space.
-     pub vertical: bool,
-+    /// HORIX: paragraph (box) text that did not fit in the box and is hidden (Photoshop marks it
-+    /// with a red "+" on the box's corner handle).
-+    pub overflow: bool,
- }
- 
- impl TextLayout {
-@@ -1097,6 +1100,7 @@ impl Layouter {
-             }
-             pending_space += ps.space_after_pt * k;
+diff --git a/crates/ui-egui/src/app/commands.rs b/crates/ui-egui/src/app/commands.rs
+index aacf7cf..507926e 100644
+--- a/crates/ui-egui/src/app/commands.rs
++++ b/crates/ui-egui/src/app/commands.rs
+@@ -6,6 +6,10 @@ use super::{
+ impl PhotocraftApp {
+     /// Run an engine command, reporting errors in the status bar.
+     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
++        // HORIX: a group with layers in it asks what goes (before the trash confirmation).
++        if let Some(result) = crate::group_delete_prompt::intercept(self, id, &params) {
++            return result;
++        }
+         if let Some(result) = delete_layer_prompt::intercept(self, id, &params) {
+             return result;
          }
-+        out.overflow = stop;
-         out
-     }
- }
-diff --git a/crates/text/src/tests.rs b/crates/text/src/tests.rs
-index 14ae2cc..b40c2b2 100644
---- a/crates/text/src/tests.rs
-+++ b/crates/text/src/tests.rs
-@@ -302,6 +302,10 @@ fn box_text_wraps_inside_width() {
-     t.shape = TextShape::Box { x: 0.0, y: 0.0, width: 100.0, height: 30.0 };
-     let l2 = e.layout(&t, 72.0);
-     assert_eq!(l2.lines.len(), 2);
-+    // HORIX: the hidden lines are reported (the overset-text mark).
-+    assert!(l2.overflow && !l.overflow, "hidden lines are reported");
-+    t.shape = TextShape::Point;
-+    assert!(!e.layout(&t, 72.0).overflow, "point text never overflows");
- }
- 
- /// #5565: paragraph text breaks at its horizontally scaled width. At 60% it breaks like 100%
+diff --git a/crates/ui-egui/src/app/frame.rs b/crates/ui-egui/src/app/frame.rs
+index 296efaa..8d7b3ab 100644
+--- a/crates/ui-egui/src/app/frame.rs
++++ b/crates/ui-egui/src/app/frame.rs
+@@ -64,6 +64,7 @@ impl PhotocraftApp {
+         type_tool::end_if_left(self);
+         vector_ui::finish_pen_if_left(self);
+         transform_tool::end_if_left(self);
++        crate::horix_ux::frame(self, ctx);
+         shape_stroke_ui::sync_editor(self, ctx);
+         prefs_ui::tick(self, ctx);
+         updates_ui::tick(self, ctx);
 diff --git a/crates/ui-egui/src/blur_handles.rs b/crates/ui-egui/src/blur_handles.rs
 new file mode 100644
-index 0000000..782c8da
+index 0000000..1652606
 --- /dev/null
 +++ b/crates/ui-egui/src/blur_handles.rs
 @@ -0,0 +1,728 @@
@@ -677,7 +684,7 @@ index 0000000..782c8da
 +    let Some(k) = kind(f).map(str::to_owned) else { return false };
 +    let Some(g) = Geo::of(f) else { return false };
 +    sync(&k, f);
-+    let (held_id, near_id) = (egui::Id::new(HELD), egui::Id::new(NEAR));
++    let (held_id, near_id) = (egui::Id::unique(HELD), egui::Id::unique(NEAR));
 +    let mut held: Option<String> = ctx.data(|m| m.get_temp(held_id));
 +    let (start, down) = ctx.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down()));
 +    let hover = near(&k, f, &g, xf, over);
@@ -840,8 +847,8 @@ index 0000000..782c8da
 +    let f = &d.fields;
 +    let (Some(k), Some(g)) = (kind(f), Geo::of(f)) else { return };
 +    let ctx = painter.ctx();
-+    let held: Option<String> = ctx.data(|m| m.get_temp(egui::Id::new(HELD)));
-+    let hover: Option<String> = ctx.data(|m| m.get_temp(egui::Id::new(NEAR)));
++    let held: Option<String> = ctx.data(|m| m.get_temp(egui::Id::unique(HELD)));
++    let hover: Option<String> = ctx.data(|m| m.get_temp(egui::Id::unique(NEAR)));
 +    let hot = |key: &str| held.as_deref() == Some(key) || hover.as_deref() == Some(key);
 +    let hs = handles(k, f, &g);
 +    let ss = g.ss() * xf.zoom;
@@ -1014,39 +1021,43 @@ index 0000000..782c8da
 +    }
 +}
 diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
-index d460c1f..47ff137 100644
+index 12b4a8a..2075672 100644
 --- a/crates/ui-egui/src/canvas.rs
 +++ b/crates/ui-egui/src/canvas.rs
-@@ -3887,7 +3887,8 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
-         let refine_brushing =
-             primary && app.ui.dialogs.last().is_some_and(|d| crate::select_mask_view::owns(&d.fields) && crate::select_mask_view::brush_on(&d.fields));
-         // Field Blur's pins are placed and dragged on the image (`blur_pins`).
--        let pinning = primary && app.ui.dialogs.last().is_some_and(|d| crate::blur_pins::owns(&d.fields));
-+        // HORIX: and Path Blur's arrow and points (`blur_handles`).
-+        let pinning = primary && app.ui.dialogs.last().is_some_and(|d| crate::blur_pins::owns(&d.fields) || crate::blur_handles::owns(&d.fields));
-         // Layer Style on a Drop or Inner Shadow page: a drag on the image moves the shadow (#5701).
-         let shadow_drag =
-             !picking && app.ui.dialogs.last().is_some_and(|d| d.kind == crate::state::DialogKind::LayerStyle && crate::layer_style::drags_shadow(&d.fields));
-@@ -3963,7 +3964,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
-             && let Some(p) = crate::dialogs::free_pointer_over(&ctx, rect)
-         {
-             let press = crate::dialogs::free_press(&ctx, rect);
--            crate::blur_pins::canvas(app, &ctx, &xf, p, press);
-+            if !crate::blur_pins::canvas(app, &ctx, &xf, p, press) {
-+                crate::blur_handles::canvas(app, &ctx, &xf, p, press);
-+            }
-         } else if refine_brushing
-             && !middle
-             && let Some(p) = crate::dialogs::free_pointer_over(&ctx, rect)
-@@ -4468,6 +4471,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
-             painter.rect_stroke(img_rect, 0.0, Stroke::new(1.0, Color32::from_gray(20)), egui::StrokeKind::Outside);
-         }
-         crate::type_tool::draw_overlay(app, &painter, &xf);
-+        crate::horix_ux::draw_overflow_hint(app, &painter, &xf);
-         crate::transform_tool::draw_overlay(app, &painter, &xf);
-         crate::cam_transform::draw(app, &painter, &xf);
-         crate::cam_preview::wake(app, painter.ctx());
-@@ -5292,6 +5296,7 @@ fn draw_tool_state(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform,
+@@ -675,7 +675,8 @@ fn handle_dialog_canvas_input(app: &mut PhotocraftApp, input: DialogCanvasInput<
+     let refine_brushing =
+         input.primary && app.ui.dialogs.last().is_some_and(|d| crate::select_mask_view::owns(&d.fields) && crate::select_mask_view::brush_on(&d.fields));
+     // Field Blur's pins are placed and dragged on the image (`blur_pins`).
+-    let pinning = input.primary && app.ui.dialogs.last().is_some_and(|d| crate::blur_pins::owns(&d.fields));
++    // HORIX: and Path Blur's arrow and points (`blur_handles`).
++    let pinning = input.primary && app.ui.dialogs.last().is_some_and(|d| crate::blur_pins::owns(&d.fields) || crate::blur_handles::owns(&d.fields));
+     // Layer Style on a Drop or Inner Shadow page: a drag on the image moves the shadow (#5701).
+     let shadow_drag =
+         !picking && app.ui.dialogs.last().is_some_and(|d| d.kind == crate::state::DialogKind::LayerStyle && crate::layer_style::drags_shadow(&d.fields));
+@@ -751,7 +752,9 @@ fn handle_dialog_canvas_input(app: &mut PhotocraftApp, input: DialogCanvasInput<
+         && let Some(p) = crate::dialogs::free_pointer_over(input.ctx, input.rect)
+     {
+         let press = crate::dialogs::free_press(input.ctx, input.rect);
+-        crate::blur_pins::canvas(app, input.ctx, input.xf, p, press);
++        if !crate::blur_pins::canvas(app, input.ctx, input.xf, p, press) {
++            crate::blur_handles::canvas(app, input.ctx, input.xf, p, press);
++        }
+     } else if refine_brushing
+         && !input.middle
+         && let Some(p) = crate::dialogs::free_pointer_over(input.ctx, input.rect)
+@@ -1315,6 +1318,7 @@ fn paint_primary_overlays(app: &mut PhotocraftApp, ui: &mut egui::Ui, view: &mut
+         painter.rect_stroke(edge_rect, 0.0, Stroke::new(1.0, Color32::from_gray(20)), egui::StrokeKind::Outside);
+     }
+     crate::type_tool::draw_overlay(app, painter, xf);
++    crate::horix_ux::draw_overflow_hint(app, painter, xf);
+     crate::transform_tool::draw_overlay(app, painter, xf);
+     crate::cam_transform::draw(app, painter, xf);
+     crate::cam_preview::wake(app, painter.ctx());
+diff --git a/crates/ui-egui/src/canvas/paint.rs b/crates/ui-egui/src/canvas/paint.rs
+index 0be47ad..ef924d7 100644
+--- a/crates/ui-egui/src/canvas/paint.rs
++++ b/crates/ui-egui/src/canvas/paint.rs
+@@ -469,6 +469,7 @@ pub(super) fn draw_tool_state(app: &PhotocraftApp, painter: &egui::Painter, xf:
      }
      crate::crop_straighten::draw(app, painter, |p| xf.to_screen(p[0] as f32, p[1] as f32), hover);
      crate::blur_pins::draw(app, painter, xf);
@@ -1055,10 +1066,27 @@ index d460c1f..47ff137 100644
          let deg = crate::crop_ui::angle(app);
          let shield = crate::crop_shield::current(app, painter.ctx());
 diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
-index b9a0016..780ecfd 100644
+index d829972..b073b1e 100644
 --- a/crates/ui-egui/src/dialogs.rs
 +++ b/crates/ui-egui/src/dialogs.rs
-@@ -262,7 +262,10 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+@@ -299,6 +299,7 @@ fn command_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, d: &Dialog, fields:
+         _ if crate::actions::owns_new_set(fields) => crate::actions::new_set_body(ui, fields),
+         _ if crate::new_layer_ui::owns(fields) => crate::new_layer_ui::body(ui, fields),
+         _ if crate::mask_trash_prompt::owns(fields) => crate::mask_trash_prompt::body(ui, fields),
++        _ if crate::group_delete_prompt::owns(fields) => crate::group_delete_prompt::body(ui, fields),
+         _ if crate::rasterize_prompt::owns(fields) => crate::rasterize_prompt::body(ui, fields),
+         _ if crate::duplicate_layer_ui::owns(fields) => crate::duplicate_layer_ui::body(app, ui, fields),
+         _ if crate::stack_dialog::owns(fields) => crate::stack_dialog::body(app, ui, fields, d.id),
+@@ -475,6 +476,8 @@ fn button_row(
+                 fields.insert("choice".into(), json!("apply"));
+             }
+             hit
++        } else if crate::group_delete_prompt::owns(fields) {
++            crate::group_delete_prompt::buttons(ui, fields)
+         } else if crate::rasterize_prompt::is_filter(fields) {
+             // Photoshop: Convert to Smart Object / Rasterize / Cancel (#4303).
+             let rasterize = DialogButton::new(ButtonRole::Default, tl!("Rasterize"), 84.0);
+@@ -576,7 +579,10 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
          // effects, extends down and right instead of re-centring.
          let pinned: Option<egui::Vec2> = ctx.data(|m| m.get_temp(id));
          let place = place_id(&d);
@@ -1070,7 +1098,7 @@ index b9a0016..780ecfd 100644
          let mut drag = egui::Vec2::ZERO;
          let mut close_clicked = false;
          let mut sizing = false;
-@@ -360,6 +363,10 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
+@@ -672,6 +678,10 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
              crate::widgets::hairline(ui);
              ui.add_space(8.0);
              crate::field_tab::begin(ui.ctx());
@@ -1078,39 +1106,30 @@ index b9a0016..780ecfd 100644
 +            if interactive {
 +                crate::horix_ux::preview_key(ui.ctx(), &mut fields);
 +            }
-             match d.kind {
-                 DialogKind::NewDocument => {
-                     if crate::new_doc_ui::body(app, ui, &mut fields) {
-@@ -410,6 +417,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
-                 DialogKind::Command if crate::actions::owns_insert_stop(&fields) => crate::actions::insert_stop_body(ui, &mut fields),
-                 DialogKind::Command if crate::new_layer_ui::owns(&fields) => crate::new_layer_ui::body(ui, &mut fields),
-                 DialogKind::Command if crate::mask_trash_prompt::owns(&fields) => crate::mask_trash_prompt::body(ui, &fields),
-+                DialogKind::Command if crate::group_delete_prompt::owns(&fields) => crate::group_delete_prompt::body(ui, &fields),
-                 DialogKind::Command if crate::rasterize_prompt::owns(&fields) => crate::rasterize_prompt::body(ui, &fields),
-                 DialogKind::Command if crate::duplicate_layer_ui::owns(&fields) => crate::duplicate_layer_ui::body(app, ui, &mut fields),
-                 DialogKind::Command if crate::stack_dialog::owns(&fields) => crate::stack_dialog::body(app, ui, &mut fields, d.id),
-@@ -539,6 +547,8 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
-                                 fields.insert("choice".into(), json!("apply"));
-                             }
-                             hit
-+                        } else if crate::group_delete_prompt::owns(&fields) {
-+                            crate::group_delete_prompt::buttons(ui, &mut fields)
-                         } else if crate::rasterize_prompt::is_filter(&fields) {
-                             // Photoshop: Convert to Smart Object / Rasterize / Cancel (#4303).
-                             let rasterize = DialogButton::new(ButtonRole::Default, tl!("Rasterize"), 84.0);
-@@ -806,6 +816,7 @@ pub fn confirm(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
-         DialogKind::Command if crate::actions::owns_insert_stop(&d.fields) => crate::actions::insert_stop_confirm(app, &d.fields),
-         DialogKind::Command if crate::new_layer_ui::owns(&d.fields) => crate::new_layer_ui::confirm(app, &d.fields),
-         DialogKind::Command if crate::mask_trash_prompt::owns(&d.fields) => crate::mask_trash_prompt::confirm(app, &d.fields),
-+        DialogKind::Command if crate::group_delete_prompt::owns(&d.fields) => crate::group_delete_prompt::confirm(app, &d.fields),
-         DialogKind::Command if crate::rasterize_prompt::owns(&d.fields) => crate::rasterize_prompt::confirm(app, &d.fields),
-         DialogKind::Command if crate::duplicate_layer_ui::owns(&d.fields) => crate::duplicate_layer_ui::confirm(app, &d.fields),
-         DialogKind::Command if crate::stack_dialog::owns(&d.fields) => crate::stack_dialog::confirm(app, &d.fields),
-diff --git a/crates/ui-egui/src/filter_dialog.rs b/crates/ui-egui/src/filter_dialog.rs
-index 8c9e050..414b269 100644
---- a/crates/ui-egui/src/filter_dialog.rs
-+++ b/crates/ui-egui/src/filter_dialog.rs
-@@ -481,7 +481,8 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
+             if let Some(done) = dialog_body(app, ui, &d, &mut fields, id, interactive) {
+                 outcome = Some(done);
+             }
+@@ -858,6 +868,7 @@ const ROUTES: &[fn(&Fields) -> bool] = &[
+     crate::new_layer_ui::owns,
+     crate::new_group_ui::owns,
+     crate::mask_trash_prompt::owns,
++    crate::group_delete_prompt::owns,
+     crate::rasterize_prompt::owns,
+     crate::duplicate_layer_ui::owns,
+     crate::stack_dialog::owns,
+@@ -1016,6 +1027,7 @@ fn confirm_command(app: &mut PhotocraftApp, d: Dialog) -> Result<Value, String>
+         _ if crate::actions::owns_new_set(&d.fields) => crate::actions::new_set_confirm(app, &d.fields),
+         _ if crate::new_layer_ui::owns(&d.fields) => crate::new_layer_ui::confirm(app, &d.fields),
+         _ if crate::mask_trash_prompt::owns(&d.fields) => crate::mask_trash_prompt::confirm(app, &d.fields),
++        _ if crate::group_delete_prompt::owns(&d.fields) => crate::group_delete_prompt::confirm(app, &d.fields),
+         _ if crate::rasterize_prompt::owns(&d.fields) => crate::rasterize_prompt::confirm(app, &d.fields),
+         _ if crate::duplicate_layer_ui::owns(&d.fields) => crate::duplicate_layer_ui::confirm(app, &d.fields),
+         _ if crate::stack_dialog::owns(&d.fields) => crate::stack_dialog::confirm(app, &d.fields),
+diff --git a/crates/ui-egui/src/dialogs/filter_dialog.rs b/crates/ui-egui/src/dialogs/filter_dialog.rs
+index 816ed53..50a80e0 100644
+--- a/crates/ui-egui/src/dialogs/filter_dialog.rs
++++ b/crates/ui-egui/src/dialogs/filter_dialog.rs
+@@ -511,7 +511,8 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
      fields.insert("__label".into(), json!(spec.label));
      fields.insert("__filter".into(), json!(true));
      // Select and Mask previews in its view modes (`select_mask_view`), not as the command's result.
@@ -1120,7 +1139,7 @@ index 8c9e050..414b269 100644
          fields.insert("__preview".into(), json!(true));
      }
      for p in parse_spec(spec.params) {
-@@ -494,6 +495,9 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
+@@ -533,6 +534,9 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
      if crate::blur_pins::handles(command) {
          crate::blur_pins::init(app, &mut fields);
      }
@@ -1130,7 +1149,7 @@ index 8c9e050..414b269 100644
      if command == LENS_BLUR {
          lens_blur_channels(app, &mut fields);
      }
-@@ -1166,6 +1170,12 @@ pub(crate) fn preview_document_for_target(
+@@ -1215,6 +1219,12 @@ pub(crate) fn preview_document_for_target(
      }
      s.active_mut()?.channel_view.target = target;
      s.execute(command, p).ok()?;
@@ -1143,7 +1162,7 @@ index 8c9e050..414b269 100644
      s.active().map(|d| crate::proxy::proxy_document(&d.doc, reduce_k))
  }
  
-@@ -1224,6 +1234,7 @@ fn scale_preview_params(command: &str, params: &mut Value, k: u32) {
+@@ -1273,6 +1283,7 @@ fn scale_preview_params(command: &str, params: &mut Value, k: u32) {
      // Blur Gallery pins carry their blur in document pixels too.
      if command.starts_with("filter.blurGallery.") {
          crate::blur_pins::scale_for_proxy(params, k);
@@ -1250,10 +1269,10 @@ index 0000000..bd4d1ad
 +}
 diff --git a/crates/ui-egui/src/horix_ux.rs b/crates/ui-egui/src/horix_ux.rs
 new file mode 100644
-index 0000000..ded449b
+index 0000000..ea7a50a
 --- /dev/null
 +++ b/crates/ui-egui/src/horix_ux.rs
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,180 @@
 +//! HORIX's own UX fixes on top of PhotoCraft 0.9 (the team's bug rounds, apps/sg-ps/NEXT-STEPS.md):
 +//! the Color panel's Eyedropper button, Properties coming forward for the shape / type / pen tools
 +//! and layers, P for before / after in previewing dialogs, the overset-text mark, and Select ›
@@ -1321,7 +1340,7 @@ index 0000000..ded449b
 +/// once the pointer is up and a double-click can no longer follow, so the click that selected a
 +/// layer row is never followed by a second one landing on a shifted dock.
 +pub fn frame(app: &mut PhotocraftApp, ctx: &egui::Context) {
-+    let (key, pending) = (egui::Id::new("horix-properties-seen"), egui::Id::new("horix-properties-pending"));
++    let (key, pending) = (egui::Id::unique("horix-properties-seen"), egui::Id::unique("horix-properties-pending"));
 +    let doc = app.session.active().map(|st| (st.doc.id, st.active_layer));
 +    let now = Seen(app.ui.tool, doc);
 +    let before = ctx.data(|d| d.get_temp::<Seen>(key));
@@ -1366,7 +1385,8 @@ index 0000000..ded449b
 +}
 +
 +/// Photoshop's overset-text mark (round 1 #12): a red "+" in a square on the box's bottom-right
-+/// handle, for paragraph text that does not fit in its box.
++/// handle, for paragraph text that does not fit in its box. (While the text is being edited,
++/// upstream's own frame shows the mark since 0.16; this one is for the layer when it is not.)
 +pub fn overflow_mark(painter: &egui::Painter, at: Pos2) {
 +    let red = Color32::from_rgb(214, 60, 50);
 +    let r = egui::Rect::from_center_size(at, egui::vec2(13.0, 13.0));
@@ -1384,8 +1404,8 @@ index 0000000..ded449b
 +        _ => None,
 +    })?;
 +    let photocraft_doc::text::TextShape::Box { x, y, width, height } = shape else { return None };
-+    let (l, aff, _) = crate::type_tool::layout(app, id)?;
-+    if !l.overflow {
++    let (l, aff, text) = crate::type_tool::layout(app, id)?;
++    if !l.overflows(&text) {
 +        return None;
 +    }
 +    let p = aff.apply(Point::new(f64::from(x + width), f64::from(y + height)));
@@ -1912,66 +1932,22 @@ index 0000000..8c84e7d
 +    assert!((f(&fl, "endX") - 0.75).abs() < 0.005 && (f(&fl, "endY") - 0.25).abs() < 0.005, "{} {}", fl["endX"], fl["endY"]);
 +    assert_eq!(fl["paths"][0]["points"][1], json!([fl["endX"], fl["endY"]]), "the path follows");
 +}
-diff --git a/crates/ui-egui/src/layer_menu_ui.rs b/crates/ui-egui/src/layer_menu_ui.rs
-index a26b2f1..ae40042 100644
---- a/crates/ui-egui/src/layer_menu_ui.rs
-+++ b/crates/ui-egui/src/layer_menu_ui.rs
-@@ -58,6 +58,10 @@ pub fn entries(l: &Layer, multi: bool, has_selection: bool) -> Vec<Entry> {
-     if !multi {
-         v.push(Some((tl!("Group from Layers…"), "layer.groupLayers")));
-     }
-+    // HORIX (round 1 #5): Ungroup in the context menu.
-+    if !multi && l.is_group() {
-+        v.push(Some((tl!("Ungroup Layers"), "layer.ungroupLayers")));
-+    }
-     v.push(None);
-     v.push(Some((tl!("Quick Export As PNG"), "layer.quickExportAsPng")));
-     v.push(Some((tl!("Export As…"), "layer.exportAs")));
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index 22d50ab..84b2e72 100644
+index e75a091..5b9f625 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
-@@ -32,6 +32,7 @@ pub mod bidi_text;
- pub(crate) mod bitmap_dialog;
- mod blend_keys;
- pub(crate) mod blend_preview;
+@@ -33,7 +33,10 @@ pub mod dock;
+ pub mod file_dialog;
+ pub mod file_open;
+ pub mod frame_stages;
 +pub mod blur_handles;
- pub mod blur_pins;
- mod brand;
- pub(crate) mod brush_cursor;
-@@ -111,10 +112,12 @@ pub mod gallery_ui;
- pub mod gpu_canvas;
  pub mod gpu_status;
- pub mod gradient_ui;
 +pub mod group_delete_prompt;
- pub mod guide_layout_ui;
- pub mod guide_select;
- pub mod history_menu_ui;
- pub mod hold_keys;
 +pub mod horix_ux;
  pub mod i18n;
  mod icon_data;
  pub mod icons;
-@@ -1256,6 +1259,10 @@ impl PhotocraftApp {
- 
-     /// Run an engine command, reporting errors in the status bar.
-     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
-+        // HORIX: a group with layers in it asks what goes (before the trash confirmation).
-+        if let Some(result) = group_delete_prompt::intercept(self, id, &params) {
-+            return result;
-+        }
-         if let Some(result) = delete_layer_prompt::intercept(self, id, &params) {
-             return result;
-         }
-@@ -2291,6 +2298,7 @@ impl eframe::App for PhotocraftApp {
-             vector_ui::pen_commit(self, false);
-         }
-         transform_tool::end_if_left(self);
-+        horix_ux::frame(self, ctx);
-         shape_stroke_ui::sync_editor(self, ctx);
-         self.collect_screenshots(ctx);
-         self.issue_screenshots(ctx);
-@@ -3242,6 +3250,9 @@ mod transform_switch_tests;
+@@ -790,6 +793,9 @@ mod transform_switch_tests;
  #[cfg(test)]
  mod transform_undo_tests;
  
@@ -1981,46 +1957,39 @@ index 22d50ab..84b2e72 100644
  #[cfg(test)]
  mod transform_type_tests;
  
-diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
-index 19c3299..c24ae8a 100644
---- a/crates/ui-egui/src/panels.rs
-+++ b/crates/ui-egui/src/panels.rs
-@@ -4358,6 +4358,8 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+diff --git a/crates/ui-egui/src/panels/color.rs b/crates/ui-egui/src/panels/color.rs
+index 5953989..1c9d47b 100644
+--- a/crates/ui-egui/src/panels/color.rs
++++ b/crates/ui-egui/src/panels/color.rs
+@@ -171,6 +171,8 @@ pub(crate) fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                  ui.data_mut(|d| d.insert_temp(key, (h.h, h.s)));
              }
          }
 +        // HORIX (bug #5): an Eyedropper button beside the readout.
 +        crate::horix_ux::eyedropper_button(app, ui);
      });
+     crate::apply_color::track_focus(ui.ctx());
  }
- 
-diff --git a/crates/ui-egui/src/path_selection_tests.rs b/crates/ui-egui/src/path_selection_tests.rs
-index a5d4ee0..21c2257 100644
---- a/crates/ui-egui/src/path_selection_tests.rs
-+++ b/crates/ui-egui/src/path_selection_tests.rs
-@@ -157,6 +157,8 @@ fn thumbnail_selection_ctrl_click_shape_keeps_active_layer_and_supports_undo() {
-     assert!(selection(&h).is_none(), "Ctrl-click on a shape's name only selects the layer");
-     h.state_mut().run("layer.select", json!({"layer": active})).unwrap();
-     h.run_steps(2);
-+    // HORIX: selecting the shape brought Properties forward, which moved the Layers rows.
-+    let row = crate::layer_row_ui::recorded(&h.ctx).into_iter().find(|r| r.layer == shape).unwrap();
-     click(&mut h, egui::pos2(row.row.left() + 46.0, row.row.center().y), command());
-     assert_eq!(selection(&h), Some([40, 20, 60, 40]), "{}", h.state().ui.status);
-     assert_eq!(h.state().session.active().unwrap().active_layer, Some(photocraft_doc::LayerId(active)));
-@@ -349,6 +351,8 @@ fn thumbnail_selection_after_hiding_extras_restores_outline() {
-     assert!(!h.state().ui.view.extras, "selecting layers must not reveal Extras");
-     h.state_mut().run("layer.select", json!({"layer": active})).unwrap();
-     h.run_steps(2);
-+    // HORIX: selecting the shape brought Properties forward, which moved the Layers rows.
-+    let row = crate::layer_row_ui::recorded(&h.ctx).into_iter().find(|r| r.layer == shape).unwrap();
-     click(&mut h, egui::pos2(row.row.left() + 46.0, row.row.center().y), command());
-     assert_eq!(selection(&h), Some([40, 20, 60, 40]));
-     assert!(h.state().ui.view.shows(h.state().ui.view.show.selection_edges), "Ctrl-clicking the thumbnail reveals the new selection");
-diff --git a/crates/ui-egui/src/prefs_ui.rs b/crates/ui-egui/src/prefs_ui.rs
-index a0a4562..f4e697c 100644
---- a/crates/ui-egui/src/prefs_ui.rs
-+++ b/crates/ui-egui/src/prefs_ui.rs
-@@ -994,6 +994,8 @@ pub fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &V
+diff --git a/crates/ui-egui/src/panels/layer_menu_ui.rs b/crates/ui-egui/src/panels/layer_menu_ui.rs
+index f274e28..15581c8 100644
+--- a/crates/ui-egui/src/panels/layer_menu_ui.rs
++++ b/crates/ui-egui/src/panels/layer_menu_ui.rs
+@@ -58,6 +58,10 @@ pub fn entries(l: &Layer, multi: bool, has_selection: bool) -> Vec<Entry> {
+     // Groups the clicked layer, or the whole selection when several layers are selected, after
+     // Photoshop's New Group dialog.
+     v.push(Some((tl!("Group from Layers…"), "layer.new.groupFromLayers")));
++    // HORIX (round 1 #5): Ungroup in the context menu.
++    if !multi && l.is_group() {
++        v.push(Some((tl!("Ungroup Layers"), "layer.ungroupLayers")));
++    }
+     v.push(None);
+     v.push(Some((tl!("Quick Export As PNG"), "layer.quickExportAsPng")));
+     v.push(Some((tl!("Export As…"), "layer.exportAs")));
+diff --git a/crates/ui-egui/src/prefs/prefs_ui/dialogs.rs b/crates/ui-egui/src/prefs/prefs_ui/dialogs.rs
+index c1519b4..c531882 100644
+--- a/crates/ui-egui/src/prefs/prefs_ui/dialogs.rs
++++ b/crates/ui-egui/src/prefs/prefs_ui/dialogs.rs
+@@ -31,6 +31,8 @@ pub fn invoke(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &V
                          dm.fields.insert(k.clone(), v.clone());
                      }
                  }
@@ -2029,18 +1998,25 @@ index a0a4562..f4e697c 100644
                  dm.fields.insert("__note".into(), json!(note));
              }
              dialog(d)
-diff --git a/crates/ui-egui/src/type_tool.rs b/crates/ui-egui/src/type_tool.rs
-index ce9760e..2f6c6d0 100644
---- a/crates/ui-egui/src/type_tool.rs
-+++ b/crates/ui-egui/src/type_tool.rs
-@@ -1270,6 +1270,10 @@ pub fn draw_overlay(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewX
-                     painter.rect_filled(r, 0.0, Color32::WHITE);
-                     painter.rect_stroke(r, 0.0, frame, egui::StrokeKind::Inside);
-                 }
-+                // HORIX: the overset-text mark on the bottom-right handle.
-+                if l.overflow {
-+                    crate::horix_ux::overflow_mark(painter, c[2]);
-+                }
-             }
-         }
-         _ => {
+diff --git a/crates/ui-egui/src/tools/vector_ui/path_selection_tests.rs b/crates/ui-egui/src/tools/vector_ui/path_selection_tests.rs
+index d49eeaa..c149665 100644
+--- a/crates/ui-egui/src/tools/vector_ui/path_selection_tests.rs
++++ b/crates/ui-egui/src/tools/vector_ui/path_selection_tests.rs
+@@ -241,6 +241,8 @@ fn thumbnail_selection_ctrl_click_shape_keeps_active_layer_and_supports_undo() {
+     assert!(selection(&h).is_none(), "Ctrl-click on a shape's name only selects the layer");
+     h.state_mut().run("layer.select", json!({"layer": active})).unwrap();
+     h.run_steps(2);
++    // HORIX: selecting the shape brought Properties forward, which moved the Layers rows.
++    let row = crate::layer_row_ui::recorded(&h.ctx).into_iter().find(|r| r.layer == shape).unwrap();
+     click(&mut h, egui::pos2(row.row.left() + 46.0, row.row.center().y), command());
+     assert_eq!(selection(&h), Some([40, 20, 60, 40]), "{}", h.state().ui.status);
+     assert_eq!(h.state().session.active().unwrap().active_layer, Some(photocraft_doc::LayerId(active)));
+@@ -433,6 +435,8 @@ fn thumbnail_selection_after_hiding_extras_restores_outline() {
+     assert!(!h.state().ui.view.extras, "selecting layers must not reveal Extras");
+     h.state_mut().run("layer.select", json!({"layer": active})).unwrap();
+     h.run_steps(2);
++    // HORIX: selecting the shape brought Properties forward, which moved the Layers rows.
++    let row = crate::layer_row_ui::recorded(&h.ctx).into_iter().find(|r| r.layer == shape).unwrap();
+     click(&mut h, egui::pos2(row.row.left() + 46.0, row.row.center().y), command());
+     assert_eq!(selection(&h), Some([40, 20, 60, 40]));
+     assert!(h.state().ui.view.shows(h.state().ui.view.show.selection_edges), "Ctrl-clicking the thumbnail reveals the new selection");

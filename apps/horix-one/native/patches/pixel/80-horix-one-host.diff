@@ -1,39 +1,42 @@
 diff --git a/Cargo.toml b/Cargo.toml
+index e01bcf1..885aba7 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -172,3 +172,14 @@
- [profile.wasm-release.package.photocraft-paint]
- opt-level = 3
- 
-+
+@@ -203,3 +203,14 @@ eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc79968157
+ egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+ egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+ winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
 +# HORIX One: Horix Vectors and Horix Layout (its Vector and Layout personas) read and write PDFs
-+# with these, and Layout's window uses Storytold's winit, from their own workspaces. One build
-+# takes one copy of each: Vectors' craft-libs (Layout's plus three PDF reader fixes).
-+[patch.crates-io]
-+krilla = { git = "https://github.com/storytold/craft-libs", rev = "ca50d63b773c99f96e75c77ce5a1d21e7c9cda0d", version = "=0.8.2" }
-+winit = { git = "https://github.com/storytold/winit.git", rev = "3d51077fd1a966f84df9ef287839dc84fd5b4ca7" }
-+hayro = { git = "https://github.com/storytold/craft-libs", rev = "ca50d63b773c99f96e75c77ce5a1d21e7c9cda0d", version = "=0.7.1" }
-+hayro-interpret = { git = "https://github.com/storytold/craft-libs", rev = "ca50d63b773c99f96e75c77ce5a1d21e7c9cda0d", version = "=0.7.0" }
-+hayro-syntax = { git = "https://github.com/storytold/craft-libs", rev = "ca50d63b773c99f96e75c77ce5a1d21e7c9cda0d", version = "=0.7.2" }
-+hayro-jbig2 = { git = "https://github.com/storytold/craft-libs", rev = "ca50d63b773c99f96e75c77ce5a1d21e7c9cda0d", version = "=0.3.0" }
++# with these, from their own workspaces (whose [patch] tables a path dependency doesn't bring).
++# One copy of each: the hayro crates at their shared craft-libs revision, krilla at Vectors'
++# (Layout's plus exact CMYK, gray and spot inks; the same 0.8.2).
++krilla = { git = "https://github.com/storytold/craft-libs", rev = "fb08be5fa19eee8d37e624397fcdc96df6035e92", version = "=0.8.2" }
++hayro = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.7.1" }
++hayro-interpret = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.7.0" }
++hayro-syntax = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.7.2" }
++hayro-jbig2 = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.3.0" }
++hayro-cmap = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.1.0" }
++hayro-postscript = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.1.0" }
 diff --git a/apps/photocraft/Cargo.toml b/apps/photocraft/Cargo.toml
+index 0cb13be..0408fd5 100644
 --- a/apps/photocraft/Cargo.toml
 +++ b/apps/photocraft/Cargo.toml
-@@ -36,6 +36,10 @@
- chrono = { workspace = true }
+@@ -40,6 +40,10 @@ clap = { workspace = true }
+ thiserror = { workspace = true }
  
  [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 +# HORIX One: Horix Vectors, the Vector persona of the same window (src/horix_one.rs).
 +horix-vectors-app = { package = "vectorcraft", path = "../../../vector/apps/vectorcraft" }
 +# HORIX One: Horix Layout, the Layout persona.
 +horix-layout-app = { package = "designcraft", path = "../../../layout/apps/designcraft" }
- rfd = { workspace = true }
- # HORIX AI selection: Microsoft's onnxruntime, loaded at run time from the app folder (the
- # Windows build links the C runtime statically, so the runtime ships as its own library).
+ tempfile = "=3.27.0"
+ roxmltree = "0.21"
+ craft-update = { workspace = true }
 diff --git a/apps/photocraft/build.rs b/apps/photocraft/build.rs
+index 7aa02f1..f899b41 100644
 --- a/apps/photocraft/build.rs
 +++ b/apps/photocraft/build.rs
-@@ -27,12 +27,12 @@
+@@ -27,12 +27,12 @@ fn main() {
          res.set("ProductVersion", &v).set("FileVersion", &v);
      }
      res.set_icon("../../assets/app-icon/photocraft.ico")
@@ -51,28 +54,28 @@ diff --git a/apps/photocraft/build.rs b/apps/photocraft/build.rs
          if std::env::var_os("PHOTOCRAFT_REQUIRE_WINRES").is_some() {
              panic!("embedding Windows resources failed: {e}");
 diff --git a/apps/photocraft/src/main.rs b/apps/photocraft/src/main.rs
+index 3e5c967..dac20d2 100644
 --- a/apps/photocraft/src/main.rs
 +++ b/apps/photocraft/src/main.rs
-@@ -48,6 +48,7 @@
+@@ -42,6 +42,7 @@ mod crash_guard;
  mod cursor;
  mod file_dialog_probe;
  mod gpu_startup;
 +mod horix_one;
  #[cfg(target_os = "linux")]
  mod icon_theme;
- #[cfg(target_os = "macos")]
-@@ -453,7 +454,9 @@
-     let mut launch = LaunchArgs {
-         automation_read_root: std::env::var_os("PHOTOCRAFT_AUTOMATION_READ_ROOT").map(std::path::PathBuf::from),
-         automation_write_root: std::env::var_os("PHOTOCRAFT_AUTOMATION_WRITE_ROOT").map(std::path::PathBuf::from),
--        in_window_menus: std::env::var_os("PHOTOCRAFT_IN_WINDOW_MENUS").is_some_and(|v| !v.is_empty() && v != "0"),
-+        // HORIX One: the menus stay in the window on macOS too, each persona with its own (the
-+        // menu bar would only ever hold Pixel's).
-+        in_window_menus: true,
-         ..Default::default()
-     };
-     if let Some(value) = std::env::var("PHOTOCRAFT_CONTROL_PORT").ok().filter(|v| !v.trim().is_empty()) {
-@@ -719,7 +722,7 @@
+ mod launch_args;
+@@ -377,6 +378,9 @@ fn main() -> eframe::Result {
+         automation,
+         mut launch_options,
+     } = launch;
++    // HORIX One: the menus stay in the window on macOS too, each persona with its own (the menu bar
++    // would only ever hold Pixel's).
++    let in_window_menus = in_window_menus || cfg!(target_os = "macos");
+ 
+     attach_log_file(logger);
+ 
+@@ -496,7 +500,7 @@ fn main() -> eframe::Result {
      let created_in_callback = app_created.clone();
      let started_sentinel = sentinel.clone();
      let result = eframe::run_native(
@@ -81,20 +84,21 @@ diff --git a/apps/photocraft/src/main.rs b/apps/photocraft/src/main.rs
          options,
          Box::new(move |cc| {
              created_in_callback.store(true, std::sync::atomic::Ordering::Relaxed);
-@@ -901,7 +904,8 @@
+@@ -686,7 +690,8 @@ fn main() -> eframe::Result {
              if let Some(w) = &app_dirs::current().warning {
                  photocraft_ui_egui::notices::post(&mut app, "Portable mode is off", vec![w.clone()], false, None);
              }
 -            Ok(Box::new(app))
-+            // HORIX One: this window shows Horix Vectors too, as the Vector persona.
++            // HORIX One: this window shows Horix Vectors and Horix Layout too, as personas.
 +            Ok(Box::new(horix_one::One::new(cc, app, custom_titlebar, !files.is_empty())))
          }),
      );
      // The window is gone: refuse further files and free the lock, so a launch that is waiting (or
-diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
---- a/crates/ui-egui/src/lib.rs
-+++ b/crates/ui-egui/src/lib.rs
-@@ -2254,6 +2254,16 @@
+diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
+index c70fee4..a8b0c96 100644
+--- a/crates/ui-egui/src/app.rs
++++ b/crates/ui-egui/src/app.rs
+@@ -218,6 +218,16 @@ impl PhotocraftApp {
      }
  }
  

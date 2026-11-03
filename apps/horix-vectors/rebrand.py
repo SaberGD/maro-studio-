@@ -123,7 +123,7 @@ def theme(root: Path) -> None:
     ])
     # Darkest level by default, as in HORIX.
     hx.edit(root, "crates/ui-egui/src/state.rs", [("            brightness: Brightness::MediumDark,", "            brightness: Brightness::Dark,")])
-    hx.edit(root, "crates/engine/src/lib.rs", [('            ui_brightness: s("mediumDark"),', '            ui_brightness: s("dark"),')])
+    hx.edit(root, "crates/engine/src/prefs.rs", [('            ui_brightness: s("mediumDark"),', '            ui_brightness: s("dark"),')])
     hx.edit(root, "crates/ui-egui/src/theme.rs", [("    Dark,\n    #[default]\n    MediumDark,", "    #[default]\n    Dark,\n    MediumDark,")])
     hx.replace_everywhere(root, ["crates/engine/src/cmd/prefscmds.rs"], [('("coral", "Coral")', '("coral", "HORIX")')])
 
@@ -165,8 +165,8 @@ def web_prefs(root: Path) -> None:
         ("    canvas: web_sys::HtmlCanvasElement,\n    loss: GraphicsLoss,\n}\n",
          "    canvas: web_sys::HtmlCanvasElement,\n    loss: GraphicsLoss,\n"
          "    /// The preferences last written to the browser's storage.\n    saved_prefs: vectorcraft_engine::Prefs,\n}\n"),
-        ("        app.logic(ctx);\n        crate::api::poll_replies();\n    }\n",
-         "        app.logic(ctx);\n        crate::api::poll_replies();\n"
+        ("        app.tick(ctx);\n        crate::api::poll_replies();\n        app.finish_ime_logic(ctx);\n    }\n",
+         "        app.tick(ctx);\n        crate::api::poll_replies();\n        app.finish_ime_logic(ctx);\n"
          "        if app.session.prefs != self.saved_prefs {\n"
          "            self.saved_prefs = app.session.prefs.clone();\n"
          "            if let Ok(s) = local_storage() {\n"
@@ -186,6 +186,27 @@ def web_prefs(root: Path) -> None:
     ])
 
 
+def updates(root: Path) -> None:
+    """Upstream's updater (craft-update, 0.17+) checks VectorCraft's own releases and can install
+    them over the app: Horix Vectors takes its new versions from the HORIX downloads page instead.
+    No check at start, and Help > Check for Updates opens the downloads page."""
+    hx.edit(root, "apps/vectorcraft/src/main.rs", [
+        ("                app.set_startup_update_check(true);\n",
+         "                // Horix Vectors: no check of upstream's releases (Help > Check for Updates opens the HORIX downloads page).\n"
+         "                app.set_startup_update_check(false);\n"),
+    ])
+    hx.edit(root, "crates/ui-egui/src/menus/run.rs", [
+        ('        "help.checkForUpdates" => crate::updates_ui::check(app),\n',
+         '        "help.checkForUpdates" => {\n'
+         f'            app.open_url("{hx.DOWNLOADS_PAGE}");\n'
+         "            Ok(Value::Null)\n        }\n"),
+    ])
+    hx.edit(root, "crates/ui-egui/src/updates_ui.rs", [
+        ("pub(crate) fn check(app: &mut VectorcraftApp)",
+         "#[allow(dead_code)] // Horix Vectors: Help > Check for Updates opens the HORIX downloads page.\npub(crate) fn check(app: &mut VectorcraftApp)"),
+    ])
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -196,6 +217,7 @@ def main() -> None:
     theme(root)
     web(root)
     web_prefs(root)
+    updates(root)
     hx.exe_version(root, "apps/vectorcraft/build.rs")
     dropped = hx.drop_branded_translations_tsv(root, "crates/ui-egui/src/i18n/*.tsv")
     n = hx.rename(root, CODE + [WEB], "VectorCraft", APP_NAME)

@@ -2,7 +2,7 @@
 
 العنوان: https://vectors.horix.live/
 
-**Horix Vectors** هو برنامج الفيكتور (بديل Illustrator) من عيلة HORIX بتاعة أكاديمية صابر جروب. مبني على [VectorCraft](https://github.com/storytold/vectorcraft) المفتوح المصدر (MIT OR Apache-2.0)، الإصدار **0.16.0** (tag `v0.16.0`، commit `1019075`).
+**Horix Vectors** هو برنامج الفيكتور (بديل Illustrator) من عيلة HORIX بتاعة أكاديمية صابر جروب. مبني على [VectorCraft](https://github.com/storytold/vectorcraft) المفتوح المصدر (MIT OR Apache-2.0)، الإصدار **0.21.0** (tag `v0.21.0`، commit `11862f6`).
 
 زي HORIX بالظبط: إحنا مش بنعدّل الكود الأصلي بإيدينا. `rebrand.py` بيتطبّق على نسخة نظيفة من الكود وقت البناء، فالتحديث لأي إصدار جديد من VectorCraft هو إن تحفظ الكود الجديد في `archive/vectorcraft/` وتشغّل البناء تاني.
 
@@ -14,6 +14,7 @@
 | الأيقونة | التنين بتاع VectorCraft | صقر HORIX على Horus Ink، ومعاه شارة Horix Red فيها نقطة Pen بالـHandles بتاعتها (`assets/app-icon/`، متولدة بـ`apps/horix-common/tools/make_icons.py`) |
 | الألوان | رمادي أزرق بارد ولون Coral | رمادي Horus Ink وGraphite الدافي، والنص Falcon Ivory، والحالة النشطة Vision Amber `#EA993F`، وزراير الأكشن Horix Red `#D63C32`. أغمق درجة (Dark) هي الافتراضية |
 | زرار Discord وروابط ArtCraft | Discord والموقع وGitHub | زرار «Saber Group» (فيسبوك الأكاديمية)، وموقع الأكاديمية، وصفحة تحميل الديسكتوب `horix.si`، والتواصل على واتساب |
+| التحديثات (الديسكتوب) | البرنامج بيدوّر على إصدارات VectorCraft نفسها ويعرض يركّبها مكانه | مفيش فحص عند الفتح، و`Help › Check for Updates…` بيفتح صفحة تحميل HORIX `horix.si` |
 | صفحة الويب | «Loading VectorCraft…» | شاشة تحميل HORIX: الصقر، واسم البرنامج، وخط Horix Red، و`BY SABER GROUP` |
 
 الأسماء الداخلية في الكود (`vectorcraft_engine`، `VectorcraftApp`، …) مش بتظهر للمستخدم، فسيبناها زي ما هي عشان التحديثات ما تتكسرش.

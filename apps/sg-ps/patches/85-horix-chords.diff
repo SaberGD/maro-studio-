@@ -1,68 +1,40 @@
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index b80d4e0..fe70216 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -28,6 +28,7 @@ mod brush_mode_menu;
+ pub mod ai_segment;
+ /// HORIX Home (shared by the HORIX family) and HORIX's use of it.
+ pub mod horix_app_home;
++pub mod horix_chords;
+ pub mod horix_home;
+ pub mod canvas;
+ pub mod control;
 diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
+index 5d398a2..4d7d172 100644
 --- a/crates/ui-egui/src/panels.rs
 +++ b/crates/ui-egui/src/panels.rs
-@@ -1920,7 +1920,20 @@
-                 ui.add_space(8.0);
-                 rgb_sliders(app, ui);
-             }
--            color_slider_mode_row(app, ui);
-+            if color_chords_room(ui) {
-+                color_slider_mode_row(app, ui);
-+                color_tab_chords(app, ui);
-+            } else {
-+                // Too short for the chords: a button to them beside HSB/HSL.
-+                ui.horizontal(|ui| {
-+                    color_slider_mode_row(app, ui);
-+                    ui.add_space(6.0);
-+                    let b = ui.button("Colour Chords  →").on_hover_text("Colours that go with this one, in the Swatches tab");
-+                    if b.clicked() {
-+                        *crate::dock::Group::Color.tab_mut(&mut app.ui.dock_tabs) = 1;
-+                    }
-+                });
-+            }
-         }
-         (Group::Color, _) if pro => crate::swatches_ui::panel(app, ui),
-         (Group::Color, 0) => crate::swatches_ui::panel(app, ui),
-@@ -2518,6 +2531,31 @@
-         ColorPanelSliderMode::Rgb => rgb_sliders(app, ui),
-     }
-     color_slider_mode_row(app, ui);
-+    color_tab_chords(app, ui);
-+}
-+
-+/// Where the Color tab keeps the height its Colour Chords took last frame, which the field leaves
-+/// free when it stretches over the group.
-+fn color_chords_height_id() -> egui::Id {
-+    egui::Id::new("horix-color-chords-height")
-+}
-+
-+fn color_chords_room_id() -> egui::Id {
-+    egui::Id::new("horix-color-chords-room")
-+}
-+
-+/// Whether the docked Color tab has room for its Colour Chords under the field (true undocked).
-+fn color_chords_room(ui: &egui::Ui) -> bool {
-+    ui.data(|d| d.get_temp::<bool>(color_chords_room_id())).unwrap_or(true)
-+}
-+
-+/// HORIX Colour Chords under the Color tab (also at the top of Swatches), from the foreground.
-+fn color_tab_chords(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
-+    let top = ui.cursor().top();
-+    ui.add_space(8.0);
-+    crate::swatches_ui::horix_chords(app, ui);
-+    let h = ui.cursor().top() - top;
-+    ui.data_mut(|d| d.insert_temp(color_chords_height_id(), h));
- }
+@@ -66,7 +66,7 @@ pub(super) mod variables_ui;
  
- /// HSB or RGB sliders under the colour field (#7172).
-@@ -4219,8 +4257,16 @@
- /// calls this with the group body's `ui` before drawing the tab.
+ #[cfg(test)]
+ use color::color_field_height;
+-pub(crate) use color::{color_field, color_field_fill_id, field_chips, field_hsva, offer_color_field_fill, srgb_hsva};
++pub(crate) use color::{color_field, color_field_fill_id, color_tab_chords, field_chips, field_hsva, offer_color_field_fill, srgb_hsva};
+ #[cfg(test)]
+ pub(crate) use color::{hsva_color32, hsva_srgb, srgb_bytes};
+ #[cfg(test)]
+diff --git a/crates/ui-egui/src/panels/color.rs b/crates/ui-egui/src/panels/color.rs
+index 1c9d47b..cd1896b 100644
+--- a/crates/ui-egui/src/panels/color.rs
++++ b/crates/ui-egui/src/panels/color.rs
+@@ -38,11 +38,56 @@ pub(crate) fn color_field_fill_id() -> egui::Id {
+ /// (#6000): a dock calls this with the group body's `ui` before drawing the tab.
  pub(crate) fn offer_color_field_fill(ui: &egui::Ui, pro: bool, group: crate::dock::Group, tab: usize) {
-     if pro && group == crate::dock::Group::Color && tab == 0 {
+     if group == crate::dock::Group::Color && group.tabs(pro).get(tab) == Some(&"Color") {
 -        let inner = ui.available_height().max(0.0);
 -        ui.data_mut(|d| d.insert_temp(color_field_fill_id(), inner));
-+        // Less the Colour Chords under it (their height last frame; a first guess before that)
-+        // when the field keeps a useful size; a short group shows a button to them instead.
++        // HORIX: less the Colour Chords under it (their height last frame; a first guess before
++        // that) when the field keeps a useful size; a short group shows a button to them instead.
 +        let avail = ui.available_height().max(0.0);
 +        let chords = ui.data(|d| d.get_temp::<f32>(color_chords_height_id())).unwrap_or(130.0);
 +        let room = avail - chords >= 150.0;
@@ -74,10 +46,64 @@ diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
      }
  }
  
-diff --git a/crates/ui-egui/src/swatches_ui.rs b/crates/ui-egui/src/swatches_ui.rs
---- a/crates/ui-egui/src/swatches_ui.rs
-+++ b/crates/ui-egui/src/swatches_ui.rs
-@@ -59,8 +59,39 @@
++/// Where the Color tab keeps the height its Colour Chords took last frame, which the field leaves
++/// free when it stretches over the group.
++fn color_chords_height_id() -> egui::Id {
++    egui::Id::unique("horix-color-chords-height")
++}
++
++fn color_chords_room_id() -> egui::Id {
++    egui::Id::unique("horix-color-chords-room")
++}
++
++/// HORIX Colour Chords under the Color tab (also at the top of Swatches), from the foreground.
++/// When the docked group is too short for them, a button beside the panel opens Swatches, where
++/// they are too.
++pub(crate) fn color_tab_chords(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
++    let room = ui.data(|d| d.get_temp::<bool>(color_chords_room_id())).unwrap_or(true);
++    if !room {
++        ui.add_space(4.0);
++        let b = ui.button("Colour Chords  →").on_hover_text("Colours that go with this one, in the Swatches tab");
++        if b.clicked() {
++            if app.ui.docking.is_some() {
++                let _ = crate::panel_docking::command(app, "window.panel.activate", &serde_json::json!({"panel": "swatches"}));
++            } else {
++                let pro = Tokens::get(ui.ctx()).pro;
++                if let Some(i) = crate::dock::Group::Color.tabs(pro).iter().position(|t| *t == "Swatches") {
++                    *crate::dock::Group::Color.tab_mut(&mut app.ui.dock_tabs) = i;
++                }
++            }
++        }
++        return;
++    }
++    let top = ui.cursor().top();
++    ui.add_space(8.0);
++    crate::swatches_ui::horix_chords(app, ui);
++    let h = ui.cursor().top() - top;
++    ui.data_mut(|d| d.insert_temp(color_chords_height_id(), h));
++}
++
+ /// Height of the Color field: the group body's height (when docked) less the hex/RGB readout,
+ /// which folds onto a second line in a narrow dock. 120 pt when nothing sets a height.
+ pub(super) fn color_field_height(avail: Option<f32>, width: f32) -> f32 {
+diff --git a/crates/ui-egui/src/panels/color_panel_ui.rs b/crates/ui-egui/src/panels/color_panel_ui.rs
+index 22665b2..21b7ee2 100644
+--- a/crates/ui-egui/src/panels/color_panel_ui.rs
++++ b/crates/ui-egui/src/panels/color_panel_ui.rs
+@@ -39,6 +39,8 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+         ColorPanelMode::ColorWheel => wheel(app, ui),
+         mode => sliders(app, ui, mode),
+     }
++    // HORIX: Colour Chords under the Color tab.
++    crate::panels::color_tab_chords(app, ui);
+     crate::apply_color::track_focus(ui.ctx());
+ }
+ 
+diff --git a/crates/ui-egui/src/panels/swatches_ui.rs b/crates/ui-egui/src/panels/swatches_ui.rs
+index 09420d4..f623c94 100644
+--- a/crates/ui-egui/src/panels/swatches_ui.rs
++++ b/crates/ui-egui/src/panels/swatches_ui.rs
+@@ -59,8 +59,40 @@ pub fn use_swatch(app: &mut PhotocraftApp, name: &str, background: bool) {
      }
  }
  
@@ -89,8 +115,9 @@ diff --git a/crates/ui-egui/src/swatches_ui.rs b/crates/ui-egui/src/swatches_ui.
 +    match crate::horix_chords::section(ui, "horix", [fg[0], fg[1], fg[2]], true) {
 +        Some(crate::horix_chords::ChordAction::Use(c)) => {
 +            app.session.tools.foreground = [c[0], c[1], c[2], 1.0];
-+            crate::type_tool::foreground_changed(app);
-+            crate::shape_fill_ui::foreground_changed(app, None);
++            // As a swatch click: recolour the selected characters, or the selected type and
++            // shape layers (`apply_color`).
++            crate::apply_color::swatch_picked(app);
 +        }
 +        Some(crate::horix_chords::ChordAction::AddToSwatches { group, colors }) => {
 +            let mut added = 0;
@@ -117,14 +144,3 @@ diff --git a/crates/ui-egui/src/swatches_ui.rs b/crates/ui-egui/src/swatches_ui.
      let lib = &app.session.presets.swatches;
      let groups: Vec<GroupView> = lib
          .iter()
-diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
---- a/crates/ui-egui/src/lib.rs
-+++ b/crates/ui-egui/src/lib.rs
-@@ -17,6 +17,7 @@
- pub mod actions;
- /// HORIX Home (shared by the HORIX family) and HORIX's use of it.
- pub mod horix_app_home;
-+pub mod horix_chords;
- pub mod horix_home;
- pub mod ai_segment;
- pub mod adjust_dialog;

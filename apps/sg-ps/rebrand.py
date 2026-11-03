@@ -17,6 +17,7 @@ What it changes (UI only; licence files are kept as the licences require):
   - Select Subject: spatial prior around the salient mass (see segeval/), fewer leaks into busy
     backgrounds.
   - Web build output renamed to sg-ps-*.js / sg-ps-*_bg.wasm.
+  - No upstream update checks on the desktop (HORIX Launcher updates HORIX).
 """
 
 import os
@@ -159,7 +160,8 @@ def menus(root: Path) -> None:
 def title_bar(root: Path) -> None:
     # Upstream dropped its title-bar Discord button (0.10); in the browser HORIX puts a
     # "desktop apps" button in that spot, shown while the bar has room for it.
-    edit(root, "crates/ui-egui/src/panels.rs", [
+    # PhotoCraft 0.20 moved the title bar to panels/title_bar.rs.
+    edit(root, "crates/ui-egui/src/panels/title_bar.rs", [
         ("""                    if rtl { ui.min_rect().right() } else { ui.min_rect().left() }
                 };
                 free = if rtl""", """                    // HORIX (web): the Windows / macOS apps, one click away while the bar has room.
@@ -249,7 +251,8 @@ pub fn url_for("""),
     ])
     consts = "".join(f"const {n.upper().replace('-', '_')}_ASPECT: f32 = {v:.4f};\n" for n, v in aspect.items())
     edit(root, "crates/ui-egui/src/links.rs", [("/// HORIX: one line of Arabic", consts + "\n" + DESKTOP_BUTTONS + "/// HORIX: one line of Arabic")])
-    edit(root, "crates/ui-egui/src/canvas.rs", [
+    # PhotoCraft 0.20 moved the start screen to canvas/start_screen.rs.
+    edit(root, "crates/ui-egui/src/canvas/start_screen.rs", [
         # The lockup, descriptor and "coming soon" make the card taller (230 px) and a touch wider.
         ("let card_width = HOME_CARD_WIDTH.min(area.width());", "let card_width = (HOME_CARD_WIDTH + 10.0).min(area.width());"),
         ("let card = Rect::from_center_size(area.center(), egui::vec2(card_width, 330.0 + recent_h + stacked_h));",
@@ -291,8 +294,8 @@ pub fn url_for("""),
     edit(root, "crates/ui-egui/src/dialogs.rs", [
         ('ui.label(tl!("PhotoCraft — an open-source, native image editor written in Rust."));',
          'ui.vertical_centered(|ui| ui.add(crate::links::logo(64.0)));\n'
-         '                    ui.add_space(6.0);\n'
-         '                    ui.label(tl!("PhotoCraft — the visionary AI editor by Saber Group."));'),
+         '            ui.add_space(6.0);\n'
+         '            ui.label(tl!("PhotoCraft — the visionary AI editor by Saber Group."));'),
         ('ui.weak("egui · wgpu · photocraft-engine");',
          'ui.weak("Built on open-source software (MIT / Apache-2.0). Licence texts ship with the app.");'),
     ])
@@ -310,9 +313,12 @@ def theme(root: Path) -> None:
         ('"pro" | "prodark" | "photoshop" | "dark" =>', '"pro" | "prodark" | "photoshop" | "dark" | "horix" | "horixpro" =>'),
         ('"studio" | "studiodark" => Some(ThemeKind::Studio),', '"studio" | "studiodark" => Some(ThemeKind::Pro),'),
         ('unwrap_or_else(|| Tokens::for_kind(ThemeKind::Studio))', 'unwrap_or_else(|| Tokens::for_kind(ThemeKind::Pro))'),
+    ])
+    # PhotoCraft 0.20 moved theme.rs's tests to theme/tests.rs.
+    edit(root, "crates/ui-egui/src/theme/tests.rs", [
         ('assert_eq!(ThemeKind::from_name("studio"), Some(ThemeKind::Studio));',
          'assert_eq!(ThemeKind::from_name("studio"), Some(ThemeKind::Pro));\n'
-         '        assert!(!ThemeKind::ALL.contains(&ThemeKind::Studio));'),
+         '    assert!(!ThemeKind::ALL.contains(&ThemeKind::Studio));'),
     ])
     # Studio leaves the selectable list (structural: the list length is upstream's to change).
     path = root / rel
@@ -391,8 +397,13 @@ def theme(root: Path) -> None:
         ('BreezeDark = "breezeDark", SoftDark = "softDark" } default ProMedium);', 'BreezeDark = "breezeDark", SoftDark = "softDark" } default Pro);'),
         ("            theme: Theme::ProMedium,", "            theme: Theme::Pro,"),
         ("            dark_theme: DarkTheme::ProMedium,", "            dark_theme: DarkTheme::Pro,"),
-        ('        "interface.theme" => Theme::NAMES,', '        "interface.theme" => &HORIX_THEME_NAMES,'),
-        ('        "interface.darkTheme" => DarkTheme::NAMES,', '        "interface.darkTheme" => &HORIX_DARK_THEME_NAMES,'),
+    ])
+    # PhotoCraft 0.20 moved the choice lists to prefs/validate.rs (a child module of prefs.rs).
+    edit(root, "crates/engine/src/prefs/validate.rs", [
+        ('        "interface.theme" => Theme::NAMES,', '        "interface.theme" => &super::HORIX_THEME_NAMES,'),
+        ('        "interface.darkTheme" => DarkTheme::NAMES,', '        "interface.darkTheme" => &super::HORIX_DARK_THEME_NAMES,'),
+        # (DarkTheme was imported for that line only.)
+        ("ColorPicker, DarkTheme, ExportLocation,", "ColorPicker, ExportLocation,"),
     ])
     path = root / prefs
     text = path.read_text(encoding="utf-8")
@@ -407,7 +418,8 @@ def theme(root: Path) -> None:
     edit(root, "crates/ui-egui/src/state.rs", [
         ("            theme: crate::theme::ThemeKind::ProMedium,", "            theme: crate::theme::ThemeKind::Pro,"),
     ])
-    edit(root, "crates/ui-egui/src/prefs_ui.rs", [
+    # PhotoCraft 0.20: prefs/prefs_ui/appearance.rs.
+    edit(root, "crates/ui-egui/src/prefs/prefs_ui/appearance.rs", [
         # Existing preferences can still contain `studio`: load it into the HORIX shell.
         ("            DarkTheme::Studio => ThemeKind::Studio,", "            DarkTheme::Studio => ThemeKind::Pro,"),
         # HORIX first in the Dark Theme list; Studio no longer offered.
@@ -421,8 +433,10 @@ def full_tool_options(root: Path) -> None:
 
     Upstream only builds the complete options (blend mode, opacity, feather, gradient type, crop
     ratio, align buttons...) for the Pro themes; the Studio and Classic themes get a one-line hint
-    such as "Drag to draw a gradient". The guards become a constant, so the full arms always win."""
-    rel = "crates/ui-egui/src/panels.rs"
+    such as "Drag to draw a gradient". The guards become a constant, so the full arms always win.
+    Since 0.20 (panels/options_bar.rs) only the Brush and Eraser arms are still Pro-only; upstream
+    gives the selection, crop and move tools their full options in every theme itself."""
+    rel = "crates/ui-egui/src/panels/options_bar.rs"
     path = root / rel
     text = path.read_text(encoding="utf-8")
     n = text.count(" if t.pro => ")
@@ -782,39 +796,45 @@ WAITLIST_SCRIPT = """  <div id="sgps_wl" dir="rtl" hidden>
 def device_fonts(root: Path) -> None:
     """Fonts installed on the computer, in the browser build (upstream only reads them on desktop).
     Registering a font moves upstream's shared font generation, so the font menus refresh."""
-    edit(root, "crates/ui-egui/src/type_tool.rs", [(
-        "/// Font families: bundled, system, and those the host serves",
-        """/// HORIX: set by Type > Load Device Fonts; the web shell picks it up and asks the browser.
+    # PhotoCraft 0.20 moved the Type tool to tools/type_tool.rs (still `photocraft_ui_egui::type_tool`).
+    edit(root, "crates/ui-egui/src/tools/type_tool.rs", [(
+        "pub use fonts::{families, style_label, styles, sync_font_names, warm_fonts};\n",
+        """pub use fonts::{families, style_label, styles, sync_font_names, warm_fonts};
+
+/// HORIX: set by Type > Load Device Fonts; the web shell picks it up and asks the browser.
 pub static DEVICE_FONTS_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// HORIX: registers a font file (TTF/OTF/TTC) while the app runs. Returns its family names.
 pub fn register_font(bytes: Vec<u8>) -> Vec<String> {
     photocraft_text::shared().lock().map(|mut e| e.fonts.register_font_data(bytes)).unwrap_or_default()
 }
-
-/// Font families: bundled, system, and those the host serves""")])
+""")])
     edit(root, "crates/engine/src/shell_commands.rs", [
         ('    ("edit.search", "Search…", &["Edit"], Some("Cmd+F")),',
          '    ("edit.search", "Search…", &["Edit"], Some("Cmd+F")),\n'
          '    ("type.loadDeviceFonts", "Load Device Fonts…", &["Type"], None),'),
     ])
-    edit(root, "crates/ui-egui/src/menus.rs", [
+    # PhotoCraft 0.20 split menus.rs: the enable rules are in menus/state.rs, the UI-side
+    # commands in menus/invoke.rs (which returns Option<Result>).
+    edit(root, "crates/ui-egui/src/menus/state.rs", [
         ('| "help.about" | "help.systemInfo" | "edit.search" => true,',
          '| "help.about" | "help.systemInfo" | "edit.search" | "type.loadDeviceFonts" => true,'),
+    ])
+    edit(root, "crates/ui-egui/src/menus/invoke.rs", [
         ("""    if let Some(url) = crate::links::url_for(id) {
-        return Ok(crate::links::open(app, ctx, url));
+        return Some(Ok(crate::links::open(app, ctx, url)));
     }""", """    if let Some(url) = crate::links::url_for(id) {
-        return Ok(crate::links::open(app, ctx, url));
+        return Some(Ok(crate::links::open(app, ctx, url)));
     }
     if id == "type.loadDeviceFonts" {
         crate::type_tool::DEVICE_FONTS_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
         app.ui.status = "Loading the fonts installed on this computer…".into();
-        return Ok(Value::Null);
+        return Some(Ok(Value::Null));
     }"""),
     ])
     edit(root, "apps/photocraft-web/src/web.rs", [
         ("""        self.serve_fonts(ctx);
-        self.app.logic(ctx, frame);""", """        self.serve_fonts(ctx);
+        self.app.logic_frame(ctx, frame);""", """        self.serve_fonts(ctx);
         if photocraft_ui_egui::type_tool::DEVICE_FONTS_REQUESTED.swap(false, std::sync::atomic::Ordering::Relaxed) {
             call_page("sgpsLoadDeviceFonts", None);
         }
@@ -822,7 +842,7 @@ pub fn register_font(bytes: Vec<u8>) -> Vec<String> {
         if let Some(product) = waitlist {
             call_page("sgpsOpenWaitlist", Some(&product));
         }
-        self.app.logic(ctx, frame);"""),
+        self.app.logic_frame(ctx, frame);"""),
         ("fn query() -> String {", """/// HORIX: calls `window[name](arg)` defined by the page (index.html), if it exists.
 fn call_page(name: &str, arg: Option<&str>) {
     use wasm_bindgen::JsCast;
@@ -988,22 +1008,14 @@ def desktop(root: Path) -> None:
          '                });\n'
          '            });'),
     ])
-    edit(root, "apps/photocraft/src/main.rs", [
-        ('const APP_ID: &str = "ai.storyteller.photocraft";', 'const APP_ID: &str = "com.sabergroup.sgps";'),
+    # PhotoCraft 0.20 keeps the app id in the UI crate (os_window.rs), for its extra windows too.
+    edit(root, "crates/ui-egui/src/os_window.rs", [
+        ('pub const APP_ID: &str = "ai.storyteller.photocraft";', 'pub const APP_ID: &str = "com.sabergroup.sgps";'),
     ])
 
 
-def web_place(root: Path) -> None:
-    """File > Place Embedded in the browser. Upstream's picker is asynchronous on every platform
-    and places the picked bytes, but the command is still greyed out where there is no file system
-    (`native_doc`); with an open document it works on the web too."""
-    edit(root, "crates/engine/src/file_cmds.rs", [(
-        """(default: Preferences > General > Always Create Smart Objects When Placing),"center":[x,y]?}"##,
-            native_doc,
-            |s, p| place(s, p, false)""",
-        """(default: Preferences > General > Always Create Smart Objects When Placing),"center":[x,y]?}"##,
-            has_doc,
-            |s, p| place(s, p, false)""")])
+# (web_place, File > Place Embedded in the browser, was dropped for 0.20: upstream enables it on
+# every platform with a file picker itself, menus/view_cmds/dispatch.rs.)
 
 
 def drop_old_translations(root: Path) -> int:
@@ -1100,17 +1112,9 @@ CRASH_SCRIPT = """  <script>
 def stability(root: Path) -> None:
     """Crash safety on the web and desktop. (Upstream 0.9 commits an open Free Transform before other
     edits and deletes the layer on Delete, which HORIX used to patch in here.)"""
+    # (The web History budget cap HORIX added here, 1536 MB, is upstream's own since 0.20:
+    # `WASM_MEMORY_USAGE_CAP_MB` in prefs.rs.)
     edit(root, "crates/engine/src/prefs.rs", [
-        # The browser has at most 4 GiB for the app: History must trim itself well before that.
-        ("""    pub fn history_budget_bytes(&self) -> usize {
-        (self.memory_usage_mb as usize).saturating_mul(1 << 20)
-    }""", """    pub fn history_budget_bytes(&self) -> usize {
-        let mb = self.memory_usage_mb as usize;
-        // SG - PS: wasm32 has at most 4 GiB; keep pixels + History well below it.
-        #[cfg(target_arch = "wasm32")]
-        let mb = mb.min(1536);
-        mb.saturating_mul(1 << 20)
-    }"""),
         # Desktop crash recovery loses at most a few minutes of work.
         ("            autosave_minutes: 10,", "            autosave_minutes: 3,"),
     ])
@@ -1137,7 +1141,7 @@ def version(root: Path) -> None:
         "}\n\n"
         "pub fn long_version() -> String {\n    format_long(&horix_version(), short_sha(), build_date())\n}",
     )])
-    edit(root, "crates/ui-egui/src/canvas.rs", [(
+    edit(root, "crates/ui-egui/src/canvas/start_screen.rs", [(
         'ui.label(egui::RichText::new("BY SABER GROUP").font(crate::theme::medium(10.5)).color(t.text_faint));',
         'ui.label(egui::RichText::new("BY SABER GROUP").font(crate::theme::medium(10.5)).color(t.text_faint));\n'
         '            ui.label(egui::RichText::new(format!("v{}", photocraft_engine::build_info::horix_version())).size(10.0).color(t.text_faint));',
@@ -1158,6 +1162,37 @@ def exe_version(root: Path) -> None:
         res.set("ProductVersion", &v).set("FileVersion", &v);
     }
 """)])
+
+
+def no_upstream_updates(root: Path) -> None:
+    """PhotoCraft 0.16+ checks GitHub for PhotoCraft releases (Help > Check for Updates, and on
+    start-up) and can replace the running app with one (craft-update). HORIX's desktop builds are
+    installed and updated by HORIX Launcher from HORIX's own releases, so the desktop app gets no
+    update service: the check, its menu item and its preference are gone, and nothing can offer
+    or install a PhotoCraft release in place of HORIX."""
+    edit(root, "apps/photocraft/src/services.rs", [
+        ("        check_updates: Some(crate::updates::service()),\n",
+         "        // HORIX: HORIX Launcher installs and updates HORIX; upstream's checker would offer\n"
+         "        // (and install) PhotoCraft's own releases.\n"
+         "        check_updates: None,\n"),
+    ])
+    edit(root, "apps/photocraft/src/updates.rs", [
+        ("pub fn service() -> CheckFn {", "#[allow(dead_code)] // HORIX: not wired up (services.rs), see rebrand.py\npub fn service() -> CheckFn {"),
+    ])
+    edit(root, "crates/engine/src/cmd/updates_cmds.rs", [
+        ("""            id: "help.checkForUpdates",
+            label: "Check for Updates…",
+            menu: &["Help"],""", """            id: "help.checkForUpdates",
+            label: "Check for Updates…",
+            // HORIX: not in the Help menu; HORIX Launcher keeps HORIX up to date.
+            menu: &[],"""),
+    ])
+    edit(root, "crates/ui-egui/src/prefs/prefs_ui/fields.rs", [
+        ("""        || (cfg!(target_arch = "wasm32") && path == "performance.lowLatencyDrawing")""",
+         """        || (cfg!(target_arch = "wasm32") && path == "performance.lowLatencyDrawing")
+        // HORIX: no update checks (HORIX Launcher updates the app), so no preference for them.
+        || path == "general.automaticallyCheckUpdates\""""),
+    ])
 
 
 def apply_patches(root: Path) -> None:
@@ -1206,11 +1241,11 @@ def main() -> None:
     n = rename_everywhere(root)
     drop_old_translations(root)
     desktop(root)
-    web_place(root)
     selection_quality(root)
     stability(root)
     version(root)
     exe_version(root)
+    no_upstream_updates(root)
     home(root)
     apply_patches(root)
     check(root)

@@ -200,7 +200,7 @@ impl One {
             .show(ui, |ui| {
                 // The bar's free space moves the window, and a double click maximizes it.
                 let whole = ui.max_rect();
-                let drag = ui.interact(whole, ui.id().with("drag"), egui::Sense::click_and_drag());
+                let drag = ui.interact(whole, ui.scope_id().with("drag"), egui::Sense::click_and_drag());
                 if drag.drag_started_by(egui::PointerButton::Primary) {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
                 }
@@ -250,7 +250,7 @@ impl One {
         }
         ctx.request_repaint_after(std::time::Duration::from_secs_f64(left.min(0.5)));
         let message = message.clone();
-        egui::Area::new(egui::Id::new("horix-one-note"))
+        egui::Area::new(egui::Id::unique("horix-one-note"))
             .order(egui::Order::Tooltip)
             .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -48.0))
             .interactable(false)

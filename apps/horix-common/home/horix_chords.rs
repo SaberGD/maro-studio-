@@ -156,6 +156,12 @@ fn c32(c: [f32; 3]) -> Color32 {
     Color32::from_rgb(r, g, b)
 }
 
+/// The chord picker's name for screen readers (egui 0.36 and 0.37 alike, which the apps sharing
+/// this file are on).
+fn name_combo(response: &egui::Response) {
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, "Colour chord"));
+}
+
 /// What the person did in the section.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ChordAction {
@@ -189,11 +195,12 @@ pub fn section(ui: &mut Ui, id: &str, base: [f32; 3], swatches: bool) -> Option<
         ui.add_space(4.0);
         let chord = Chord::ALL[chord_i.min(Chord::ALL.len() - 1)];
         ui.horizontal(|ui| {
-            egui::ComboBox::from_id_salt(key.with("chord")).width(ui.available_width().min(170.0)).selected_text(chord.name()).show_ui(ui, |ui| {
+            let combo = egui::ComboBox::from_id_salt(key.with("chord")).width(ui.available_width().min(170.0)).selected_text(chord.name()).show_ui(ui, |ui| {
                 for (i, c) in Chord::ALL.iter().enumerate() {
                     ui.selectable_value(&mut chord_i, i, c.name());
                 }
             });
+            name_combo(&combo.response);
         });
         let chord = Chord::ALL[chord_i.min(Chord::ALL.len() - 1)];
         let colors = chord.colors(base);
@@ -271,11 +278,12 @@ pub fn grading_section(ui: &mut Ui, id: &str, base_hue: f32) -> Option<Vec<(usiz
     if !folded {
         ui.add_space(4.0);
         let chord = HUE_CHORDS[chord_i.min(HUE_CHORDS.len() - 1)];
-        egui::ComboBox::from_id_salt(key.with("chord")).width(ui.available_width().min(170.0)).selected_text(chord.name()).show_ui(ui, |ui| {
+        let combo = egui::ComboBox::from_id_salt(key.with("chord")).width(ui.available_width().min(170.0)).selected_text(chord.name()).show_ui(ui, |ui| {
             for (i, c) in HUE_CHORDS.iter().enumerate() {
                 ui.selectable_value(&mut chord_i, i, c.name());
             }
         });
+        name_combo(&combo.response);
         let chord = HUE_CHORDS[chord_i.min(HUE_CHORDS.len() - 1)];
         let hues = grading_hues(chord, base_hue);
         ui.add_space(4.0);
