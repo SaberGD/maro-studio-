@@ -441,7 +441,12 @@ fn page(ui: &mut Ui, k: &Kit, home: &Home<'_>, action: &mut Option<Action>) {
 
 fn heading(ui: &mut Ui, k: &Kit, home: &Home<'_>, action: &mut Option<Action>) {
     let w = ui.available_width();
-    let (r, _) = ui.allocate_exact_size(vec2(w, 62.0), Sense::hover());
+    // Open workspace → and Telegram sit right of the headline; when the pane is too narrow for
+    // both on one line (a long headline, a small window), they go on a row of their own below it.
+    let headline_w = ui.painter().layout_no_wrap(home.headline.to_owned(), k.font(600, 30.0), TEXT).size().x;
+    let actions_w = text_action_width(ui, k, "Open workspace") + 22.0 + telegram_pill_width(ui, k);
+    let stacked = headline_w + 32.0 + actions_w > w;
+    let (r, _) = ui.allocate_exact_size(vec2(w, if stacked { 104.0 } else { 62.0 }), Sense::hover());
     let p = ui.painter();
     // HOME / HORIX VECTORS
     let crumb = p.layout_no_wrap("HOME".into(), k.font(600, 10.0), AMBER);
@@ -451,7 +456,7 @@ fn heading(ui: &mut Ui, k: &Kit, home: &Home<'_>, action: &mut Option<Action>) {
     p.text(pos2(r.left() + cw + 19.0, r.top()), Align2::LEFT_TOP, home.name.to_uppercase(), k.font(600, 10.0), AMBER);
     p.text(pos2(r.left(), r.top() + 20.0), Align2::LEFT_TOP, home.headline, k.font(600, 30.0), TEXT);
     // Open workspace →, and Telegram before it.
-    let row_y = r.top() + 34.0;
+    let row_y = if stacked { r.top() + 84.0 } else { r.top() + 34.0 };
     let open = text_action(ui, k, pos2(r.right(), row_y), "Open workspace", Icon::Arrow, "open-workspace");
     if open.on_hover_text("The workspace, without a document (Esc)").clicked() {
         *action = Some(Action::Workspace);
@@ -478,11 +483,16 @@ fn text_action(ui: &Ui, k: &Kit, right_center: Pos2, label: &str, icon: Icon, id
     resp
 }
 
+const TELEGRAM_LABEL: &str = "Join us on Telegram";
+
+fn telegram_pill_width(ui: &Ui, k: &Kit) -> f32 {
+    ui.painter().layout_no_wrap(TELEGRAM_LABEL.into(), k.font(500, 11.5), TEXT).size().x + 15.0 + 8.0 + 24.0
+}
+
 /// "Join us on Telegram", ending at `right_center`.
 fn telegram_pill(ui: &Ui, k: &Kit, right_center: Pos2) -> egui::Response {
-    let label = "Join us on Telegram";
-    let galley = ui.painter().layout_no_wrap(label.into(), k.font(500, 11.5), TEXT);
-    let w = galley.size().x + 15.0 + 8.0 + 24.0;
+    let galley = ui.painter().layout_no_wrap(TELEGRAM_LABEL.into(), k.font(500, 11.5), TEXT);
+    let w = telegram_pill_width(ui, k);
     let rect = Rect::from_min_size(pos2(right_center.x - w, right_center.y - 15.0), vec2(w, 30.0));
     let resp = hand(ui.interact(rect, ui.id().with("telegram"), Sense::click()));
     let p = ui.painter();

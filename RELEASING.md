@@ -17,7 +17,9 @@ Launcher, horix.si) ship together once a week, on Thursday, as Saber Group decid
 1. Bump the VERSION of every app the week changed (HORIX One whenever HORIX, Vectors or Layout
    changed; the Launcher when its catalog changed).
 2. Wait for CI to be green, then merge. That one merge publishes everything:
-   - the web apps: horix.live, vectors / light / layout / one.horix.live, and horix.si;
+   - the web apps: vectors / light / layout / one.horix.live (horix.live and horix.si by
+     running "Deploy HORIX" (deploy-sg-ps.yml) from the Actions tab: it no longer runs on every
+     push, to save Actions minutes);
    - the desktop releases: Vectors, Light and Layout (desktop-horix-family.yml), and HORIX One
      (horix-one.yml), on their VERSION changes; HORIX by running "Desktop HORIX"
      (desktop-sg-ps.yml) from the Actions tab;
