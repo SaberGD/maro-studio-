@@ -24,9 +24,14 @@ Launcher, horix.si) ship together once a week, on Thursday, as Saber Group decid
      (horix-one.yml), on their VERSION changes; HORIX by running "Desktop HORIX"
      (desktop-sg-ps.yml) from the Actions tab;
    - the Mac downloads on horix.si/mac and the Launcher feed, after the releases.
+   Merge with a commit message of your own (the PR title): a squash merge otherwise lists every
+   commit's message, and a "[skip ci]" in any of them stops every workflow the merge should run.
 3. Don't merge anything else while HORIX One's release run is going: a newer push to the branch
    cancels it (its concurrency group), and the new run would not release.
-4. Check every site and download live, then send the week's summary.
+4. GitHub runs only two macOS jobs at a time for this account, and a job that waits about 15
+   minutes for a Mac is cancelled. If one is, re-run its failed jobs once a Mac is free (a re-run
+   adds its files to the release it already made).
+5. Check every site and download live, then send the week's summary.
 
 ## Urgent fixes
 
