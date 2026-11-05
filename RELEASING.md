@@ -31,3 +31,14 @@ Launcher, horix.si) ship together once a week, on Thursday, as Saber Group decid
 ## Urgent fixes
 
 A fix for something broken for users ships right away, outside the Thursday update.
+
+## Languages: Arabic and English only
+
+HORIX is for Arabic and English speakers (Saber Group's decision of 2026-11-05). When bringing in
+a new upstream (ArtCraft) version:
+
+- Don't spend work on what serves only other languages: interface translations other than
+  Arabic and English, hyphenation patterns, East Asian type settings, and the like. Take
+  whatever helps Arabic and English users (tools, file formats, speed, right-to-left text).
+- The interface language menu in every app offers English and العربية only. Keep upstream's
+  other translations in the code (hidden), so each upgrade doesn't fight upstream over them.
