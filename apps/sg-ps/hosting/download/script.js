@@ -1,4 +1,4 @@
-const previewNames={horix:'HORIX',vectors:'HORIX Vectors',light:'HORIX Light',layout:'HORIX Layout'};
+const previewNames={one:'HORIX One',horix:'HORIX',vectors:'HORIX Vectors',light:'HORIX Light',layout:'HORIX Layout'};
 let currentPreview='horix';
 const dialog=document.querySelector('.preview-dialog');
 const mobileButton=document.querySelector('.mobile-menu');
