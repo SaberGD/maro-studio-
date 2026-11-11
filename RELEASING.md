@@ -1,7 +1,7 @@
-# HORIX family releases: every Thursday
+# HORIX family releases: every Tuesday evening
 
 Changes to the HORIX family (HORIX, HORIX Vectors, HORIX Light, HORIX Layout, HORIX One, the
-Launcher, horix.si) ship together once a week, on Thursday, as Saber Group decided on 2026-10-25.
+Launcher, horix.si) ship together once a week, on Tuesday evening (Cairo), as Saber Group decided on 2026-10-25 (Thursday until 2026-11-10; moved to Tuesday on 2026-11-11, starting 2026-11-17).
 
 ## During the week
 
@@ -10,9 +10,9 @@ Launcher, horix.si) ship together once a week, on Thursday, as Saber Group decid
 - HORIX One needs no separate work: it is built from the same sources and patches as HORIX,
   HORIX Vectors and HORIX Layout (apps/horix-one/native/prepare.sh, apps/horix-one/build.sh), so
   every change to those apps is in HORIX One's next build.
-- Each change is built and tried (CI, plus screenshots for anything visible) before Thursday.
+- Each change is built and tried (CI, plus screenshots for anything visible) before Tuesday.
 
-## On Thursday
+## On Tuesday evening
 
 1. Bump the VERSION of every app the week changed (HORIX One whenever HORIX, Vectors or Layout
    changed; the Launcher when its catalog changed).
@@ -35,7 +35,7 @@ Launcher, horix.si) ship together once a week, on Thursday, as Saber Group decid
 
 ## Urgent fixes
 
-A fix for something broken for users ships right away, outside the Thursday update.
+A fix for something broken for users ships right away, outside the Tuesday update.
 
 ## Languages: Arabic and English only
 
