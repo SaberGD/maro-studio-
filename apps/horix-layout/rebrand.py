@@ -17,6 +17,7 @@ What it changes (UI only; licence files stay as the licences require):
     the darkest interface brightness is the default.
   - Web page: title, favicon, HORIX loading screen.
   - No update check against upstream's releases: Check for Updates opens the HORIX downloads page.
+  - The interface language menu offers English and Arabic only (Saber Group's rule, 2026-11-11).
 """
 
 import re
@@ -254,11 +255,19 @@ def arabic_text(root: Path) -> None:
     InDesign), and Arabic text would otherwise be a row of boxes in the default Source Serif."""
     hx.edit(root, "crates/compose/src/shape.rs", [
         ("    let fallback = |c: char| {\n"
-         "        if auto_leading.glyph_fallback { db.fallback_for(c, primary.id(), lang).unwrap_or_else(|| primary.clone()) } else { primary.clone() }\n"
+         "        if auto_leading.glyph_fallback {\n"
+         "            db.fallback_for_styled(c, primary.id(), lang, prefer_sans).unwrap_or_else(|| primary.clone())\n"
+         "        } else {\n"
+         "            primary.clone()\n"
+         "        }\n"
          "    };",
          "    let fallback = |c: char| {\n"
          "        let arabic = matches!(c as u32, 0x0600..=0x06FF | 0x0750..=0x077F | 0x0870..=0x08FF | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF);\n"
-         "        if auto_leading.glyph_fallback || arabic { db.fallback_for(c, primary.id(), lang).unwrap_or_else(|| primary.clone()) } else { primary.clone() }\n"
+         "        if auto_leading.glyph_fallback || arabic {\n"
+         "            db.fallback_for_styled(c, primary.id(), lang, prefer_sans).unwrap_or_else(|| primary.clone())\n"
+         "        } else {\n"
+         "            primary.clone()\n"
+         "        }\n"
          "    };"),
     ])
 
@@ -301,6 +310,36 @@ def updates(root: Path) -> None:
     ])
 
 
+def languages(root: Path) -> None:
+    """Saber Group's rule (2026-11-11): HORIX is for Arabic and English speakers. The interface
+    language menu (Preferences > General > Interface Language) offers English and the Arabic
+    interface only; upstream's other translations stay in the code, hidden (`LANGUAGES` and the
+    `app.language` command still know them), so every upgrade stays a small diff."""
+    hx.edit(root, "crates/ui-egui/src/i18n.rs", [
+        ("    let mut rest: Vec<(&str, &str)> = LANGUAGES.iter().copied().filter(|(code, _)| !code.is_empty()).collect();\n",
+         "    // Horix Layout: English (first) and Arabic only; the other catalogs stay in the code.\n"
+         '    let mut rest: Vec<(&str, &str)> = LANGUAGES.iter().copied().filter(|(code, _)| *code == "ar").collect();\n'),
+        ("    #[test]\n"
+         "    fn picker_lists_english_first_then_names_alphabetically() {\n"
+         "        let order = picker_languages();\n"
+         '        assert_eq!(order.first(), Some(&("", "English")));\n'
+         "        assert_eq!(order.len(), LANGUAGES.len());\n"
+         "        let keys: Vec<String> = order[1..].iter().map(|(_, name)| name_sort_key(name)).collect();\n"
+         '        assert!(keys.windows(2).all(|w| w[0] <= w[1]), "{keys:?}");\n'
+         '        let pos = |code: &str| order.iter().position(|(c, _)| *c == code).unwrap_or(usize::MAX);\n'
+         '        assert!(pos("cs") < pos("de"), "Čeština sorts under C");\n'
+         '        assert!(pos("pl") < pos("ru"), "Latin names come before Cyrillic");\n'
+         '        assert!(pos("ru") < pos("ja"), "Cyrillic names come before CJK");\n'
+         "    }\n",
+         "    #[test]\n"
+         "    fn picker_lists_english_and_arabic_only() {\n"
+         "        // Horix Layout: the menu offers English and Arabic; the other catalogs are still there.\n"
+         '        assert_eq!(picker_languages(), vec![("", "English"), ("ar", "العربية")]);\n'
+         '        assert!(LANGUAGES.iter().any(|(code, _)| *code == "de"));\n'
+         "    }\n"),
+    ])
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -313,6 +352,7 @@ def main() -> None:
     arabic_text(root)
     web(root)
     updates(root)
+    languages(root)
     hx.exe_version(root, "apps/designcraft/build.rs")
     n = hx.rename(root, CODE + [WEB], "DesignCraft", APP_NAME)
     icons = hx.replace_icons(root, HERE / "assets/app-icon", "assets/app-icon")

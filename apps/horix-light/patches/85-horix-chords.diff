@@ -1,7 +1,20 @@
-diff --git a/crates/ui-egui/src/panels/edit.rs b/crates/ui-egui/src/panels/edit.rs
---- a/crates/ui-egui/src/panels/edit.rs
-+++ b/crates/ui-egui/src/panels/edit.rs
-@@ -1506,6 +1506,29 @@
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index f69209f..d6d8cef 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -17,6 +17,7 @@ pub const UPDATE_APP: craft_update::app::App = craft_update::app::App {
+ 
+ /// HORIX Home (shared by the HORIX family) and Horix Light's use of it.
+ pub mod horix_app_home;
++pub mod horix_chords;
+ pub mod horix_home;
+ pub mod brush_live;
+ pub mod canvas_keys;
+diff --git a/crates/ui-egui/src/panels/edit/grading.rs b/crates/ui-egui/src/panels/edit/grading.rs
+index 61f1543..9947ee2 100644
+--- a/crates/ui-egui/src/panels/edit/grading.rs
++++ b/crates/ui-egui/src/panels/edit/grading.rs
+@@ -59,6 +59,29 @@ pub(super) fn grading(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &DevelopSet
      for c in ["grading.blending", "grading.balance"] {
          control(app, ui, d, c, true);
      }
@@ -31,14 +44,3 @@ diff --git a/crates/ui-egui/src/panels/edit.rs b/crates/ui-egui/src/panels/edit.
  }
  
  /// One colour grading wheel (`i` into [`GRADING_WHEELS`]) centred on `c`: drag to pick hue and
-diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
---- a/crates/ui-egui/src/lib.rs
-+++ b/crates/ui-egui/src/lib.rs
-@@ -9,6 +9,7 @@
- pub mod album_picker;
- /// HORIX Home (shared by the HORIX family) and Horix Light's use of it.
- pub mod horix_app_home;
-+pub mod horix_chords;
- pub mod horix_home;
- pub mod brush_live;
- pub mod button;
