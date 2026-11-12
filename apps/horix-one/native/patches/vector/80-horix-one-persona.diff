@@ -1,17 +1,5 @@
-diff --git a/Cargo.lock b/Cargo.lock
-index 0b55428..5a09ae8 100644
---- a/Cargo.lock
-+++ b/Cargo.lock
-@@ -6100,6 +6100,7 @@ dependencies = [
-  "smithay-clipboard",
-  "socket2",
-  "vectorcraft-engine",
-+ "vectorcraft-format",
-  "vectorcraft-render",
-  "vectorcraft-text",
-  "vectorcraft-ui-egui",
 diff --git a/apps/vectorcraft/Cargo.toml b/apps/vectorcraft/Cargo.toml
-index 47d26eb..bfb0a06 100644
+index 047c453..e0e99df 100644
 --- a/apps/vectorcraft/Cargo.toml
 +++ b/apps/vectorcraft/Cargo.toml
 @@ -9,6 +9,18 @@ default-run = "vectorcraft"
@@ -34,7 +22,7 @@ index 47d26eb..bfb0a06 100644
  default = ["wgpu", "accessibility"]
  wgpu = ["eframe/wgpu", "dep:winsafe"]
 @@ -18,6 +30,7 @@ accessibility = ["eframe/accesskit"]
- vectorcraft-engine = { workspace = true, features = ["bundled-fonts"] }
+ vectorcraft-engine = { workspace = true, features = ["bundled-fonts", "heif"] }
  vectorcraft-ui-egui = { workspace = true }
  vectorcraft-text = { workspace = true }
 +vectorcraft-format = { workspace = true }
@@ -42,10 +30,10 @@ index 47d26eb..bfb0a06 100644
  # so VectorCraft matches the rest on Linux. `egui` adds `craft_window::decorate`. See #217.
  craft-window = { workspace = true }
 diff --git a/apps/vectorcraft/src/main.rs b/apps/vectorcraft/src/main.rs
-index 28ed833..e189c84 100644
+index 498a358..6808d2a 100644
 --- a/apps/vectorcraft/src/main.rs
 +++ b/apps/vectorcraft/src/main.rs
-@@ -17,6 +17,8 @@
+@@ -20,6 +20,8 @@
  //! files its requests read and write (`vectorcraft_engine::file_access`); the person at the
  //! keyboard isn't confined.
  #![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
@@ -54,17 +42,17 @@ index 28ed833..e189c84 100644
  
  mod automation_args;
  mod caps_lock;
-@@ -93,7 +95,7 @@ use titlebar::opted_into_system_title_bar;
- use titlebar::set_taskbar_icon;
- use titlebar::{custom_titlebar, native_options};
+@@ -102,7 +104,7 @@ use titlebar::set_taskbar_icon;
+ use titlebar::{app_draws_frame, opted_into_app_title_bar, start_frame, system_title_bar_applies};
+ use titlebar::{custom_titlebar, native_options, titlebar_from_env};
  
 -struct App {
 +pub struct App {
      app: VectorcraftApp,
      host_caps_lock: caps_lock::HostCapsLock,
      /// Reported by wgpu when the window's graphics device is lost (a driver reset).
-@@ -112,6 +114,99 @@ struct App {
-     maximize_tries: u8,
+@@ -125,6 +127,108 @@ struct App {
+     monitors_listed: Option<(f64, f32)>,
  }
  
 +/// HORIX One: Horix Vectors as the Vector persona of HORIX's window. HORIX's start-up made the
@@ -84,10 +72,15 @@ index 28ed833..e189c84 100644
 +    VectorcraftApp::install_ime_reset_hooks(&cc.egui_ctx);
 +    let mut session = Session::new();
 +    prefs_dir::attach_profile_store(&mut session);
++    prefs_dir::attach_color_settings(&mut session);
 +    prefs_dir::attach_plugin_store(&mut session);
++    prefs_dir::attach_scripts_dir(&mut session);
 +    let mut app = VectorcraftApp::new(session, services(cc.winit_window().cloned(), cc.egui_ctx.clone()));
++    // HORIX One: no check of upstream's releases (the standalone app's start-up does the same).
++    app.set_startup_update_check(false);
 +    load_prefs(&mut app, saved);
 +    prefs_dir::attach_pdf_preset_store(&mut app.session);
++    prefs_dir::attach_custom_dictionary(&mut app.session);
 +    let swatches = prefs_path().and_then(|p| Some(p.parent()?.join("Swatches").to_string_lossy().to_string()));
 +    app.session.swatch_libraries.set_user_dir(swatches);
 +    let styles = prefs_path().and_then(|p| Some(p.parent()?.join("Graphic Styles").to_string_lossy().to_string()));
@@ -109,7 +102,9 @@ index 28ed833..e189c84 100644
 +    if let Some(rs) = &cc.wgpu_render_state {
 +        app.graphics_adapter = Some(adapter_summary(&rs.adapter.get_info()));
 +    }
++    app.titlebar_from_env = titlebar_from_env();
 +    app.custom_titlebar = custom_titlebar;
++    app.desktop_frame = !custom_titlebar;
 +    // Pen input forwarded from floating panels' own windows (Windows Ink); none for the macOS menu
 +    // bar, which HORIX's start-up owns.
 +    app.services.native_input_hook = native_input_hook(&app);
@@ -125,6 +120,8 @@ index 28ed833..e189c84 100644
 +        winit_window: None,
 +        pending_maximize: false,
 +        maximize_tries: 0,
++        held_files: Vec::new(),
++        monitors_listed: None,
 +    }
 +}
 +
@@ -164,10 +161,10 @@ index 28ed833..e189c84 100644
  const USAGE: &str = "\
  Usage: vectorcraft [options] [files…]
 diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
-index c6de8d3..606ec67 100644
+index 6e3c6a3..3e30aaa 100644
 --- a/crates/ui-egui/src/app.rs
 +++ b/crates/ui-egui/src/app.rs
-@@ -379,6 +379,20 @@ impl VectorcraftApp {
+@@ -435,6 +435,20 @@ impl VectorcraftApp {
          }
      }
  

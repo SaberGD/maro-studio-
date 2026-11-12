@@ -1,24 +1,25 @@
 diff --git a/Cargo.toml b/Cargo.toml
-index e01bcf1..885aba7 100644
+index e54a0c5..ae365d8 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -203,3 +203,14 @@ eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc79968157
- egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
- egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
- winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
+@@ -215,3 +215,15 @@ hayro = { git = "https://github.com/storytold/craft-libs", rev = "6e03f65bf45181
+ hayro-syntax = { git = "https://github.com/storytold/craft-libs", rev = "6e03f65bf45181db77ba6229716e6624db9eb25b" }
+ hayro-interpret = { git = "https://github.com/storytold/craft-libs", rev = "6e03f65bf45181db77ba6229716e6624db9eb25b" }
+ hayro-jbig2 = { git = "https://github.com/storytold/craft-libs", rev = "6e03f65bf45181db77ba6229716e6624db9eb25b" }
 +# HORIX One: Horix Vectors and Horix Layout (its Vector and Layout personas) read and write PDFs
 +# with these, from their own workspaces (whose [patch] tables a path dependency doesn't bring).
-+# One copy of each: the hayro crates at their shared craft-libs revision, krilla at Vectors'
-+# (Layout's plus exact CMYK, gray and spot inks; the same 0.8.2).
-+krilla = { git = "https://github.com/storytold/craft-libs", rev = "fb08be5fa19eee8d37e624397fcdc96df6035e92", version = "=0.8.2" }
-+hayro = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.7.1" }
-+hayro-interpret = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.7.0" }
-+hayro-syntax = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.7.2" }
-+hayro-jbig2 = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.3.0" }
-+hayro-cmap = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.1.0" }
-+hayro-postscript = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.1.0" }
++# One copy of each, all at the newest of the three apps' craft-libs revisions (6e03f65, PhotoCraft's
++# own): craft-libs' history is one line (92d392c Layout, 9be9a63 Vectors, 6e03f65) and these vendor
++# crates only gained to it (new decode limits and cancellation, krilla's exact CMYK/gray/spot inks),
++# so each craft-pdf at its older revision builds against them. hayro, hayro-syntax, hayro-interpret
++# and hayro-jbig2 are already above (PhotoCraft's).
++krilla = { git = "https://github.com/storytold/craft-libs", rev = "6e03f65bf45181db77ba6229716e6624db9eb25b", version = "=0.8.2" }
++hayro-cmap = { git = "https://github.com/storytold/craft-libs", rev = "6e03f65bf45181db77ba6229716e6624db9eb25b", version = "=0.1.0" }
++hayro-postscript = { git = "https://github.com/storytold/craft-libs", rev = "6e03f65bf45181db77ba6229716e6624db9eb25b", version = "=0.1.0" }
++# Horix Vectors' patched linesweeper (its own [patch] says so).
++linesweeper = { git = "https://github.com/storytold/craft-libs", rev = "481f66d287b2a06845f3667a19daf35f0fe958ed" }
 diff --git a/apps/photocraft/Cargo.toml b/apps/photocraft/Cargo.toml
-index 0cb13be..0408fd5 100644
+index 05241e4..03aa41b 100644
 --- a/apps/photocraft/Cargo.toml
 +++ b/apps/photocraft/Cargo.toml
 @@ -40,6 +40,10 @@ clap = { workspace = true }
@@ -54,7 +55,7 @@ index 7aa02f1..f899b41 100644
          if std::env::var_os("PHOTOCRAFT_REQUIRE_WINRES").is_some() {
              panic!("embedding Windows resources failed: {e}");
 diff --git a/apps/photocraft/src/main.rs b/apps/photocraft/src/main.rs
-index 3e5c967..dac20d2 100644
+index cdc4da0..84fff59 100644
 --- a/apps/photocraft/src/main.rs
 +++ b/apps/photocraft/src/main.rs
 @@ -42,6 +42,7 @@ mod crash_guard;
@@ -84,7 +85,7 @@ index 3e5c967..dac20d2 100644
          options,
          Box::new(move |cc| {
              created_in_callback.store(true, std::sync::atomic::Ordering::Relaxed);
-@@ -686,7 +690,8 @@ fn main() -> eframe::Result {
+@@ -697,7 +701,8 @@ fn main() -> eframe::Result {
              if let Some(w) = &app_dirs::current().warning {
                  photocraft_ui_egui::notices::post(&mut app, "Portable mode is off", vec![w.clone()], false, None);
              }
@@ -95,10 +96,10 @@ index 3e5c967..dac20d2 100644
      );
      // The window is gone: refuse further files and free the lock, so a launch that is waiting (or
 diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
-index c70fee4..a8b0c96 100644
+index 214bcca..55a605b 100644
 --- a/crates/ui-egui/src/app.rs
 +++ b/crates/ui-egui/src/app.rs
-@@ -218,6 +218,16 @@ impl PhotocraftApp {
+@@ -246,6 +246,16 @@ impl PhotocraftApp {
      }
  }
  
