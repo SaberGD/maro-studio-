@@ -53,6 +53,26 @@ index 5ff88a7..0d8c1bd 100644
          let picker: Vec<&str> = Locale::for_picker().into_iter().map(Locale::name).collect();
          assert_eq!(menu, picker, "Edit ▸ Language and the Settings row list the languages the same way");
      }
+diff --git a/crates/ui-egui/src/i18n/tests.rs b/crates/ui-egui/src/i18n/tests.rs
+index e863995..d33eaa6 100644
+--- a/crates/ui-egui/src/i18n/tests.rs
++++ b/crates/ui-egui/src/i18n/tests.rs
+@@ -218,11 +218,10 @@ fn locale_tags_normalize() {
+ fn locale_from_tags_takes_the_first_shipped_language() {
+     assert_eq!(locale_from_tags(&[]), None);
+     assert_eq!(locale_from_tags(&["xx-XX".into()]), None);
+-    assert_eq!(locale_from_tags(&["it-IT".into()]), Some(Locale::It));
+-    assert_eq!(locale_from_tags(&["xx".into(), "de-DE".into(), "fr".into()]), Some(Locale::De));
+-    assert_eq!(locale_from_tags(&["zh-TW".into(), "en".into()]), Some(Locale::ZhHant));
+-    assert_eq!(locale_from_tags(&["ja_JP.UTF-8".into(), "en".into()]), Some(Locale::Ja));
+-    assert_eq!(locale_from_tags(&["pt".into(), "pt-BR".into()]), Some(Locale::PtBr));
++    // HORIX: only the offered languages (English, Arabic) come from the browser's list.
++    assert_eq!(locale_from_tags(&["it-IT".into()]), None);
++    assert_eq!(locale_from_tags(&["xx".into(), "de-DE".into(), "fr".into(), "en-GB".into()]), Some(Locale::En));
++    assert_eq!(locale_from_tags(&["ja_JP.UTF-8".into(), "en".into()]), Some(Locale::En));
+ }
+ 
+ #[test]
 diff --git a/crates/ui-egui/src/menus/ui_commands.rs b/crates/ui-egui/src/menus/ui_commands.rs
 index 7f9a1b0..5a098dc 100644
 --- a/crates/ui-egui/src/menus/ui_commands.rs

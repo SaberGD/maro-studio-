@@ -1,8 +1,8 @@
 diff --git a/apps/photocraft-web/Cargo.toml b/apps/photocraft-web/Cargo.toml
-index 1c5499b..811c926 100644
+index d6a9cc1..e1e154c 100644
 --- a/apps/photocraft-web/Cargo.toml
 +++ b/apps/photocraft-web/Cargo.toml
-@@ -32,6 +32,8 @@ log = { workspace = true }
+@@ -33,6 +33,8 @@ log = { workspace = true }
  eframe = { workspace = true, features = ["wgpu", "accesskit", "clipboard"] }
  rfd = { workspace = true }
  wasm-bindgen = "0.2"
@@ -10,12 +10,12 @@ index 1c5499b..811c926 100644
 +serde_json = { workspace = true }
  wasm-bindgen-futures = "0.4"
  js-sys = "0.3"
- web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "DomRect", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url", "Location", "CssStyleDeclaration", "Storage", "Event", "EventTarget", "MouseEvent", "PointerEvent", "BeforeUnloadEvent", "AbortController", "AbortSignal", "DomException", "Response", "IdbFactory", "IdbOpenDbRequest", "IdbDatabase", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbObjectStore", "IdbCursor", "IdbCursorWithValue", "RequestInit", "RequestMode", "Navigator"] }
+ web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "DomRect", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url", "Location", "CssStyleDeclaration", "Storage", "Event", "EventTarget", "MouseEvent", "PointerEvent", "BeforeUnloadEvent", "AbortController", "AbortSignal", "DomException", "Response", "IdbFactory", "IdbOpenDbRequest", "IdbDatabase", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbObjectStore", "IdbCursor", "IdbCursorWithValue", "RequestInit", "RequestMode", "Navigator", "ErrorEvent", "PromiseRejectionEvent"] }
 diff --git a/apps/photocraft-web/src/web.rs b/apps/photocraft-web/src/web.rs
-index ab5dbcd..885a15a 100644
+index 365aa2e..47608f5 100644
 --- a/apps/photocraft-web/src/web.rs
 +++ b/apps/photocraft-web/src/web.rs
-@@ -400,6 +400,7 @@ impl eframe::App for WebShell {
+@@ -492,6 +492,7 @@ impl eframe::App for WebShell {
          if let Some(product) = waitlist {
              call_page("sgpsOpenWaitlist", Some(&product));
          }
@@ -23,7 +23,7 @@ index ab5dbcd..885a15a 100644
          self.app.logic_frame(ctx, frame);
          self.save_presets(ctx);
          self.app.finish_type_reset_logic(ctx);
-@@ -435,6 +436,64 @@ impl eframe::App for WebShell {
+@@ -527,6 +528,64 @@ impl eframe::App for WebShell {
      }
  }
  
@@ -85,10 +85,10 @@ index ab5dbcd..885a15a 100644
 +    }
 +}
 +
- fn services(inbox: Inbox, place_inbox: Inbox, cursor_pos: photocraft_ui_egui::CursorPosFn) -> Services {
+ fn services(inbox: Inbox, place_inbox: PlaceInbox, cursor_pos: photocraft_ui_egui::CursorPosFn) -> Services {
      Services {
          screen_pick: screen_color_service(),
-@@ -574,6 +633,13 @@ fn download(path: &str, bytes: &[u8]) -> Result<(), String> {
+@@ -669,6 +728,13 @@ fn download(path: &str, bytes: &[u8]) -> Result<(), String> {
      let js = |e: wasm_bindgen::JsValue| format!("{e:?}");
      let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "photocraft".into());
      let window = web_sys::window().ok_or("no window")?;
