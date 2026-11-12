@@ -12,10 +12,10 @@
 
 | البرنامج | بديل | مبني على | المكان |
 |---|---|---|---|
-| HORIX | Photoshop | PhotoCraft 0.15.1 | [`apps/sg-ps/`](apps/sg-ps/README.md) |
-| Horix Vectors | Illustrator | VectorCraft 0.16.0 | [`apps/horix-vectors/`](apps/horix-vectors/README.md) |
-| Horix Light | Lightroom | LightCraft 0.13.0 | [`apps/horix-light/`](apps/horix-light/README.md) |
-| Horix Layout | InDesign | DesignCraft 0.12.0 | [`apps/horix-layout/`](apps/horix-layout/README.md) |
+| HORIX | Photoshop | PhotoCraft 0.23.1 | [`apps/sg-ps/`](apps/sg-ps/README.md) |
+| Horix Vectors | Illustrator | VectorCraft 0.24.1 | [`apps/horix-vectors/`](apps/horix-vectors/README.md) |
+| Horix Light | Lightroom | LightCraft 0.21.1 | [`apps/horix-light/`](apps/horix-light/README.md) |
+| Horix Layout | InDesign | DesignCraft 0.20.1 | [`apps/horix-layout/`](apps/horix-layout/README.md) |
 | HORIX One | Photoshop + Illustrator (زي Affinity) | HORIX + Horix Vectors | [`apps/horix-one/`](apps/horix-one/README.md): برنامج واحد فيه Vector وPixel، على one.horix.live، وnative على ويندوز وماك |
 | HORIX Launcher | ArtCraft Launcher | craft-launcher 0.4.1 | [`apps/horix-launcher/`](apps/horix-launcher/README.md): بيسطّب البرامج دي ويحدّثها |
 
