@@ -1,0 +1,105 @@
+diff --git a/crates/ui-egui/src/i18n.rs b/crates/ui-egui/src/i18n.rs
+index 5ff88a7..0d8c1bd 100644
+--- a/crates/ui-egui/src/i18n.rs
++++ b/crates/ui-egui/src/i18n.rs
+@@ -145,12 +145,21 @@ impl Locale {
+     /// sits under C. Names in other scripts follow the Latin ones in code point order: Cyrillic,
+     /// Georgian, then the CJK languages.
+     pub fn for_picker() -> Vec<Self> {
+-        let mut rest: Vec<Self> = Self::ALL.iter().copied().filter(|l| *l != Self::En).collect();
++        let mut rest: Vec<Self> = Self::ALL.iter().copied().filter(|l| *l != Self::En && l.horix_offered()).collect();
+         rest.sort_by_cached_key(|l| name_sort_key(l.name()));
+         std::iter::once(Self::En).chain(rest).collect()
+     }
+ }
+ 
++impl Locale {
++    /// HORIX is for Arabic and English speakers: only these languages are offered in the Language
++    /// menu, the Settings row and the browser's language detection. The other translations stay in
++    /// the code (and still load from a saved setting, a language command or the control channel), hidden.
++    pub fn horix_offered(self) -> bool {
++        matches!(self.code(), "en" | "ar")
++    }
++}
++
+ /// `name` lowercased with the Latin accents that occur in language names folded away, so a
+ /// byte-wise sort reads alphabetically. Other scripts are left as they are.
+ fn name_sort_key(name: &str) -> String {
+@@ -204,7 +213,7 @@ pub fn set_default_language(language: Locale) {
+ /// The first of `tags` (BCP-47, most preferred first, as `navigator.languages` lists them) that
+ /// names a shipped language; None when none does.
+ pub fn locale_from_tags(tags: &[String]) -> Option<Locale> {
+-    tags.iter().find_map(|tag| Locale::parse_tag(tag))
++    tags.iter().find_map(|tag| Locale::parse_tag(tag).filter(|language| language.horix_offered()))
+ }
+ 
+ /// The UI language "Auto" resolves to: the environment's (`LIGHTCRAFT_LANGUAGE=zh-hans`, for
+@@ -583,7 +592,8 @@ mod picker_order_tests {
+     fn picker_lists_english_first_then_names_alphabetically() {
+         let order = Locale::for_picker();
+         assert_eq!(order.first(), Some(&Locale::En));
+-        assert_eq!(order.len(), Locale::ALL.len());
++        // HORIX: only Arabic and English are offered.
++        assert!(order.iter().all(|l| l.horix_offered()));
+         let keys: Vec<String> = order[1..].iter().map(|l| name_sort_key(l.name())).collect();
+         assert!(keys.windows(2).all(|w| w[0] <= w[1]), "{keys:?}");
+         assert_eq!(name_sort_key("Čeština"), "cestina");
+@@ -591,7 +601,7 @@ mod picker_order_tests {
+ 
+     #[test]
+     fn language_menu_lists_the_picker_order() {
+-        let menu: Vec<&str> = crate::menus::LANGUAGE_COMMANDS.iter().map(|c| c.1).collect();
++        let menu: Vec<&str> = crate::menus::LANGUAGE_COMMANDS.iter().filter(|c| !c.3.is_empty()).map(|c| c.1).collect();
+         let picker: Vec<&str> = Locale::for_picker().into_iter().map(Locale::name).collect();
+         assert_eq!(menu, picker, "Edit ▸ Language and the Settings row list the languages the same way");
+     }
+diff --git a/crates/ui-egui/src/menus/ui_commands.rs b/crates/ui-egui/src/menus/ui_commands.rs
+index 7f9a1b0..5a098dc 100644
+--- a/crates/ui-egui/src/menus/ui_commands.rs
++++ b/crates/ui-egui/src/menus/ui_commands.rs
+@@ -3,26 +3,28 @@ use super::UiCommand;
+ /// The "Edit → Language" entries, one per language in [`crate::i18n::Locale::ALL`], so a language
+ /// has a matching menu command (also listed through the control channel). Tests check coverage.
+ pub const LANGUAGE_COMMANDS: &[UiCommand] = &[
++    // HORIX is for Arabic and English speakers: the other languages stay commands (the control
++    // channel and saved settings reach them) with no menu entry.
+     ("app.language.english", crate::i18n::Locale::En.name(), None, "Edit>Language"),
+     // The picker order (`Locale::for_picker`): alphabetical by the language's own name after
+     // English; Cyrillic, Georgian, then CJK names follow the Latin ones. A test keeps them equal.
+-    ("app.language.indonesian", crate::i18n::Locale::Id.name(), None, "Edit>Language"),
+-    ("app.language.czech", crate::i18n::Locale::Cs.name(), None, "Edit>Language"),
+-    ("app.language.german", crate::i18n::Locale::De.name(), None, "Edit>Language"),
+-    ("app.language.spanish", crate::i18n::Locale::Es.name(), None, "Edit>Language"),
+-    ("app.language.french", crate::i18n::Locale::Fr.name(), None, "Edit>Language"),
+-    ("app.language.italian", crate::i18n::Locale::It.name(), None, "Edit>Language"),
+-    ("app.language.polish", crate::i18n::Locale::Pl.name(), None, "Edit>Language"),
+-    ("app.language.portuguese", crate::i18n::Locale::PtBr.name(), None, "Edit>Language"),
+-    ("app.language.finnish", crate::i18n::Locale::Fi.name(), None, "Edit>Language"),
+-    ("app.language.swedish", crate::i18n::Locale::Sv.name(), None, "Edit>Language"),
+-    ("app.language.vietnamese", crate::i18n::Locale::Vi.name(), None, "Edit>Language"),
+-    ("app.language.russian", crate::i18n::Locale::Ru.name(), None, "Edit>Language"),
+-    ("app.language.ukrainian", crate::i18n::Locale::Uk.name(), None, "Edit>Language"),
+-    ("app.language.georgian", crate::i18n::Locale::Ka.name(), None, "Edit>Language"),
+-    ("app.language.japanese", crate::i18n::Locale::Ja.name(), None, "Edit>Language"),
+-    ("app.language.simplifiedChinese", crate::i18n::Locale::ZhHans.name(), None, "Edit>Language"),
+-    ("app.language.traditionalChinese", crate::i18n::Locale::ZhHant.name(), None, "Edit>Language"),
++    ("app.language.indonesian", crate::i18n::Locale::Id.name(), None, ""),
++    ("app.language.czech", crate::i18n::Locale::Cs.name(), None, ""),
++    ("app.language.german", crate::i18n::Locale::De.name(), None, ""),
++    ("app.language.spanish", crate::i18n::Locale::Es.name(), None, ""),
++    ("app.language.french", crate::i18n::Locale::Fr.name(), None, ""),
++    ("app.language.italian", crate::i18n::Locale::It.name(), None, ""),
++    ("app.language.polish", crate::i18n::Locale::Pl.name(), None, ""),
++    ("app.language.portuguese", crate::i18n::Locale::PtBr.name(), None, ""),
++    ("app.language.finnish", crate::i18n::Locale::Fi.name(), None, ""),
++    ("app.language.swedish", crate::i18n::Locale::Sv.name(), None, ""),
++    ("app.language.vietnamese", crate::i18n::Locale::Vi.name(), None, ""),
++    ("app.language.russian", crate::i18n::Locale::Ru.name(), None, ""),
++    ("app.language.ukrainian", crate::i18n::Locale::Uk.name(), None, ""),
++    ("app.language.georgian", crate::i18n::Locale::Ka.name(), None, ""),
++    ("app.language.japanese", crate::i18n::Locale::Ja.name(), None, ""),
++    ("app.language.simplifiedChinese", crate::i18n::Locale::ZhHans.name(), None, ""),
++    ("app.language.traditionalChinese", crate::i18n::Locale::ZhHant.name(), None, ""),
+ ];
+ 
+ /// Every UI command: the languages, then everything else. `xtask parity` reads both tables from

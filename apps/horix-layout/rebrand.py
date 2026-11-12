@@ -338,6 +338,54 @@ def languages(root: Path) -> None:
          '        assert!(LANGUAGES.iter().any(|(code, _)| *code == "de"));\n'
          "    }\n"),
     ])
+    # The menu now lists two languages, so the Preferences test that clicks through the list
+    # picks Arabic (not German) and checks that the others are hidden.
+    hx.edit(root, "crates/ui-egui/src/dialogs/tests.rs", [
+        ("    for (_, name) in crate::i18n::LANGUAGES {\n"
+         '        assert!(labels.iter().any(|(text, _, _)| text == name), "{name} is listed by its own name");\n'
+         "    }\n"
+         '    let deutsch = visible_label(&labels, screen, "Deutsch").center();\n'
+         "    click_dialog(&mut app, &ctx, screen, deutsch);\n"
+         '    assert_eq!(app.ui.language, "de");\n'
+         '    assert_eq!(app.ui.dialog.as_ref().map(|d| d.id.as_str()), Some("preferences"));\n'
+         "    let labels = dialog_frame(&mut app, &ctx, screen, vec![]);\n"
+         '    let heading = visible_label(&labels, screen, crate::i18n::tr("de", "Interface Language"));\n'
+         '    let combo = visible_label(&labels, screen, "Deutsch");\n'
+         "\n"
+         "    // The names stay endonyms in the German interface.\n"
+         "    click_dialog(&mut app, &ctx, screen, combo.center());\n"
+         "    let labels = dialog_frame(&mut app, &ctx, screen, vec![]);\n"
+         '    for name in ["English", "Français", "日本語", "Українська"] {\n'
+         '        assert!(labels.iter().any(|(text, _, _)| text == name), "{name}");\n'
+         "    }\n"
+         "    click_dialog(&mut app, &ctx, screen, heading.center());\n"
+         "    let labels = dialog_frame(&mut app, &ctx, screen, vec![]);\n"
+         '    assert!(!labels.iter().any(|(text, _, _)| text == "Français"), "the list closes");\n',
+         "    // Horix Layout: the list offers English and Arabic only, each by its own name.\n"
+         '    for name in ["English", "العربية"] {\n'
+         '        assert!(labels.iter().any(|(text, _, _)| text == name), "{name} is listed by its own name");\n'
+         "    }\n"
+         '    for name in ["Deutsch", "Français", "日本語", "Українська"] {\n'
+         '        assert!(!labels.iter().any(|(text, _, _)| text == name), "{name} is hidden");\n'
+         "    }\n"
+         '    let arabic = visible_label(&labels, screen, "العربية").center();\n'
+         "    click_dialog(&mut app, &ctx, screen, arabic);\n"
+         '    assert_eq!(app.ui.language, "ar");\n'
+         '    assert_eq!(app.ui.dialog.as_ref().map(|d| d.id.as_str()), Some("preferences"));\n'
+         "    let labels = dialog_frame(&mut app, &ctx, screen, vec![]);\n"
+         '    let heading = visible_label(&labels, screen, crate::i18n::tr("ar", "Interface Language"));\n'
+         '    let combo = visible_label(&labels, screen, "العربية");\n'
+         "\n"
+         "    // The names stay endonyms in the Arabic interface.\n"
+         "    click_dialog(&mut app, &ctx, screen, combo.center());\n"
+         "    let labels = dialog_frame(&mut app, &ctx, screen, vec![]);\n"
+         '    for name in ["English", "العربية"] {\n'
+         '        assert!(labels.iter().any(|(text, _, _)| text == name), "{name}");\n'
+         "    }\n"
+         "    click_dialog(&mut app, &ctx, screen, heading.center());\n"
+         "    let labels = dialog_frame(&mut app, &ctx, screen, vec![]);\n"
+         '    assert!(!labels.iter().any(|(text, _, _)| text == "English"), "the list closes");\n'),
+    ])
 
 
 def main() -> None:
