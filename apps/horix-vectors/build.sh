@@ -2,14 +2,14 @@
 # Build Horix Vectors (rebranded VectorCraft) for the web and zip it for hosting.
 #
 # Usage: apps/horix-vectors/build.sh [vectorcraft-source.tar.gz]
-#   default source: archive/vectorcraft/vectorcraft-source-0.21.0.tar.gz
+#   default source: archive/vectorcraft/vectorcraft-source-0.24.1.tar.gz
 # Needs: Rust >= 1.95 with the wasm32-unknown-unknown target, trunk, python3, zip, git (craft-fonts).
 # Output: deploy/horix-vectors/horix-vectors-<version>-web.zip (a static site; any URL path works).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-SRC_TGZ="${1:-$REPO/archive/vectorcraft/vectorcraft-source-0.21.0.tar.gz}"
+SRC_TGZ="${1:-$REPO/archive/vectorcraft/vectorcraft-source-0.24.1.tar.gz}"
 WORK="${HORIX_VECTORS_WORK:-$REPO/.horix-build/vectors}"
 OUT="$REPO/deploy/horix-vectors"
 

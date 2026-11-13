@@ -790,6 +790,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "block-padding"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8894febbff9f758034a5b8e12d87918f56dfc64a8e1fe757d65e29041538d93"
+dependencies = [
+ "generic-array",
+]
+
+[[package]]
 name = "block2"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -876,6 +885,12 @@ name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
+
+[[package]]
+name = "bytecount"
+version = "0.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "175812e0be2bccb6abe50bb8d566126198344f707e304f45c648fd8f2cc0365e"
 
 [[package]]
 name = "bytemuck"
@@ -1004,6 +1019,15 @@ name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
+
+[[package]]
+name = "cbc"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26b52a9543ae338f279b96b0b9fed9c8093744685043739079ce85cd58f289a6"
+dependencies = [
+ "cipher",
+]
 
 [[package]]
 name = "cc"
@@ -1470,12 +1494,22 @@ dependencies = [
 [[package]]
 name = "craft-docpath"
 version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
+
+[[package]]
+name = "craft-docpath"
+version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
 
 [[package]]
 name = "craft-docpath"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7#c5a1cbfb5f9049f9270955caffb5bee5997aebf7"
+source = "git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb#9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb"
+
+[[package]]
+name = "craft-fonts-build"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
 
 [[package]]
 name = "craft-fonts-build"
@@ -1485,7 +1519,39 @@ source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13af
 [[package]]
 name = "craft-fonts-build"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7#c5a1cbfb5f9049f9270955caffb5bee5997aebf7"
+source = "git+https://github.com/storytold/craft-libs?rev=bb8320f5fa5d20fa78a026d0de06fe4e2f08a099#bb8320f5fa5d20fa78a026d0de06fe4e2f08a099"
+
+[[package]]
+name = "craft-heif"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=081078bb1b44aeedfa5bef3d4f13d978dc77510a#081078bb1b44aeedfa5bef3d4f13d978dc77510a"
+dependencies = [
+ "heic-rs",
+ "rayon",
+]
+
+[[package]]
+name = "craft-i18n"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
+dependencies = [
+ "fixed_decimal",
+ "icu_decimal",
+ "icu_locale_core",
+ "icu_locale_fallback",
+ "icu_normalizer",
+ "icu_plurals",
+ "icu_properties",
+ "icu_provider",
+ "icu_provider_adapters",
+ "icu_provider_blob",
+ "log",
+ "objc2-foundation 0.3.2",
+ "sys-locale",
+ "unicode-bidi",
+ "windows-registry",
+ "writeable",
+]
 
 [[package]]
 name = "craft-i18n"
@@ -1513,7 +1579,7 @@ dependencies = [
 [[package]]
 name = "craft-i18n"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7#c5a1cbfb5f9049f9270955caffb5bee5997aebf7"
+source = "git+https://github.com/storytold/craft-libs?rev=bb8320f5fa5d20fa78a026d0de06fe4e2f08a099#bb8320f5fa5d20fa78a026d0de06fe4e2f08a099"
 dependencies = [
  "fixed_decimal",
  "icu_decimal",
@@ -1536,7 +1602,7 @@ dependencies = [
 [[package]]
 name = "craft-jpeg"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7#c5a1cbfb5f9049f9270955caffb5bee5997aebf7"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -1548,6 +1614,16 @@ source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13af
 dependencies = [
  "craft-i18n 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
  "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
+ "egui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "craft-keymap"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb#9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb"
+dependencies = [
  "egui",
  "serde",
  "serde_json",
@@ -1566,10 +1642,33 @@ dependencies = [
 [[package]]
 name = "craft-pdf"
 version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
+dependencies = [
+ "bytemuck",
+ "hayro",
+ "hayro-interpret",
+ "hayro-syntax",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "craft-pdf"
+version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
 dependencies = [
  "bytemuck",
  "hayro",
+ "hayro-interpret",
+ "hayro-syntax",
+ "krilla",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "craft-pdf"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb#9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb"
+dependencies = [
  "hayro-interpret",
  "hayro-syntax",
  "krilla",
@@ -1582,7 +1681,7 @@ version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
 dependencies = [
  "craft-cms",
- "craft-pdf",
+ "craft-pdf 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
  "kurbo 0.13.1",
  "linesweeper",
  "thiserror 2.0.21",
@@ -1592,28 +1691,74 @@ dependencies = [
 [[package]]
 name = "craft-print"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
 dependencies = [
- "craft-winprint-gdi",
+ "craft-winprint-gdi 0.1.0 (git+https://github.com/storytold/winprint.rs?rev=64e7afd4d1483512385012c340ecaaaf0f3beb7f)",
+ "log",
  "miniz_oxide 0.9.1",
  "roxmltree 0.21.1",
  "tempfile",
- "winprint",
+ "winprint 0.2.1 (git+https://github.com/storytold/winprint.rs?rev=bc06a7c48b768eb27a828c7986f6d2868b245ee0)",
  "winsafe",
 ]
 
 [[package]]
 name = "craft-print"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7#c5a1cbfb5f9049f9270955caffb5bee5997aebf7"
+source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
 dependencies = [
- "craft-winprint-gdi",
+ "craft-winprint-gdi 0.1.0 (git+https://github.com/storytold/winprint.rs?rev=417ac3c4d14d3da5485a99c7d5ce8f05664ec312)",
+ "miniz_oxide 0.9.1",
+ "roxmltree 0.21.1",
+ "tempfile",
+ "winprint 0.2.1 (git+https://github.com/storytold/winprint.rs?rev=5f80b9baf6b58937c401656634e42d33f00ddf49)",
+ "winsafe",
+]
+
+[[package]]
+name = "craft-print"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb#9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb"
+dependencies = [
+ "craft-winprint-gdi 0.1.0 (git+https://github.com/storytold/winprint.rs?rev=417ac3c4d14d3da5485a99c7d5ce8f05664ec312)",
  "log",
  "miniz_oxide 0.9.1",
  "roxmltree 0.21.1",
  "tempfile",
- "winprint",
+ "winprint 0.2.1 (git+https://github.com/storytold/winprint.rs?rev=5f80b9baf6b58937c401656634e42d33f00ddf49)",
  "winsafe",
+]
+
+[[package]]
+name = "craft-proof"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb#9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb"
+dependencies = [
+ "log",
+ "miniz_oxide 0.9.1",
+ "toml",
+ "unicode-normalization",
+]
+
+[[package]]
+name = "craft-ui"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
+dependencies = [
+ "craft-fonts-build 0.1.0 (git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b)",
+ "craft-i18n 0.1.0 (git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b)",
+ "egui",
+ "epaint",
+ "js-sys",
+ "log",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "serde",
+ "skrifa 0.44.0",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -1640,10 +1785,10 @@ dependencies = [
 [[package]]
 name = "craft-ui"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7#c5a1cbfb5f9049f9270955caffb5bee5997aebf7"
+source = "git+https://github.com/storytold/craft-libs?rev=bb8320f5fa5d20fa78a026d0de06fe4e2f08a099#bb8320f5fa5d20fa78a026d0de06fe4e2f08a099"
 dependencies = [
- "craft-fonts-build 0.1.0 (git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7)",
- "craft-i18n 0.1.0 (git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7)",
+ "craft-fonts-build 0.1.0 (git+https://github.com/storytold/craft-libs?rev=bb8320f5fa5d20fa78a026d0de06fe4e2f08a099)",
+ "craft-i18n 0.1.0 (git+https://github.com/storytold/craft-libs?rev=bb8320f5fa5d20fa78a026d0de06fe4e2f08a099)",
  "egui",
  "epaint",
  "js-sys",
@@ -1661,7 +1806,7 @@ dependencies = [
 [[package]]
 name = "craft-update"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7#c5a1cbfb5f9049f9270955caffb5bee5997aebf7"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
 dependencies = [
  "chrono",
  "dunce",
@@ -1671,6 +1816,7 @@ dependencies = [
  "image",
  "log",
  "plist",
+ "rustix 1.1.5",
  "semver",
  "serde",
  "serde_json",
@@ -1687,7 +1833,7 @@ dependencies = [
 [[package]]
 name = "craft-vectorcraft-format"
 version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=14d5dbb50c317b8747a9cf9eb35ab8a22515f137#14d5dbb50c317b8747a9cf9eb35ab8a22515f137"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
 dependencies = [
  "flate2",
  "serde",
@@ -1707,9 +1853,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-window"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb#9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb"
+dependencies = [
+ "egui",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "wayland-client",
+]
+
+[[package]]
 name = "craft-winprint-gdi"
 version = "0.1.0"
 source = "git+https://github.com/storytold/winprint.rs?rev=417ac3c4d14d3da5485a99c7d5ce8f05664ec312#417ac3c4d14d3da5485a99c7d5ce8f05664ec312"
+dependencies = [
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "craft-winprint-gdi"
+version = "0.1.0"
+source = "git+https://github.com/storytold/winprint.rs?rev=64e7afd4d1483512385012c340ecaaaf0f3beb7f#64e7afd4d1483512385012c340ecaaaf0f3beb7f"
 dependencies = [
  "windows-sys 0.61.2",
 ]
@@ -1907,11 +2072,11 @@ dependencies = [
 
 [[package]]
 name = "designcraft"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "arboard",
  "craft-update",
- "craft-window",
+ "craft-window 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
  "designcraft-engine",
  "designcraft-ui-egui",
  "eframe",
@@ -1921,6 +2086,7 @@ dependencies = [
  "muda",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
  "rfd",
  "serde",
  "serde_json",
@@ -1931,7 +2097,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-color"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "craft-cms",
  "kurbo 0.13.1",
@@ -1941,7 +2107,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-compose"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "designcraft-color",
  "designcraft-doc",
@@ -1960,7 +2126,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-doc"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "chrono",
  "designcraft-color",
@@ -1972,7 +2138,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-engine"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "caseless",
  "craft-atomic",
@@ -2006,7 +2172,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-epub"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "chrono",
  "designcraft-color",
@@ -2016,7 +2182,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-fonts"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "core-text",
  "harfrust 0.13.3",
@@ -2029,7 +2195,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-format"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "designcraft-doc",
  "designcraft-images",
@@ -2041,7 +2207,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-geom"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "flo_curves",
  "kurbo 0.13.1",
@@ -2052,7 +2218,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-idml"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "designcraft-color",
  "designcraft-doc",
@@ -2066,7 +2232,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-images"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "craft-cms",
  "designcraft-color",
@@ -2084,11 +2250,11 @@ dependencies = [
 
 [[package]]
 name = "designcraft-pdf"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "chrono",
  "craft-cms",
- "craft-pdf",
+ "craft-pdf 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
  "craft-prepress",
  "designcraft-color",
  "designcraft-compose",
@@ -2105,7 +2271,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-pptx"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "chrono",
  "designcraft-color",
@@ -2122,9 +2288,9 @@ dependencies = [
 
 [[package]]
 name = "designcraft-render"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
- "craft-pdf",
+ "craft-pdf 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
  "designcraft-color",
  "designcraft-compose",
  "designcraft-doc",
@@ -2141,7 +2307,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-textimport"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "designcraft-doc",
  "quick-xml 0.41.0",
@@ -2150,7 +2316,7 @@ dependencies = [
 
 [[package]]
 name = "designcraft-tools"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "designcraft-color",
  "designcraft-compose",
@@ -2162,14 +2328,14 @@ dependencies = [
 
 [[package]]
 name = "designcraft-ui-egui"
-version = "0.17.0"
+version = "0.20.1"
 dependencies = [
  "craft-dialogs",
- "craft-keymap",
+ "craft-keymap 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
  "craft-prepress",
  "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
  "craft-update",
- "craft-window",
+ "craft-window 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
  "designcraft-color",
  "designcraft-compose",
  "designcraft-doc",
@@ -2177,8 +2343,10 @@ dependencies = [
  "designcraft-fonts",
  "designcraft-geom",
  "designcraft-render",
+ "designcraft-textimport",
  "designcraft-tools",
  "egui",
+ "egui_extras",
  "log",
  "raw-window-handle",
  "serde",
@@ -2209,6 +2377,7 @@ checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer",
  "crypto-common",
+ "subtle",
 ]
 
 [[package]]
@@ -2336,6 +2505,15 @@ name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
+
+[[package]]
+name = "ecb"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a8bfa975b1aec2145850fcaa1c6fe269a16578c44705a532ae3edc92b8881c7"
+dependencies = [
+ "cipher",
+]
 
 [[package]]
 name = "ecolor"
@@ -3470,7 +3648,7 @@ dependencies = [
 [[package]]
 name = "hayro"
 version = "0.7.1"
-source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
 dependencies = [
  "bytemuck",
  "hayro-interpret",
@@ -3489,8 +3667,9 @@ checksum = "9f4d0e94ddd48749f06bbe4e5389fb9799a0c45bcaf00495042076ef05e3241a"
 
 [[package]]
 name = "hayro-cmap"
-version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a14afde3344be69225fec4f6f44f6a219a3a492f9d8301eb25ef608fe4b7014c"
 dependencies = [
  "brotli",
  "hayro-postscript",
@@ -3499,7 +3678,7 @@ dependencies = [
 [[package]]
 name = "hayro-interpret"
 version = "0.7.0"
-source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
 dependencies = [
  "bitflags 2.13.2",
  "hayro-cmap",
@@ -3517,7 +3696,7 @@ dependencies = [
 [[package]]
 name = "hayro-jbig2"
 version = "0.3.0"
-source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
 dependencies = [
  "fearless_simd",
  "hayro-ccitt",
@@ -3534,13 +3713,14 @@ dependencies = [
 
 [[package]]
 name = "hayro-postscript"
-version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc2d80da85f31c3fdc0366431f44cfd645a9da1e242ed1f4a61f213d9765660f"
 
 [[package]]
 name = "hayro-syntax"
 version = "0.7.2"
-source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
 dependencies = [
  "flate2",
  "hayro-ccitt",
@@ -3596,6 +3776,15 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hmac"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
+dependencies = [
+ "digest",
+]
 
 [[package]]
 name = "http"
@@ -3729,6 +3918,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "icu_casemap"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2edfd120d8445de853cf53a1abec916f638f933a70a6f4bf8f7e2d7b7f884e9"
+dependencies = [
+ "icu_casemap_data",
+ "icu_collections",
+ "icu_locale_core",
+ "icu_properties",
+ "icu_provider",
+ "potential_utf",
+ "writeable",
+ "zerovec",
+]
+
+[[package]]
+name = "icu_casemap_data"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "059fcda0fc8d33effc6633a8cf0d8a3c17caf7d7c91918fba9918744f501e4e8"
+
+[[package]]
 name = "icu_collections"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3736,6 +3947,7 @@ checksum = "fa68d21081c4a05d5a901a1c62add574c77048b6a1c67be3b50ce0b60d4ca513"
 dependencies = [
  "displaydoc",
  "potential_utf",
+ "serde",
  "utf8_iter",
  "yoke",
  "zerofrom",
@@ -4014,7 +4226,7 @@ checksum = "6e44b0a4eaa4c82f441d50a963f2d5f05a787240aeee097597033e72accfd22f"
 [[package]]
 name = "indd"
 version = "0.1.0"
-source = "git+https://github.com/storytold/indd-utils?branch=main#136f973a9d5f1b3ef34e46e27f4a08af196efde7"
+source = "git+https://github.com/storytold/indd-utils?rev=7f3060e5bce78d21ea70e0d5eacb96edce15dfbe#7f3060e5bce78d21ea70e0d5eacb96edce15dfbe"
 
 [[package]]
 name = "indexmap"
@@ -4034,6 +4246,7 @@ version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01"
 dependencies = [
+ "block-padding",
  "generic-array",
 ]
 
@@ -4437,7 +4650,7 @@ dependencies = [
 [[package]]
 name = "krilla"
 version = "0.8.2"
-source = "git+https://github.com/storytold/craft-libs?rev=fb08be5fa19eee8d37e624397fcdc96df6035e92#fb08be5fa19eee8d37e624397fcdc96df6035e92"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
 dependencies = [
  "base64 0.22.1",
  "bumpalo",
@@ -4621,8 +4834,7 @@ checksum = "d4a5ff6bcca6c4867b1c4fd4ef63e4db7436ef363e0ad7531d1558856bae64f4"
 [[package]]
 name = "linesweeper"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a25df1b0c5432893f41bba817150e323703ee5f6d974f3a6808ac7fd7f046d18"
+source = "git+https://github.com/storytold/craft-libs?rev=481f66d287b2a06845f3667a19daf35f0fe958ed#481f66d287b2a06845f3667a19daf35f0fe958ed"
 dependencies = [
  "arrayvec",
  "kurbo 0.13.1",
@@ -4689,10 +4901,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "lopdf"
+version = "0.38.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7184fdea2bc3cd272a1acec4030c321a8f9875e877b3f92a53f2f6033fdc289"
+dependencies = [
+ "aes",
+ "bitflags 2.13.2",
+ "cbc",
+ "ecb",
+ "encoding_rs",
+ "flate2",
+ "getrandom 0.3.4",
+ "indexmap",
+ "itoa",
+ "log",
+ "md-5",
+ "nom 8.0.0",
+ "nom_locate",
+ "rand 0.9.5",
+ "rangemap",
+ "sha2",
+ "stringprep",
+ "thiserror 2.0.21",
+ "ttf-parser",
+ "weezl 0.1.12",
+]
+
+[[package]]
 name = "lru-slab"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
+
+[[package]]
+name = "lz4_flex"
+version = "0.11.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "373f5eceeeab7925e0c1098212f2fbc4d416adec9d35051a6ab251e824c1854a"
 
 [[package]]
 name = "matrixmultiply"
@@ -4976,10 +5222,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "nom_locate"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b577e2d69827c4740cba2b52efaad1c4cc7c73042860b199710b3575c68438d"
+dependencies = [
+ "bytecount",
+ "memchr",
+ "nom 8.0.0",
+]
+
+[[package]]
 name = "noop_proc_macro"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
+
+[[package]]
+name = "ntapi"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3b335231dfd352ffb0f8017f3b6027a4917f7df785ea2143d8af2adc66980ae"
+dependencies = [
+ "winapi",
+]
 
 [[package]]
 name = "num-bigint"
@@ -5391,6 +5657,16 @@ dependencies = [
  "objc2 0.6.5",
  "objc2-core-foundation",
  "objc2-core-graphics",
+]
+
+[[package]]
+name = "objc2-io-kit"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33fafba39597d6dc1fb709123dfa8289d39406734be322956a69f0931c73bb15"
+dependencies = [
+ "libc",
+ "objc2-core-foundation",
 ]
 
 [[package]]
@@ -5912,7 +6188,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "arboard",
  "async-io",
@@ -5971,7 +6247,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft-affinity"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "crc32fast",
  "flate2",
@@ -5981,7 +6257,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft-algo"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "criterion",
  "photocraft-color",
@@ -5996,51 +6272,66 @@ dependencies = [
 
 [[package]]
 name = "photocraft-automation"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "base64 0.23.1",
  "cap-std",
  "clap",
  "getrandom 0.3.4",
+ "hmac",
  "photocraft-codecs",
+ "photocraft-color",
  "photocraft-compose",
  "photocraft-doc",
  "photocraft-engine",
  "photocraft-format",
+ "photocraft-geom",
+ "photocraft-gpu",
  "photocraft-io",
+ "photocraft-psd",
  "photocraft-raster",
  "photocraft-raw",
+ "pollster 1.0.1",
  "rmcp",
  "rustix 1.1.5",
  "schemars",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.21",
  "tokio",
+ "wgpu",
 ]
 
 [[package]]
 name = "photocraft-cli"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "clap",
  "clap_complete",
  "clap_mangen",
  "photocraft-automation",
+ "photocraft-cms",
  "photocraft-codecs",
+ "photocraft-doc",
  "photocraft-engine",
  "photocraft-format",
  "photocraft-io",
+ "photocraft-psd",
+ "photocraft-raster",
  "photocraft-raw",
+ "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "winresource",
+ "xtask",
 ]
 
 [[package]]
 name = "photocraft-cms"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "moxcms",
  "rayon",
@@ -6048,8 +6339,9 @@ dependencies = [
 
 [[package]]
 name = "photocraft-codecs"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
+ "craft-heif",
  "craft-jpeg",
  "exr",
  "flate2",
@@ -6058,7 +6350,6 @@ dependencies = [
  "image-webp",
  "jpeg-encoder",
  "jxl-oxide",
- "photocraft-heif",
  "png 0.18.1",
  "proptest",
  "rayon",
@@ -6072,7 +6363,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft-color"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "photocraft-cms",
  "serde",
@@ -6080,7 +6371,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft-compose"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "criterion",
  "photocraft-cms",
@@ -6096,7 +6387,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft-doc"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "photocraft-color",
  "photocraft-geom",
@@ -6107,12 +6398,12 @@ dependencies = [
 
 [[package]]
 name = "photocraft-engine"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "base64 0.22.1",
  "blake3",
  "chrono",
- "craft-print 0.1.0 (git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7)",
+ "craft-print 0.1.0 (git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b)",
  "exr",
  "flate2",
  "photocraft-affinity",
@@ -6144,12 +6435,13 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "wat",
+ "web-time",
  "winsafe",
 ]
 
 [[package]]
 name = "photocraft-format"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "blake3",
  "craft-pcraft-format",
@@ -6173,14 +6465,14 @@ dependencies = [
 
 [[package]]
 name = "photocraft-geom"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "photocraft-gpu"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "bytemuck",
  "half",
@@ -6195,25 +6487,22 @@ dependencies = [
  "photocraft-vector",
  "pollster 1.0.1",
  "rayon",
+ "thiserror 2.0.21",
  "wgpu",
 ]
 
 [[package]]
-name = "photocraft-heif"
-version = "0.20.1"
-dependencies = [
- "heic-rs",
-]
-
-[[package]]
 name = "photocraft-io"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "blake3",
- "craft-docpath 0.1.0 (git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7)",
+ "craft-docpath 0.1.0 (git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b)",
+ "craft-pdf 0.1.0 (git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b)",
  "crc32fast",
  "flate2",
  "imagesize 0.13.0",
+ "kurbo 0.13.1",
+ "lopdf",
  "miniz_oxide 0.9.1",
  "photocraft-affinity",
  "photocraft-algo",
@@ -6237,24 +6526,25 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tiff",
+ "ttf-parser",
  "zune-core 0.5.3",
  "zune-jpegxl",
 ]
 
 [[package]]
 name = "photocraft-ipp"
-version = "0.20.1"
+version = "0.23.1"
 
 [[package]]
 name = "photocraft-ops"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "photocraft-doc",
 ]
 
 [[package]]
 name = "photocraft-paint"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "photocraft-cms",
  "photocraft-color",
@@ -6268,7 +6558,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft-plugins"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "photocraft-color",
  "photocraft-geom",
@@ -6284,7 +6574,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft-psd"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "encoding_rs",
  "flate2",
@@ -6296,18 +6586,23 @@ dependencies = [
 
 [[package]]
 name = "photocraft-raster"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
+ "crc32fast",
+ "lz4_flex",
  "photocraft-color",
  "photocraft-geom",
  "proptest",
  "rayon",
+ "rustix 1.1.5",
  "serde",
+ "sysinfo",
+ "winsafe",
 ]
 
 [[package]]
 name = "photocraft-raw"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "flate2",
  "image",
@@ -6322,19 +6617,22 @@ dependencies = [
 
 [[package]]
 name = "photocraft-tablet"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "block2 0.6.2",
+ "log",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-core-graphics",
  "objc2-foundation 0.3.2",
+ "windows",
+ "wintab",
  "x11rb",
 ]
 
 [[package]]
 name = "photocraft-testkit"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "memory-stats",
  "serde_json",
@@ -6342,7 +6640,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft-text"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "flate2",
  "parley",
@@ -6352,16 +6650,18 @@ dependencies = [
  "photocraft-psd",
  "photocraft-raster",
  "rayon",
- "skrifa 0.44.0",
+ "skrifa 0.47.0",
 ]
 
 [[package]]
 name = "photocraft-ui-egui"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "base64 0.23.1",
- "craft-print 0.1.0 (git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7)",
- "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7)",
+ "chrono",
+ "craft-i18n 0.1.0 (git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b)",
+ "craft-print 0.1.0 (git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b)",
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b)",
  "craft-update",
  "eframe",
  "egui",
@@ -6369,6 +6669,8 @@ dependencies = [
  "egui_kittest",
  "epaint_default_fonts",
  "flate2",
+ "icu_casemap",
+ "icu_locale_core",
  "log",
  "photocraft-algo",
  "photocraft-cms",
@@ -6402,7 +6704,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft-vector"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "photocraft-color",
  "photocraft-doc",
@@ -6413,7 +6715,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft-web"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "eframe",
  "egui",
@@ -6425,6 +6727,7 @@ dependencies = [
  "photocraft-io",
  "photocraft-paint",
  "photocraft-psd",
+ "photocraft-raster",
  "photocraft-ui-egui",
  "rfd",
  "serde_json",
@@ -6435,7 +6738,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft-web-boot"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "flate2",
  "js-sys",
@@ -6997,6 +7300,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca45419789ae5a7899559e9512e58ca889e41f04f1f2445e9f4b290ceccd1d08"
 
 [[package]]
+name = "rangemap"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a611d15b50743feb4c76b7d03edcb0e64f399c26961e4efe6975bc398be6aa3d"
+
+[[package]]
 name = "rav1e"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7300,9 +7609,27 @@ dependencies = [
  "log",
  "pico-args",
  "rgb",
- "svgtypes 0.16.1",
+ "svgtypes 0.16.2",
  "tiny-skia 0.12.0",
  "usvg 0.47.0",
+ "zune-jpeg 0.5.15",
+]
+
+[[package]]
+name = "resvg"
+version = "0.48.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67e3803f97b999e80cbf7c6ecdd07a8102204d92e1633cf48783720c521196bd"
+dependencies = [
+ "bytemuck",
+ "gif 0.14.2",
+ "image-webp",
+ "log",
+ "pico-args",
+ "rgb",
+ "svgtypes 0.16.2",
+ "tiny-skia 0.12.0",
+ "usvg 0.48.1",
  "zune-jpeg 0.5.15",
 ]
 
@@ -8379,9 +8706,9 @@ dependencies = [
 
 [[package]]
 name = "svgtypes"
-version = "0.16.1"
+version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "695b5790b3131dafa99b3bbfd25a216edb3d216dad9ca208d4657bfb8f2abc3d"
+checksum = "9f12b12995e3638c70618c1facb1ce65302f6a6f706b675f07c58a5d7391120e"
 dependencies = [
  "kurbo 0.13.1",
  "siphasher",
@@ -8449,6 +8776,20 @@ dependencies = [
  "libc",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "sysinfo"
+version = "0.40.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e8a3edbe0394ce115f3917a00349dd242be09eb5a091ed509eaf67b55cfb8a8"
+dependencies = [
+ "libc",
+ "memchr",
+ "ntapi",
+ "objc2-core-foundation",
+ "objc2-io-kit",
+ "windows",
 ]
 
 [[package]]
@@ -9160,7 +9501,7 @@ dependencies = [
  "simplecss",
  "siphasher",
  "strict-num",
- "svgtypes 0.16.1",
+ "svgtypes 0.16.2",
  "tiny-skia-path 0.12.0",
  "ttf-parser",
  "unicode-bidi",
@@ -9185,7 +9526,7 @@ dependencies = [
  "simplecss",
  "siphasher",
  "strict-num",
- "svgtypes 0.16.1",
+ "svgtypes 0.16.2",
  "tiny-skia-path 0.12.0",
 ]
 
@@ -9238,15 +9579,15 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "arboard",
  "block2 0.6.2",
  "chrono",
  "clipboard-win",
- "craft-print 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
+ "craft-print 0.1.0 (git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb)",
  "craft-update",
- "craft-window",
+ "craft-window 0.1.0 (git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb)",
  "eframe",
  "egui",
  "image",
@@ -9277,13 +9618,14 @@ dependencies = [
  "winit",
  "winresource",
  "winsafe",
+ "wl-clipboard-rs",
  "x11rb",
  "zbus",
 ]
 
 [[package]]
 name = "vectorcraft-affinity"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "crc32fast",
  "flate2",
@@ -9292,8 +9634,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vectorcraft-apischema"
+version = "0.24.1"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "vectorcraft-brush"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "kurbo 0.13.1",
  "serde",
@@ -9305,7 +9654,7 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-cad"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "image",
  "kurbo 0.13.1",
@@ -9320,7 +9669,7 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-color"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "kurbo 0.13.1",
  "moxcms",
@@ -9331,7 +9680,7 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-doc"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "chrono",
  "hayro-ccitt",
@@ -9348,11 +9697,13 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-effects"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "image",
  "kurbo 0.13.1",
+ "resvg 0.48.1",
  "serde_json",
+ "svgtypes 0.16.2",
  "vectorcraft-doc",
  "vectorcraft-geom",
  "vectorcraft-pathops",
@@ -9363,22 +9714,29 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-engine"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "cfb",
  "chrono",
- "craft-docpath 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
+ "craft-docpath 0.1.0 (git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb)",
+ "craft-proof",
  "flate2",
  "hayro-jpeg2000",
+ "heic-rs",
  "image",
+ "jxl-color",
+ "jxl-grid",
+ "jxl-oxide",
  "kurbo 0.13.1",
  "log",
+ "rayon",
  "roxmltree 0.21.1",
  "rustix 1.1.5",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "vectorcraft-affinity",
+ "vectorcraft-apischema",
  "vectorcraft-brush",
  "vectorcraft-cad",
  "vectorcraft-color",
@@ -9386,6 +9744,7 @@ dependencies = [
  "vectorcraft-eps",
  "vectorcraft-format",
  "vectorcraft-geom",
+ "vectorcraft-js",
  "vectorcraft-metafile",
  "vectorcraft-pathops",
  "vectorcraft-pdf",
@@ -9400,8 +9759,10 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-eps"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
+ "craft-pdf 0.1.0 (git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb)",
+ "encoding_rs",
  "flate2",
  "hayro-ccitt",
  "image",
@@ -9409,12 +9770,14 @@ dependencies = [
  "memchr",
  "ruzstd",
  "serde_json",
+ "skrifa 0.47.0",
  "vectorcraft-brush",
  "vectorcraft-color",
  "vectorcraft-doc",
  "vectorcraft-effects",
  "vectorcraft-geom",
  "vectorcraft-metafile",
+ "vectorcraft-pathops",
  "vectorcraft-pdf",
  "vectorcraft-render",
  "vectorcraft-text",
@@ -9422,7 +9785,7 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-format"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "craft-vectorcraft-format",
  "flate2",
@@ -9435,7 +9798,7 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-geom"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "kurbo 0.13.1",
  "serde",
@@ -9443,8 +9806,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "vectorcraft-js"
+version = "0.24.1"
+dependencies = [
+ "chrono",
+ "getrandom 0.4.3",
+ "unicode-properties",
+]
+
+[[package]]
 name = "vectorcraft-metafile"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "image",
  "kurbo 0.13.1",
@@ -9458,7 +9830,7 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-pathops"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "kurbo 0.13.1",
  "linesweeper",
@@ -9468,11 +9840,11 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-pdf"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "aes",
  "chrono",
- "craft-pdf",
+ "craft-pdf 0.1.0 (git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb)",
  "flate2",
  "getrandom 0.4.3",
  "image",
@@ -9497,20 +9869,25 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-plugins"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
+ "craft-vectorcraft-format",
+ "image",
+ "log",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.21",
  "vectorcraft-color",
  "vectorcraft-doc",
  "vectorcraft-geom",
  "wasmi",
+ "web-time",
 ]
 
 [[package]]
 name = "vectorcraft-render"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "flate2",
  "gif 0.14.2",
@@ -9533,19 +9910,23 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-scriptcheck"
-version = "0.21.0"
+version = "0.24.1"
+dependencies = [
+ "unicode-properties",
+]
 
 [[package]]
 name = "vectorcraft-svg"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
- "craft-docpath 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
+ "craft-docpath 0.1.0 (git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb)",
  "flate2",
  "image",
  "kurbo 0.13.1",
  "serde",
  "serde_json",
- "svgtypes 0.16.1",
+ "simplecss",
+ "svgtypes 0.16.2",
  "thiserror 2.0.21",
  "usvg 0.48.1",
  "vectorcraft-brush",
@@ -9553,12 +9934,13 @@ dependencies = [
  "vectorcraft-doc",
  "vectorcraft-effects",
  "vectorcraft-geom",
+ "vectorcraft-pathops",
  "vectorcraft-text",
 ]
 
 [[package]]
 name = "vectorcraft-text"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "harfrust 0.13.3",
  "icu_segmenter",
@@ -9578,7 +9960,7 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-three-d"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "vectorcraft-geom",
  "vectorcraft-pathops",
@@ -9586,7 +9968,7 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-tools"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "kurbo 0.13.1",
  "serde",
@@ -9602,7 +9984,7 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-trace"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "image",
  "kurbo 0.13.1",
@@ -9613,11 +9995,11 @@ dependencies = [
 
 [[package]]
 name = "vectorcraft-ui-egui"
-version = "0.21.0"
+version = "0.24.1"
 dependencies = [
  "bytemuck",
- "craft-keymap",
- "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
+ "craft-keymap 0.1.0 (git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb)",
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=bb8320f5fa5d20fa78a026d0de06fe4e2f08a099)",
  "craft-update",
  "egui",
  "egui_extras",
@@ -10112,9 +10494,9 @@ dependencies = [
 
 [[package]]
 name = "webbrowser"
-version = "1.2.6"
+version = "1.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe8d20d0214027baf11b8b0cc307c1da7657d8f4db9aa956f7de27a6fb1acbd5"
+checksum = "73e91ccd4698f2647d6137e8eb17a3f1dcfd63810be9029fb2398f507279b95b"
 dependencies = [
  "jni",
  "log",
@@ -10661,6 +11043,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "winprint"
+version = "0.2.1"
+source = "git+https://github.com/storytold/winprint.rs?rev=bc06a7c48b768eb27a828c7986f6d2868b245ee0#bc06a7c48b768eb27a828c7986f6d2868b245ee0"
+dependencies = [
+ "flate2",
+ "fmt-derive",
+ "reqwest",
+ "scopeguard",
+ "sigstore-trust-root",
+ "sigstore-types",
+ "sigstore-verify",
+ "strum",
+ "tar",
+ "thiserror 2.0.21",
+ "windows",
+ "windows-core",
+ "windows-implement",
+ "windows-numerics",
+ "xml",
+]
+
+[[package]]
 name = "winreg"
 version = "0.55.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10685,6 +11089,25 @@ name = "winsafe"
 version = "0.0.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ef0ffc427f045c0cc9ebffd6f4f91153dcd2a1547b5c3c29ee3f541e16e95c6"
+
+[[package]]
+name = "wintab"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e05efdae68aa69ef1f4bc0148a5c6cf7f2bc234963a723252fd75f2f9e70d86"
+dependencies = [
+ "windows",
+ "wintab-sys",
+]
+
+[[package]]
+name = "wintab-sys"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d3d0743ba07fe30ca1ccc1471ee50adf32bc70932b86a00c8f1051177950de2"
+dependencies = [
+ "windows",
+]
 
 [[package]]
 name = "winx"
@@ -10908,11 +11331,13 @@ checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
 
 [[package]]
 name = "xtask"
-version = "0.20.1"
+version = "0.23.1"
 dependencies = [
  "chrono",
+ "craft-i18n 0.1.0 (git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b)",
  "serde",
  "serde_json",
+ "tempfile",
  "toml",
 ]
 
@@ -11194,7 +11619,6 @@ dependencies = [
  "nix",
  "typed-path",
  "windows-sys 0.61.2",
- "zopfli",
 ]
 
 [[package]]
@@ -11324,3 +11748,13 @@ source = "git+https://github.com/storytold/egui.git?rev=6d518fc799681571963842f9
 name = "egui_system_font_provider"
 version = "0.37.0"
 source = "git+https://github.com/storytold/egui.git?rev=6d518fc799681571963842f95b55a6b68431b15a#6d518fc799681571963842f95b55a6b68431b15a"
+
+[[patch.unused]]
+name = "hayro-cmap"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"
+
+[[patch.unused]]
+name = "hayro-postscript"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=6e03f65bf45181db77ba6229716e6624db9eb25b#6e03f65bf45181db77ba6229716e6624db9eb25b"

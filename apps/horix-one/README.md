@@ -9,9 +9,9 @@
 
 | Persona | المحرّك | بيعمل إيه |
 |---|---|---|
-| Vector | Horix Vectors (VectorCraft 0.21.0) | فيكتور، ولوجوهات، ونص عربي |
-| Pixel | HORIX (PhotoCraft 0.20.1) | تعديل صور، وتحديد بالـAI (MobileSAM وIS-Net) |
-| Layout | Horix Layout (DesignCraft 0.17.0) | صفحات وكتب ومجلات |
+| Vector | Horix Vectors (VectorCraft 0.24.1) | فيكتور، ولوجوهات، ونص عربي |
+| Pixel | HORIX (PhotoCraft 0.23.1) | تعديل صور، وتحديد بالـAI (MobileSAM وIS-Net) |
+| Layout | Horix Layout (DesignCraft 0.20.1) | صفحات وكتب ومجلات |
 
 ## مصدر واحد للبرامج
 
@@ -53,6 +53,7 @@ HORIX One مش نسخة تانية: بيتبني من نفس سورس ونفس p
     - `native/prepare.sh` بيجهّز سورس HORIX في `pixel/` وHorix Vectors في `vector/` وHorix Layout في `layout/`، كل واحد زي ما بيتبني لوحده (rebrand.py وpatches بتاعته).
     - بعدها بيطبّق patches HORIX One: `patches/vector` و`patches/layout` بيخلّوا Horix Vectors وHorix Layout مكتبات (`horix_one_persona`)، و`patches/pixel` بيخلّي نافذة HORIX تشيلهم، بأسماء HORIX One.
     - و`native/Cargo.lock` فيه dependencies التلاتة مع بعض (egui وwinit نفس النسخة في التلاتة).
+    - مكتبات الـPDF (`krilla` وكل `hayro-*`) نسخة واحدة في `[patch.crates-io]` بتاع `patches/pixel`، على أحدث craft-libs من التلاتة (`6e03f65`، بتاع PhotoCraft). تاريخ craft-libs خط واحد (Layout `92d392c` ← Vectors `9be9a63` ← `6e03f65`) والتغييرات في المكتبات دي إضافات بس، فكل `craft-pdf` بنسخته القديمة بيتبني عليها. لو نزلت نسخة جديدة من واحد من التلاتة، افحص إن `rev` ده لسه أحدث واحد.
 
 ## البناء
 

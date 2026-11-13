@@ -2,14 +2,14 @@
 # Build Horix Layout (rebranded DesignCraft) for the web and zip it for hosting.
 #
 # Usage: apps/horix-layout/build.sh [designcraft-source.tar.gz]
-#   default source: archive/designcraft/designcraft-source-0.17.0.tar.gz
+#   default source: archive/designcraft/designcraft-source-0.20.1.tar.gz
 # Needs: Rust >= 1.95 with the wasm32-unknown-unknown target, trunk, python3, zip, git (craft-fonts).
 # Output: deploy/horix-layout/horix-layout-<version>-web.zip (a static site; any URL path works).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-SRC_TGZ="${1:-$REPO/archive/designcraft/designcraft-source-0.17.0.tar.gz}"
+SRC_TGZ="${1:-$REPO/archive/designcraft/designcraft-source-0.20.1.tar.gz}"
 WORK="${HORIX_LAYOUT_WORK:-$REPO/.horix-build/layout}"
 OUT="$REPO/deploy/horix-layout"
 
@@ -19,7 +19,7 @@ tar -xzf "$SRC_TGZ" -C "$WORK/src" --strip-components=1
 VERSION="$(tr -d '[:space:]' < "$HERE/VERSION")"
 
 python3 -I "$HERE/rebrand.py" "$WORK/src"
-# craft-fonts at the commit DesignCraft's release pins (0.17.0's has Noto Sans Arabic; CRAFT_FONTS_REF
+# craft-fonts at the commit DesignCraft's release pins (0.20.1's has Noto Sans Arabic; CRAFT_FONTS_REF
 # overrides it): the web build embeds its Arabic faces (rebrand.py), so Arabic text shows in the
 # browser, which has no system fonts to fall back to.
 CRAFT_FONTS_DIR="${CRAFT_FONTS_DIR:-$("$HERE/../horix-common/craft-fonts.sh" "$WORK/src" "$WORK")}"

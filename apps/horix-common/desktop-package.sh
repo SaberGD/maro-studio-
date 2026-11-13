@@ -15,9 +15,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 PY="$(command -v python3 || command -v python)"
 case "$APP" in
-  vectors) UP=vectorcraft; UPNAME=VectorCraft; NAME="Horix Vectors"; SRC_TGZ="$REPO/archive/vectorcraft/vectorcraft-source-0.21.0.tar.gz" ;;
-  light) UP=lightcraft; UPNAME=LightCraft; NAME="Horix Light"; SRC_TGZ="$REPO/archive/lightcraft/lightcraft-source-0.13.0.tar.gz" ;;
-  layout) UP=designcraft; UPNAME=DesignCraft; NAME="Horix Layout"; SRC_TGZ="$REPO/archive/designcraft/designcraft-source-0.17.0.tar.gz" ;;
+  vectors) UP=vectorcraft; UPNAME=VectorCraft; NAME="Horix Vectors"; SRC_TGZ="$REPO/archive/vectorcraft/vectorcraft-source-0.24.1.tar.gz" ;;
+  light) UP=lightcraft; UPNAME=LightCraft; NAME="Horix Light"; SRC_TGZ="$REPO/archive/lightcraft/lightcraft-source-0.21.1.tar.gz" ;;
+  layout) UP=designcraft; UPNAME=DesignCraft; NAME="Horix Layout"; SRC_TGZ="$REPO/archive/designcraft/designcraft-source-0.20.1.tar.gz" ;;
   *) echo "unknown app $APP" >&2; exit 2 ;;
 esac
 ID="horix-$APP"

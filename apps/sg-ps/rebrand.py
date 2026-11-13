@@ -251,45 +251,14 @@ pub fn url_for("""),
     ])
     consts = "".join(f"const {n.upper().replace('-', '_')}_ASPECT: f32 = {v:.4f};\n" for n, v in aspect.items())
     edit(root, "crates/ui-egui/src/links.rs", [("/// HORIX: one line of Arabic", consts + "\n" + DESKTOP_BUTTONS + "/// HORIX: one line of Arabic")])
-    # PhotoCraft 0.20 moved the start screen to canvas/start_screen.rs.
+    # PhotoCraft 0.21+ rebuilt the start screen (canvas/start_screen.rs: a rail with Learn / Website /
+    # Discord / GitHub, and the first-run drop area). HORIX shows its own Home instead (patches/
+    # 80-horix-home.diff), so this code is never drawn: it only has to compile and carry no
+    # ArtCraft / Discord links. The title and the drop hint are renamed with everything else.
     edit(root, "crates/ui-egui/src/canvas/start_screen.rs", [
-        # The lockup, descriptor and "coming soon" make the card taller (230 px) and a touch wider.
-        ("let card_width = HOME_CARD_WIDTH.min(area.width());", "let card_width = (HOME_CARD_WIDTH + 10.0).min(area.width());"),
-        ("let card = Rect::from_center_size(area.center(), egui::vec2(card_width, 330.0 + recent_h + stacked_h));",
-         "let card = Rect::from_center_size(area.center(), egui::vec2(card_width, 560.0 + recent_h + stacked_h));"),
-        ("""            crate::links::discord_button(app, ui, 190.0);
-            ui.add_space(10.0);
-            crate::links::link_row(app, ui);""",
-         """            ui.add_space(8.0);
-            crate::links::coming_soon(app, ui);"""),
-        # The official lockup in place of the typed title: logo, descriptor, a short red rule, "BY SABER GROUP".
-        ("""            ui.horizontal(|ui| {
-                let title = ui.painter().layout_no_wrap(tl!("PhotoCraft").into(), crate::theme::semibold(38.0), t.text);
-                let by = ui.painter().layout_no_wrap(tl!("open source").into(), egui::FontId::proportional(13.0), t.text_faint);
-                let total = title.size().x + by.size().x + 10.0;
-                ui.add_space(((card.width() - total) / 2.0).max(0.0));
-                let (r, _) = ui.allocate_exact_size(title.size(), Sense::hover());
-                ui.painter().galley(r.min, title, t.text);
-                let (r2, _) = ui.allocate_exact_size(egui::vec2(by.size().x + 10.0, r.height()), Sense::hover());
-                ui.painter().galley(egui::pos2(r2.left() + 10.0, r.bottom() - by.size().y - 8.0), by, t.text_faint);
-            });
-""", """            ui.add(crate::links::lockup(190.0));
-            ui.add_space(12.0);
-            ui.label(egui::RichText::new("THE VISIONARY AI EDITOR").font(crate::theme::medium(12.0)).color(t.text));
-            ui.add_space(4.0);
-            let (rule, _) = ui.allocate_exact_size(egui::vec2(28.0, 2.0), Sense::hover());
-            ui.painter().rect_filled(rule, 0.0, egui::Color32::from_rgb(214, 60, 50)); // Horix Red, as in the logo
-            ui.add_space(4.0);
-            ui.label(egui::RichText::new("BY SABER GROUP").font(crate::theme::medium(10.5)).color(t.text_faint));
-            ui.add_space(10.0);
-"""),
-        # HORIX (web): a clear way to the Windows / macOS apps, under "Drop an image".
-        ("""                ui.label(egui::RichText::new(msg).color(t.text_faint));
-            });
-""", """                ui.label(egui::RichText::new(msg).color(t.text_faint));
-            });
-            crate::links::desktop_cta(app, ui);
-"""),
+        ("""    render_rail_link(app, ui, rail_w, tl!("Discord"), "message-square", crate::links::DISCORD);
+    render_rail_link(app, ui, rail_w, tl!("GitHub"), "link-2", crate::links::GITHUB);""",
+         """    render_rail_link(app, ui, rail_w, tl!("Saber Group Academy"), "message-square", crate::links::DISCORD);"""),
     ])
     edit(root, "crates/ui-egui/src/dialogs.rs", [
         ('ui.label(tl!("PhotoCraft — an open-source, native image editor written in Rust."));',
@@ -1018,15 +987,58 @@ def desktop(root: Path) -> None:
 # every platform with a file picker itself, menus/view_cmds/dispatch.rs.)
 
 
-def drop_old_translations(root: Path) -> int:
-    """Translation rows for the removed ArtCraft/Discord menu items (and the translator notes that
-    name ArtCraft) are compiled into the app even though nothing shows them: drop them."""
+I18N_PACK_GLOB = "craft-i18n-*-ar.tar.gz"
+
+
+def i18n(root: Path) -> int:
+    """Interface translations, Arabic and English only (Saber Group's decision of 2026-11-11).
+
+    PhotoCraft 0.21+ keeps its catalogs outside the source tree, in storytold/craft-i18n at the commit
+    named in craft-i18n.rev, and embeds them from CRAFT_I18N_DIR (without it the interface is English
+    only). HORIX embeds only Arabic: archive/photocraft/craft-i18n-<rev>-ar.tar.gz holds that
+    commit's locales/ar/{common,photocraft}.tsv (tools/pack_i18n.sh makes it), unpacked to
+    <tree>/.craft-i18n, where build.rs now looks when CRAFT_I18N_DIR is unset. Their rows get the
+    same HORIX rename as the code, and the rows of the removed ArtCraft / Discord items go. The
+    language registry offers English and Arabic only, so Preferences lists just those two; the
+    other translations stay in craft-i18n, untouched, for the day they are wanted."""
+    rev = (root / "craft-i18n.rev").read_text(encoding="utf-8").strip()
+    packs = sorted((HERE.parent.parent / "archive" / "photocraft").glob(I18N_PACK_GLOB))
+    pack = next((p for p in packs if p.name == f"craft-i18n-{rev[:8]}-ar.tar.gz"), None)
+    if pack is None:
+        sys.exit(f"rebrand: craft-i18n.rev is {rev}, but archive/photocraft has no craft-i18n-{rev[:8]}-ar.tar.gz "
+                 f"(have: {[p.name for p in packs]}): run apps/sg-ps/tools/pack_i18n.sh {rev}")
+    dest = root / ".craft-i18n"
+    shutil.rmtree(dest, ignore_errors=True)
+    dest.mkdir()
+    subprocess.run(["tar", "-xzf", str(pack), "-C", str(dest)], check=True)
     dropped = 0
-    for path in root.glob("crates/ui-egui/src/i18n/*.tsv"):
+    for path in dest.glob("locales/*/*.tsv"):
         lines = path.read_text(encoding="utf-8").split("\n")
-        keep = [l for l in lines if not re.search(r"ArtCraft|Discord", l)]
+        keep = [NAME_RE.sub(APP_NAME, l) for l in lines if not re.search(r"ArtCraft|Discord", l)]
         dropped += len(lines) - len(keep)
         path.write_text("\n".join(keep), encoding="utf-8")
+    edit(root, "crates/ui-egui/build.rs", [(
+        'match std::env::var_os("CRAFT_I18N_DIR").filter(|d| !d.is_empty()) {',
+        'match std::env::var_os("CRAFT_I18N_DIR").filter(|d| !d.is_empty()).or_else(|| {\n'
+        '        // HORIX: the Arabic catalogs unpacked next to the sources (rebrand.py, i18n()).\n'
+        '        Some(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.craft-i18n").into_os_string())\n'
+        '    }) {',
+    )])
+    path = root / "crates/ui-egui/src/i18n.rs"
+    text = path.read_text(encoding="utf-8")
+    text, n1 = re.subn(r"const LANGUAGE_COUNT: usize = \d+;", "const LANGUAGE_COUNT: usize = 2;", text)
+    table = (
+        "    LangInfo { code: \"en\", complete_menus: false },\n"
+        "    // HORIX is for Arabic and English only (Saber Group, 2026-11-11); see rebrand.py, i18n().\n"
+        "    LangInfo { code: \"ar\", complete_menus: true },\n"
+    )
+    text, n2 = re.subn(
+        r"(pub static LANGUAGES: \[LangInfo; LANGUAGE_COUNT\] = \[\n)    LangInfo \{ code: \"en\", complete_menus: false \},\n.*?\n(\];)",
+        lambda m: m.group(1) + table + m.group(2),
+        text, count=1, flags=re.S)
+    if n1 != 1 or n2 != 1:
+        sys.exit("rebrand: crates/ui-egui/src/i18n.rs: LANGUAGE_COUNT / LANGUAGES table not found")
+    path.write_text(text, encoding="utf-8")
     return dropped
 
 
@@ -1141,12 +1153,7 @@ def version(root: Path) -> None:
         "}\n\n"
         "pub fn long_version() -> String {\n    format_long(&horix_version(), short_sha(), build_date())\n}",
     )])
-    edit(root, "crates/ui-egui/src/canvas/start_screen.rs", [(
-        'ui.label(egui::RichText::new("BY SABER GROUP").font(crate::theme::medium(10.5)).color(t.text_faint));',
-        'ui.label(egui::RichText::new("BY SABER GROUP").font(crate::theme::medium(10.5)).color(t.text_faint));\n'
-        '            ui.label(egui::RichText::new(format!("v{}", photocraft_engine::build_info::horix_version())).size(10.0).color(t.text_faint));',
-    )])
-
+    # (The version line on the old start card is gone with the card: HORIX Home shows it.)
 
 
 def exe_version(root: Path) -> None:
@@ -1239,7 +1246,7 @@ def main() -> None:
     web_page_behaviour(root)
     device_fonts(root)
     n = rename_everywhere(root)
-    drop_old_translations(root)
+    i18n(root)
     desktop(root)
     selection_quality(root)
     stability(root)

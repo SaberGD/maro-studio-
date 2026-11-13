@@ -10,9 +10,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP="$(cd "$HERE/.." && pwd)"
 REPO="$(cd "$APP/../.." && pwd)"
 PY="$(command -v python3 || command -v python)"
-PIXEL_TGZ="$REPO/archive/photocraft/photocraft-source-0.20.1.tar.gz"
-VECTOR_TGZ="$REPO/archive/vectorcraft/vectorcraft-source-0.21.0.tar.gz"
-LAYOUT_TGZ="$REPO/archive/designcraft/designcraft-source-0.17.0.tar.gz"
+PIXEL_TGZ="$REPO/archive/photocraft/photocraft-source-0.23.1.tar.gz"
+VECTOR_TGZ="$REPO/archive/vectorcraft/vectorcraft-source-0.24.1.tar.gz"
+LAYOUT_TGZ="$REPO/archive/designcraft/designcraft-source-0.20.1.tar.gz"
 TAR_LOCAL=()
 if command -v cygpath >/dev/null 2>&1; then
   WORK="$(cygpath -u "$WORK")"; PIXEL_TGZ="$(cygpath -u "$PIXEL_TGZ")"; VECTOR_TGZ="$(cygpath -u "$VECTOR_TGZ")"

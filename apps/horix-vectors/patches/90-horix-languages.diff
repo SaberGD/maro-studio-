@@ -1,0 +1,76 @@
+diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
+index 2cca0f1..6e3c6a3 100644
+--- a/crates/ui-egui/src/app.rs
++++ b/crates/ui-egui/src/app.rs
+@@ -254,7 +254,7 @@ impl VectorcraftApp {
+     pub fn ui_language(&self) -> i18n::Lang {
+         let editing =
+             self.ui.dialog.as_ref().filter(|d| d.kind == "preferences").and_then(|d| d.fields.get("interfaceLanguage")).and_then(Value::as_str);
+-        i18n::Lang::from_pref(editing.unwrap_or(&self.session.prefs.interface_language))
++        i18n::Lang::horix_from_pref(editing.unwrap_or(&self.session.prefs.interface_language))
+     }
+ 
+     /// The host starts one iteration: called from both hosts' `raw_input_hook`, before the host
+diff --git a/crates/ui-egui/src/i18n.rs b/crates/ui-egui/src/i18n.rs
+index 251dc58..acb4288 100644
+--- a/crates/ui-egui/src/i18n.rs
++++ b/crates/ui-egui/src/i18n.rs
+@@ -401,12 +401,25 @@ impl Lang {
+         LANGUAGES.iter().map(Lang)
+     }
+ 
++    /// HORIX is for Arabic and English: the only languages its interface offers. Every other
++    /// translation stays in the code, hidden.
++    pub fn horix_offered(self) -> bool {
++        matches!(self.code(), "en" | "ar")
++    }
++
++    /// [`Self::from_pref`] limited to what HORIX offers: a saved or system language it does not
++    /// offer shows English.
++    pub fn horix_from_pref(pref: &str) -> Lang {
++        let lang = Lang::from_pref(pref);
++        if lang.horix_offered() { lang } else { Lang::EN }
++    }
++
+     /// Every registered language in the order a picker lists them: English first (the source
+     /// language and the fallback), then the rest by their own name with accents folded, so
+     /// Čeština sits under C rather than after Z. Names in other scripts follow the Latin ones in
+     /// code point order: Greek, Cyrillic, Arabic, then the CJK languages.
+     pub fn for_picker() -> Vec<Lang> {
+-        let mut rest: Vec<Lang> = Lang::all().filter(|l| l.code() != Lang::EN.code()).collect();
++        let mut rest: Vec<Lang> = Lang::all().filter(|l| l.code() != Lang::EN.code() && l.horix_offered()).collect();
+         rest.sort_by_cached_key(|l| name_sort_key(l.name()));
+         std::iter::once(Lang::EN).chain(rest).collect()
+     }
+@@ -767,7 +780,7 @@ mod picker_order_tests {
+     fn picker_lists_english_first_then_names_alphabetically() {
+         let order = Lang::for_picker();
+         assert_eq!(order.first().map(|l| l.code()), Some(Lang::EN.code()));
+-        assert_eq!(order.len(), Lang::all().count());
++        assert_eq!(order.len(), Lang::all().filter(|l| l.horix_offered()).count());
+         let keys: Vec<String> = order[1..].iter().map(|l| name_sort_key(l.name())).collect();
+         assert!(keys.windows(2).all(|w| w[0] <= w[1]), "{keys:?}");
+         assert_eq!(name_sort_key("Čeština"), "cestina");
+diff --git a/crates/ui-egui/src/i18n/tests.rs b/crates/ui-egui/src/i18n/tests.rs
+index 8b2cab4..2611d9a 100644
+--- a/crates/ui-egui/src/i18n/tests.rs
++++ b/crates/ui-egui/src/i18n/tests.rs
+@@ -464,7 +464,8 @@ fn language_command_sets_the_preference() {
+     assert_eq!(checked(&app, "app.language", &serde_json::json!({"lang": "auto"})), Some(true));
+     run_ui_command(&mut app, "app.language", &serde_json::json!({"lang": "ja"})).unwrap().unwrap();
+     assert_eq!(app.session.prefs.interface_language, "ja");
+-    assert_eq!(app.ui_language(), Lang::from_code("ja").unwrap());
++    // HORIX offers English and Arabic only: a saved Japanese shows English (patch 90-horix-languages).
++    assert_eq!(app.ui_language(), Lang::EN);
+     assert_eq!(checked(&app, "app.language", &serde_json::json!({"lang": "ja"})), Some(true));
+     assert_eq!(checked(&app, "app.language", &serde_json::json!({"lang": "auto"})), Some(false));
+     assert_eq!(checked(&app, "app.language", &serde_json::json!({"lang": "zh-hant"})), Some(false));
+@@ -489,7 +490,7 @@ fn language_command_sets_the_preference() {
+     }
+     let mut labels = vec![];
+     items(&app_menu.children, &mut labels);
+-    for l in Lang::all() {
++    for l in Lang::all().filter(|l| l.horix_offered()) {
+         assert!(labels.iter().any(|x| x == l.name()), "{} missing from {labels:?}", l.code());
+     }
+ }
