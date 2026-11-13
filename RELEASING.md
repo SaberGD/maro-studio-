@@ -47,3 +47,17 @@ a new upstream (ArtCraft) version:
   whatever helps Arabic and English users (tools, file formats, speed, right-to-left text).
 - The interface language menu in every app offers English and العربية only. Keep upstream's
   other translations in the code (hidden), so each upgrade doesn't fight upstream over them.
+
+## Bumping the ArtCraft sources (what the 2026-11-13 bump taught)
+
+- Port each app in its own scratch repo (apps/*/patches/README.md says how), then rebuild HORIX One
+  last: it needs all three trees to agree (apps/horix-one/README.md).
+- HORIX One's `[patch.crates-io]` points every PDF crate (krilla, hayro-*, linesweeper) at the newest
+  craft-libs revision any of the three apps uses; the older `craft-pdf` copies still compile.
+- PhotoCraft keeps its translations in the separate `craft-i18n` repo. HORIX embeds only Arabic from
+  `archive/photocraft/craft-i18n-<rev>-ar.tar.gz`; when upstream moves `craft-i18n.rev`, run
+  `apps/sg-ps/tools/pack_i18n.sh <rev>` (the build says so).
+- Upstream's own UI tests that expect other languages, or run under Home, fail on purpose; CI builds the
+  apps and does not run them. Run the HORIX patches' own tests instead.
+- Push working-branch commits with `[skip ci]` while porting; the pull request's last commit must not
+  carry it, or its checks never start.
