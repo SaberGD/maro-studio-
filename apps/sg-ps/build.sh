@@ -64,7 +64,7 @@ python3 -E "$HERE/ai/fetch.py" "$APP/models" web
 # Download page (horix.si): HORIX Launcher, whose downloads are GitHub Releases.
 DL="$WORK/site/downloads"
 cp -R "$HERE/hosting/download" "$DL"
-"$PYTHON" -c 'import sys; p, b = sys.argv[1:3]; t = open(p, encoding="utf-8").read(); open(p, "w", encoding="utf-8").write(t.replace("<head>", "<head>\n  <meta name=\"horix-build\" content=\"" + b + "\">", 1))' "$DL/index.html" "$BUILD_ID"
+"$PYTHON" "$HERE/prepare_download.py" "$DL" "$BUILD_ID"
 cp "$HERE/assets/horix-lockup.svg" "$DL/horix-logo.svg"
 cp "$HERE/assets/horix-favicon.svg" "$DL/horix-favicon.svg"
 mkdir -p "$DL/fonts" "$APP/fonts"
