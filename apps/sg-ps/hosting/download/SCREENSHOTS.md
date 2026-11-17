@@ -3,6 +3,12 @@
 Captured from the public HORIX One web app on 2026-11-17. These are actual
 application screenshots, not reconstructed UI or generated product mockups.
 
+- `assets/screens/one-pixel-campaign-20261117.jpg`: the default hero, an actual
+  Pixel screenshot with the CREATE BEYOND sample poster open. The poster artwork
+  was generated separately using image_gen, then opened manually in One. It is
+  a flattened sample image, not a claim that One generated the scene or that its
+  typography and 3D elements are separate editable layers. Only the artwork was
+  generated; the surrounding application UI is real.
 - `assets/screens/one-vector-20261117.jpg`: an original demonstration composed
   using Vector's rectangle, ellipse and type tools (ONE IDEA).
 - `assets/screens/one-pixel-20261117.jpg`: that same document after using One's

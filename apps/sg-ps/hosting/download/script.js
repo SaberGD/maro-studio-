@@ -7,9 +7,9 @@ const personas = {
     caption: 'ارسم شعارك، وابني هويتك. مسارات وأشكال ونصوص في مساحة Vector.'
   },
   pixel: {
-    image: 'assets/screens/one-pixel-20261117.jpg',
-    alt: 'نفس تصميم ONE IDEA بعد نقله من Vector إلى Pixel كطبقات أشكال داخل HORIX One',
-    caption: 'نفس التصميم، في Pixel. اتنقل من Vector كطبقات أشكال علشان تكمّل شغلك.'
+    image: 'assets/screens/one-pixel-campaign-20261117.jpg',
+    alt: 'بوستر CREATE BEYOND مفتوح في مساحة Pixel داخل HORIX One، بشريط أحمر وحلقة كروم وإضاءة واقعية',
+    caption: 'فكرتك، بتفاصيلها. بوستر CREATE BEYOND مفتوح داخل مساحة Pixel.'
   },
   layout: {
     image: 'assets/screens/one-layout-20261117.jpg',
@@ -18,7 +18,7 @@ const personas = {
   }
 };
 
-let currentPersona = 'vector';
+let currentPersona = document.querySelector('[data-persona][aria-selected="true"]').dataset.persona;
 const stage = document.querySelector('.product-stage');
 const screen = document.querySelector('#hero-screen');
 const panel = document.querySelector('#persona-panel');
