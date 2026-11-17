@@ -2,7 +2,7 @@
 
 العنوان: https://layout.horix.live/
 
-**Horix Layout** هو برنامج تصميم الصفحات والنشر (بديل InDesign) من عيلة HORIX بتاعة أكاديمية صابر جروب. مبني على [DesignCraft](https://github.com/storytold/designcraft) المفتوح المصدر (MIT OR Apache-2.0)، الإصدار **0.17.0** (tag `v0.17.0`، commit `e79d682`).
+**Horix Layout** هو برنامج تصميم الصفحات والنشر (بديل InDesign) من عيلة HORIX بتاعة أكاديمية صابر جروب. مبني على [DesignCraft](https://github.com/storytold/designcraft) المفتوح المصدر (MIT OR Apache-2.0)، الإصدار **0.20.1** (tag `v0.20.1`، commit `33a4678`).
 
 بيعمل spreads وparent pages، وtext frames متوصلة ببعض (threaded)، وparagraph وcharacter styles، وجداول، وtext wrap. بيفتح IDML وملفات InDesign، وبيصدّر PDF (PDF/X-4 وPDF/A-2b) وEPUB وPNG وPowerPoint.
 
@@ -21,12 +21,13 @@
 | صفحة الويب | «Loading DesignCraft…» | شاشة تحميل HORIX |
 | التحديثات | بيدوّر على إصدارات DesignCraft على GitHub ويسطّبها | مفيش تشييك وقت الفتح، و«Check for Updates» بيفتح صفحة التحميل `horix.si` |
 | ألوان الواجهة | Medium Dark افتراضي | Dark هو ألوان HORIX وهو الافتراضي، وباقي الاختيارات في Preferences › Interface › Color Theme شغّالة زي ما هي |
+| لغة الواجهة | كل الترجمات اللي DesignCraft جاي بيها | قايمة Preferences › Interface Language فيها English وعربي بس (قرار صابر جروب بتاريخ 2026-11-11: HORIX للعرب والإنجليز). باقي الترجمات فاضلة في الكود من غير ما تظهر |
 
 الترجمات القديمة للعناوين اللي اتغيّرت (اللي كانت بتتكلم عن ArtCraft وDiscord وGitHub) اتشالت، والعربي ليه ترجمة جديدة.
 
 ## العربي
 
-- **على الويب:** المتصفح مفيهوش خطوط النظام، فالبناء بيحط Noto Sans Arabic جوه البرنامج من craft-fonts. النسخة اللي DesignCraft 0.17 بيستخدمها فيها Noto Sans Arabic، فبنستخدمها زي ما هي (`CRAFT_FONTS_REF` لو عايز نسخة تانية).
+- **على الويب:** المتصفح مفيهوش خطوط النظام، فالبناء بيحط Noto Sans Arabic جوه البرنامج من craft-fonts. النسخة اللي DesignCraft 0.20 بيستخدمها فيها Noto Sans Arabic، فبنستخدمها زي ما هي (`CRAFT_FONTS_REF` لو عايز نسخة تانية).
 - **الحروف العربية دايمًا بتتكتب بخط فيه الحروف دي.** إعداد «Draw Missing Glyphs from Fallback Fonts» مقفول في المستندات الجديدة زي InDesign، وكان النص العربي بيطلع مربعات بالخط الافتراضي (Source Serif). دلوقتي الحروف العربية بتاخد الخط البديل في كل الأحوال.
 - **على الديسكتوب:** بيستخدم خطوط الجهاز العربي.
 

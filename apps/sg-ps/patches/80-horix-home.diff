@@ -1,57 +1,46 @@
 diff --git a/crates/ui-egui/src/app/frame.rs b/crates/ui-egui/src/app/frame.rs
-index 8d7b3ab..8a00e6a 100644
+index 234b348..8a24546 100644
 --- a/crates/ui-egui/src/app/frame.rs
 +++ b/crates/ui-egui/src/app/frame.rs
-@@ -281,24 +281,30 @@ impl PhotocraftApp {
+@@ -302,8 +302,9 @@ impl PhotocraftApp {
          if (chrome || tabbed_in) && self.ui.panels.menu_bar {
              panels::title_bar(self, ui);
          }
--        if (chrome && self.ui.panels.options_bar) || tabbed_in {
-+        // HORIX Home covers everything below the title bar, as Photoshop's does.
+-        // Home is only the menu bar and the Home content; the saved panel prefs are untouched.
+-        let home = self.home_screen_up();
++        // HORIX Home covers everything below the title bar, as Photoshop's does; the saved panel
++        // prefs are untouched.
 +        let home = chrome && crate::horix_app_home::showing(self, &ctx);
-+        if !home && ((chrome && self.ui.panels.options_bar) || tabbed_in) {
+         if ((chrome && self.ui.panels.options_bar) || tabbed_in) && !home {
              panels::options_bar(self, ui);
-         }
--        if chrome && self.ui.panels.status_bar {
-+        if !home && chrome && self.ui.panels.status_bar {
-             panels::status_bar(self, ui);
-         }
--        if (chrome && self.ui.panels.toolbar) || tabbed_in {
-+        if !home && ((chrome && self.ui.panels.toolbar) || tabbed_in) {
-             panels::toolbar(self, ui);
-         }
-         // craft-ui's layout holds the canvas as its protected `canvas` panel.
--        let docking = (chrome && self.ui.panels.dock) || tabbed_in;
-+        let docking = !home && ((chrome && self.ui.panels.dock) || tabbed_in);
-         if docking {
-             panels::dock_area(self, ui);
          } else {
-             let t = theme::Tokens::get(&ctx);
-             let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };
-             egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
--                canvas::document_area(self, ui);
-+                if home {
-+                    crate::horix_app_home::show(self, ui);
-+                } else {
-+                    canvas::document_area(self, ui);
-+                }
-             });
-             panels::properties_window(self, &ctx);
-         }
+@@ -346,7 +347,11 @@ impl PhotocraftApp {
+                 let t = theme::Tokens::get(&ctx);
+                 let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };
+                 egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
+-                    canvas::document_area(self, ui);
++                    if home {
++                        crate::horix_app_home::show(self, ui);
++                    } else {
++                        canvas::document_area(self, ui);
++                    }
+                 });
+                 if !home {
+                     panels::properties_window(self, &ctx);
 diff --git a/crates/ui-egui/src/canvas/start_screen.rs b/crates/ui-egui/src/canvas/start_screen.rs
-index 86c94b5..7bd2ff4 100644
+index f87b61f..ad2ae8b 100644
 --- a/crates/ui-egui/src/canvas/start_screen.rs
 +++ b/crates/ui-egui/src/canvas/start_screen.rs
-@@ -10,6 +10,7 @@ const HOME_BUTTON_WIDTH: f32 = 190.0;
- /// Space between the Home screen's two buttons.
- const HOME_BUTTON_GAP: f32 = 12.0;
+@@ -1,6 +1,7 @@
+ use super::tabs::{open_on_double_click, paint_dots};
+ use super::{PhotocraftApp, Rect, Sense};
  
 +#[allow(dead_code)] // HORIX Home replaced it (horix_app_home.rs).
  pub(super) fn start_screen(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
-     let t = crate::theme::Tokens::get(ui.ctx());
      let area = ui.available_rect_before_wrap();
+     paint_dots(ui, area, app.session.prefs().interface.show_canvas_dots);
 diff --git a/crates/ui-egui/src/canvas/tabs.rs b/crates/ui-egui/src/canvas/tabs.rs
-index 2ab777b..aaafd24 100644
+index 6eafa7b..ab46f85 100644
 --- a/crates/ui-egui/src/canvas/tabs.rs
 +++ b/crates/ui-egui/src/canvas/tabs.rs
 @@ -1,4 +1,3 @@
@@ -59,11 +48,11 @@ index 2ab777b..aaafd24 100644
  use super::textures::retain_gpu_documents;
  use super::{Color32, PhotocraftApp, Pos2, Rect, Sense, Stroke, TextureOptions, canvas_view, fmt_zoom, json, mode_label, pos2};
  
-@@ -39,8 +38,8 @@ fn documents(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -66,8 +65,8 @@ fn documents(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
      let n = app.session.documents().len();
      // Files opening in the background (#210) have tabs before they have documents.
      let opening = !app.jobs.opens.is_empty();
--    if !opening && app.ui.chrome.shows_home(n, app.session.prefs().general.auto_show_home_screen) {
+-    if app.home_screen_up() {
 -        start_screen(app, ui);
 +    if !opening && crate::horix_app_home::showing(app, ui.ctx()) {
 +        // HORIX Home is drawn over the whole window instead (horix_app_home.rs).
@@ -71,7 +60,7 @@ index 2ab777b..aaafd24 100644
      }
      if n == 0 && !opening {
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index 5b9f625..b80d4e0 100644
+index 179ecee..76a9fa7 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -26,6 +26,9 @@ macro_rules! tl {
@@ -85,10 +74,10 @@ index 5b9f625..b80d4e0 100644
  pub mod control;
  pub mod dialogs;
 diff --git a/crates/ui-egui/src/panels/chrome_ui.rs b/crates/ui-egui/src/panels/chrome_ui.rs
-index 39ecf48..fbfe2d1 100644
+index 0674e37..b038bc8 100644
 --- a/crates/ui-egui/src/panels/chrome_ui.rs
 +++ b/crates/ui-egui/src/panels/chrome_ui.rs
-@@ -241,13 +241,10 @@ fn status_message(app: &PhotocraftApp, ui: &mut egui::Ui, t: &Tokens) {
+@@ -248,13 +248,10 @@ fn status_message(app: &PhotocraftApp, ui: &mut egui::Ui, t: &Tokens) {
  /// Home button at the very start of Photoshop 2026's options bar: toggles the Home (start)
  /// screen over the open documents, which stay open.
  pub fn home_button(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
@@ -107,10 +96,10 @@ index 39ecf48..fbfe2d1 100644
  }
  
 diff --git a/crates/ui-egui/src/panels/options_bar.rs b/crates/ui-egui/src/panels/options_bar.rs
-index f7d319e..9534bee 100644
+index 4e40d1e..1bd3d72 100644
 --- a/crates/ui-egui/src/panels/options_bar.rs
 +++ b/crates/ui-egui/src/panels/options_bar.rs
-@@ -56,10 +56,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+@@ -91,10 +91,8 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                  // Include its gutter in the container layout, including right-aligned actions.
                  egui::Frame::NONE.inner_margin(egui::Margin { right: 2, ..Default::default() }).show(ui, |ui| {
                      crate::direction::horizontal_centered(ui, |ui| {
@@ -120,6 +109,6 @@ index f7d319e..9534bee 100644
 -                        }
 +                        crate::chrome_ui::home_button(app, ui);
 +                        widgets::vline(ui, 22.0);
-                         let tool_icon = icons::button(ui, icons::tool_icon(app.ui.tool), if t.pro { 26.0 } else { 28.0 }, !t.pro, tl!(app.ui.tool.label()));
-                         // Photoshop: right-click the tool icon for Reset Tool / Reset All Tools (#2825).
-                         let mut reset = None;
+                         // The tool preset picker is greyed while warping, as in the reference (#12503).
+                         let warping = app.ui.transform.as_ref().is_some_and(|s| s.warp.is_some());
+                         let tool_icon = ui

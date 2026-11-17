@@ -1,5 +1,5 @@
 diff --git a/apps/designcraft/Cargo.toml b/apps/designcraft/Cargo.toml
-index 518c898..1768576 100644
+index b17258a..eecaaec 100644
 --- a/apps/designcraft/Cargo.toml
 +++ b/apps/designcraft/Cargo.toml
 @@ -10,6 +10,18 @@ default-run = "designcraft"
@@ -22,7 +22,7 @@ index 518c898..1768576 100644
  designcraft-engine = { workspace = true }
  designcraft-ui-egui = { workspace = true }
 diff --git a/apps/designcraft/src/main.rs b/apps/designcraft/src/main.rs
-index cd3d866..007978e 100644
+index fb0f230..974edcf 100644
 --- a/apps/designcraft/src/main.rs
 +++ b/apps/designcraft/src/main.rs
 @@ -11,6 +11,8 @@
@@ -34,7 +34,7 @@ index cd3d866..007978e 100644
  #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
  
  #[cfg(target_os = "macos")]
-@@ -47,6 +49,86 @@ struct App {
+@@ -49,6 +51,86 @@ struct App {
      log_errors_after_startup: Option<eframe::wgpu::Device>,
  }
  
@@ -122,10 +122,10 @@ index cd3d866..007978e 100644
      fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
          self.startup.enter();
 diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
-index ee32e0d..4d2da37 100644
+index bec7731..d7f39b3 100644
 --- a/crates/ui-egui/src/app.rs
 +++ b/crates/ui-egui/src/app.rs
-@@ -164,6 +164,14 @@ impl DesignApp {
+@@ -166,6 +166,14 @@ impl DesignApp {
          }
      }
  

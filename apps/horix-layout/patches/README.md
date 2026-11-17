@@ -13,6 +13,6 @@ rebranded tree.
   (`swatch.create`) in a colour group of their own (`swatch.newColorGroup`). A gradient fill shows
   upstream's gradient-stop editor without chords.
 
-Made against DesignCraft 0.17.0 (`v0.17.0`). To refresh one after an upstream update: rebrand a
+Made against DesignCraft 0.20.1 (`v0.20.1`). To refresh one after an upstream update: rebrand a
 clean tree, commit it, apply the old diff with `git apply -3` (or cherry-pick), resolve, and write
 `git diff` back here.

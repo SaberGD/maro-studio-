@@ -1,5 +1,5 @@
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index a4493a1..0eecb3b 100644
+index f8d4615..bbe1026 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -17,6 +17,7 @@ pub const UPDATE_APP: craft_update::app::App = craft_update::app::App {
@@ -25,10 +25,10 @@ index 1532161..a7d2094 100644
      h.drag_at(away);
      h.drop_at(away);
 diff --git a/crates/ui-egui/src/panels/swatches.rs b/crates/ui-egui/src/panels/swatches.rs
-index 680391e..b4b48dc 100644
+index 265b457..779250d 100644
 --- a/crates/ui-egui/src/panels/swatches.rs
 +++ b/crates/ui-egui/src/panels/swatches.rs
-@@ -738,6 +738,33 @@ pub fn color_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
+@@ -743,6 +743,33 @@ pub fn color_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
              let _ = app.run("swatch.addToSwatches", json!({"swatch": name, "target": target}));
          }
      });

@@ -15,6 +15,8 @@ What it changes (UI only; licence files stay as the licences require):
     packages its icon.
   - HORIX's own dark theme (hx.UI) on the default Charcoal theme, Vision Amber accent and sharp
     corners, so the family looks like one program.
+  - No update check against upstream's releases (craft-update, 0.16+): Help > Check for Updates
+    opens the HORIX downloads page; updates come from HORIX Launcher.
   - Web page: title, favicon, HORIX loading screen.
 """
 
@@ -55,12 +57,12 @@ def links(root: Path) -> None:
         ('("LightCraft website", crate::links::APP_PAGE)', '("Download the desktop app (Windows / Mac)", crate::links::APP_PAGE)'),
         ('("app.website", "LightCraft Website"', '("app.website", "Download the Desktop App (Windows / Mac)"'),
     ])
-    hx.edit(root, "crates/ui-egui/src/panels/dialogs.rs", [
+    hx.edit(root, "crates/ui-egui/src/dialogs.rs", [
         # tr_format! only takes the format strings its catalog knows, so the licence line stays
         # and the Saber Group line goes above it.
-        ('                            ui.label(crate::i18n::tr_format!(\n                                "MIT OR Apache-2.0. Fonts: {} (OFL). Icons: original.",',
-         '                            ui.label(crate::i18n::tr("By Saber Group. Built on open-source software."));\n'
-         '                            ui.label(crate::i18n::tr_format!(\n                                "MIT OR Apache-2.0. Fonts: {} (OFL). Icons: original.",'),
+        ('            ui.label(crate::i18n::tr_format!(\n                "MIT OR Apache-2.0. Fonts: {} (OFL). Icons: original.",',
+         '            ui.label(crate::i18n::tr("By Saber Group. Built on open-source software."));\n'
+         '            ui.label(crate::i18n::tr_format!(\n                "MIT OR Apache-2.0. Fonts: {} (OFL). Icons: original.",'),
     ])
 
 
@@ -138,6 +140,35 @@ def web(root: Path) -> None:
     ])
 
 
+def updates(root: Path) -> None:
+    """Upstream's updater (craft-update, 0.16+) checks LightCraft's own releases and can install
+    them over the app: Horix Light takes its new versions from HORIX Launcher and the HORIX
+    downloads page instead. No check at start, and Help > Check for Updates opens the page."""
+    hx.edit(root, "apps/lightcraft/src/main.rs", [
+        ("                app.set_startup_update_check(true);\n",
+         "                // Horix Light: no check of upstream's releases (Help > Check for Updates opens the HORIX downloads page).\n"
+         "                app.set_startup_update_check(false);\n"),
+    ])
+    hx.edit(root, "crates/ui-egui/src/menus/run.rs", [
+        ('        "app.checkForUpdates" => crate::updates_ui::check(app),\n',
+         f'        "app.checkForUpdates" => crate::links::open(app, "{hx.DOWNLOADS_PAGE}"),\n'),
+    ])
+    hx.edit(root, "crates/ui-egui/src/dialogs/updates_ui.rs", [
+        ("pub(crate) fn check(app: &mut LightcraftApp)",
+         "#[allow(dead_code)] // Horix Light: Help > Check for Updates opens the HORIX downloads page.\npub(crate) fn check(app: &mut LightcraftApp)"),
+    ])
+
+
+def name_leftovers(root: Path) -> None:
+    """Two messages the name pass cannot reach: one follows a "\\n" escape (so the name is not a
+    standalone word), the other sits in notices.rs, whose name the licence-file filter (NOTICE*)
+    also matches. Before rename(), which changes the name in the translation keys."""
+    hx.replace_everywhere(root, CODE, [("\\nLightCraft", "\\nHorix Light")])
+    hx.edit(root, "crates/ui-egui/src/panels/notices.rs", [
+        ("No graphics processor found: LightCraft renders on the CPU", f"No graphics processor found: {APP_NAME} renders on the CPU"),
+    ])
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -147,8 +178,10 @@ def main() -> None:
     links(root)
     theme(root)
     web(root)
+    updates(root)
     hx.exe_version(root, "apps/lightcraft/build.rs")
     dropped = drop_branded_translations_json(root)
+    name_leftovers(root)
     n = hx.rename(root, CODE + [WEB], "LightCraft", APP_NAME)
     icons = hx.replace_icons(root, HERE / "assets/app-icon", "assets/app-icon")
     hx.check_no_upstream_brand(root, CODE + [WEB], allowed=["apps/lightcraft/src/editors.rs"])

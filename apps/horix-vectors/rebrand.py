@@ -165,8 +165,8 @@ def web_prefs(root: Path) -> None:
         ("    canvas: web_sys::HtmlCanvasElement,\n    loss: GraphicsLoss,\n}\n",
          "    canvas: web_sys::HtmlCanvasElement,\n    loss: GraphicsLoss,\n"
          "    /// The preferences last written to the browser's storage.\n    saved_prefs: vectorcraft_engine::Prefs,\n}\n"),
-        ("        app.tick(ctx);\n        crate::api::poll_replies();\n        app.finish_ime_logic(ctx);\n    }\n",
-         "        app.tick(ctx);\n        crate::api::poll_replies();\n        app.finish_ime_logic(ctx);\n"
+        ("        app.tick(ctx);\n        app.finish_ime_logic(ctx);\n    }\n",
+         "        app.tick(ctx);\n        app.finish_ime_logic(ctx);\n"
          "        if app.session.prefs != self.saved_prefs {\n"
          "            self.saved_prefs = app.session.prefs.clone();\n"
          "            if let Ok(s) = local_storage() {\n"

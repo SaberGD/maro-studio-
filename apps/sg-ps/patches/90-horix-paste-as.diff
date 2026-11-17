@@ -1,21 +1,21 @@
 diff --git a/apps/photocraft-web/Cargo.toml b/apps/photocraft-web/Cargo.toml
-index 811c926..1558d91 100644
+index e1e154c..534aeac 100644
 --- a/apps/photocraft-web/Cargo.toml
 +++ b/apps/photocraft-web/Cargo.toml
-@@ -36,7 +36,7 @@ wasm-bindgen = "0.2"
+@@ -37,7 +37,7 @@ wasm-bindgen = "0.2"
  serde_json = { workspace = true }
  wasm-bindgen-futures = "0.4"
  js-sys = "0.3"
--web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "DomRect", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url", "Location", "CssStyleDeclaration", "Storage", "Event", "EventTarget", "MouseEvent", "PointerEvent", "BeforeUnloadEvent", "AbortController", "AbortSignal", "DomException", "Response", "IdbFactory", "IdbOpenDbRequest", "IdbDatabase", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbObjectStore", "IdbCursor", "IdbCursorWithValue", "RequestInit", "RequestMode", "Navigator"] }
-+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "DomRect", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url", "Location", "CssStyleDeclaration", "Storage", "Event", "EventTarget", "MouseEvent", "PointerEvent", "BeforeUnloadEvent", "AbortController", "AbortSignal", "DomException", "Response", "IdbFactory", "IdbOpenDbRequest", "IdbDatabase", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbObjectStore", "IdbCursor", "IdbCursorWithValue", "RequestInit", "RequestMode", "Navigator", "ClipboardEvent", "DataTransfer"] }
+-web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "DomRect", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url", "Location", "CssStyleDeclaration", "Storage", "Event", "EventTarget", "MouseEvent", "PointerEvent", "BeforeUnloadEvent", "AbortController", "AbortSignal", "DomException", "Response", "IdbFactory", "IdbOpenDbRequest", "IdbDatabase", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbObjectStore", "IdbCursor", "IdbCursorWithValue", "RequestInit", "RequestMode", "Navigator", "ErrorEvent", "PromiseRejectionEvent"] }
++web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "DomRect", "HtmlAnchorElement", "Blob", "BlobPropertyBag", "Url", "Location", "CssStyleDeclaration", "Storage", "Event", "EventTarget", "MouseEvent", "PointerEvent", "BeforeUnloadEvent", "AbortController", "AbortSignal", "DomException", "Response", "IdbFactory", "IdbOpenDbRequest", "IdbDatabase", "IdbRequest", "IdbTransaction", "IdbTransactionMode", "IdbObjectStore", "IdbCursor", "IdbCursorWithValue", "RequestInit", "RequestMode", "Navigator", "ErrorEvent", "PromiseRejectionEvent", "ClipboardEvent", "DataTransfer"] }
  
  [dev-dependencies]
  serde_json = { workspace = true }
 diff --git a/apps/photocraft-web/src/web.rs b/apps/photocraft-web/src/web.rs
-index 885a15a..c95a279 100644
+index 47608f5..03daa16 100644
 --- a/apps/photocraft-web/src/web.rs
 +++ b/apps/photocraft-web/src/web.rs
-@@ -444,6 +444,8 @@ thread_local! {
+@@ -536,6 +536,8 @@ thread_local! {
      /// HORIX One: files the page opens ([`horix_open`]).
      static OPENS: std::cell::RefCell<Vec<(String, Vec<u8>)>> = const { std::cell::RefCell::new(Vec::new()) };
      static CTX: std::cell::RefCell<Option<egui::Context>> = const { std::cell::RefCell::new(None) };
@@ -24,7 +24,7 @@ index 885a15a..c95a279 100644
  }
  
  fn wake() {
-@@ -470,14 +472,51 @@ pub fn horix_open(name: String, bytes: Vec<u8>) {
+@@ -562,14 +564,51 @@ pub fn horix_open(name: String, bytes: Vec<u8>) {
      wake();
  }
  
@@ -77,13 +77,13 @@ index 885a15a..c95a279 100644
          if !opens.is_empty() {
              self.inbox.lock().unwrap_or_else(|e| e.into_inner()).extend(opens);
 diff --git a/crates/ui-egui/src/app/commands.rs b/crates/ui-egui/src/app/commands.rs
-index 507926e..23aad53 100644
+index 200f094..9900dd1 100644
 --- a/crates/ui-egui/src/app/commands.rs
 +++ b/crates/ui-egui/src/app/commands.rs
-@@ -6,6 +6,10 @@ use super::{
- impl PhotocraftApp {
+@@ -7,6 +7,10 @@ impl PhotocraftApp {
      /// Run an engine command, reporting errors in the status bar.
      pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
+         let params = if id == "select.findLayers" { crate::layer_filter_ui::find::params_for_run(self, params) } else { params };
 +        // HORIX: vector art on the clipboard asks how to paste it, as in Photoshop.
 +        if let Some(result) = crate::horix_paste_as::intercept(self, id, &params) {
 +            return result;
@@ -92,10 +92,10 @@ index 507926e..23aad53 100644
          if let Some(result) = crate::group_delete_prompt::intercept(self, id, &params) {
              return result;
 diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
-index b073b1e..786a738 100644
+index c79b92f..b40f2ce 100644
 --- a/crates/ui-egui/src/dialogs.rs
 +++ b/crates/ui-egui/src/dialogs.rs
-@@ -300,6 +300,7 @@ fn command_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, d: &Dialog, fields:
+@@ -331,6 +331,7 @@ fn command_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, d: &Dialog, fields:
          _ if crate::new_layer_ui::owns(fields) => crate::new_layer_ui::body(ui, fields),
          _ if crate::mask_trash_prompt::owns(fields) => crate::mask_trash_prompt::body(ui, fields),
          _ if crate::group_delete_prompt::owns(fields) => crate::group_delete_prompt::body(ui, fields),
@@ -103,16 +103,16 @@ index b073b1e..786a738 100644
          _ if crate::rasterize_prompt::owns(fields) => crate::rasterize_prompt::body(ui, fields),
          _ if crate::duplicate_layer_ui::owns(fields) => crate::duplicate_layer_ui::body(app, ui, fields),
          _ if crate::stack_dialog::owns(fields) => crate::stack_dialog::body(app, ui, fields, d.id),
-@@ -527,6 +528,8 @@ fn ok_label(d: &Dialog) -> &'static str {
-         tl!("Continue")
-     } else if crate::delete_layer_prompt::owns(&d.fields) {
+@@ -574,6 +575,8 @@ fn ok_label(d: &Dialog) -> &'static str {
          tl!("Delete")
+     } else if crate::analysis_ui::owns_delete_note(&d.fields) || live_shape_prompt::owns(&d.fields) {
+         tl!("Yes")
 +    } else if crate::horix_paste_as::owns(&d.fields) {
 +        tl!("Paste")
      } else if crate::disk_change_prompt::owns(&d.fields) || crate::replace_prompt::owns(&d.fields) {
          tl!("Replace")
      } else if d.fields.contains_key("__export") {
-@@ -869,6 +872,7 @@ const ROUTES: &[fn(&Fields) -> bool] = &[
+@@ -934,6 +937,7 @@ const ROUTES: &[fn(&Fields) -> bool] = &[
      crate::new_group_ui::owns,
      crate::mask_trash_prompt::owns,
      crate::group_delete_prompt::owns,
@@ -120,7 +120,7 @@ index b073b1e..786a738 100644
      crate::rasterize_prompt::owns,
      crate::duplicate_layer_ui::owns,
      crate::stack_dialog::owns,
-@@ -1028,6 +1032,7 @@ fn confirm_command(app: &mut PhotocraftApp, d: Dialog) -> Result<Value, String>
+@@ -1156,6 +1160,7 @@ fn confirm_command(app: &mut PhotocraftApp, d: Dialog) -> Result<Value, String>
          _ if crate::new_layer_ui::owns(&d.fields) => crate::new_layer_ui::confirm(app, &d.fields),
          _ if crate::mask_trash_prompt::owns(&d.fields) => crate::mask_trash_prompt::confirm(app, &d.fields),
          _ if crate::group_delete_prompt::owns(&d.fields) => crate::group_delete_prompt::confirm(app, &d.fields),
@@ -285,13 +285,13 @@ index 0000000..46b63c0
 +    }
 +}
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index fe70216..17dd65f 100644
+index 0888557..d8016d3 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
-@@ -40,6 +40,8 @@ pub mod frame_stages;
- pub mod blur_handles;
+@@ -43,6 +43,8 @@ pub mod gpu_memo;
  pub mod gpu_status;
  pub mod group_delete_prompt;
+ pub mod home_recent_ui;
 +/// HORIX: Paste As (Smart Object, Pixels, Path, Shape Layer) for vector art on the clipboard.
 +pub mod horix_paste_as;
  pub mod horix_ux;

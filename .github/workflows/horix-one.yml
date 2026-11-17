@@ -206,6 +206,11 @@ jobs:
           [ ${#files[@]} -eq 2 ] || { echo "::error::expected the Windows zip and the macOS DMG, got: ${files[*]}"; exit 1; }
           sha256sum -- "${files[@]}" > SHA256SUMS.txt
           cat SHA256SUMS.txt
+          # A re-run (its run number, so its tag, is the same) adds its files to the release.
+          if gh release view "horix-one-v$V" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "horix-one-v$V" "${files[@]}" SHA256SUMS.txt --clobber --repo "${{ github.repository }}"
+            exit 0
+          fi
           gh release create "horix-one-v$V" "${files[@]}" SHA256SUMS.txt \
             --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "HORIX One $V" \
             --notes "HORIX One $V for Windows and macOS: Vector, Pixel and Layout in one app. Easiest: install it from HORIX Launcher, which keeps it up to date. In the browser: https://one.horix.live/

@@ -1,6 +1,17 @@
-# HORIX patches for PhotoCraft 0.20.1
+# HORIX patches for PhotoCraft 0.23.1
 
-Diffs here apply in name order after `rebrand.py`, against the rebranded 0.20.1 tree.
+Diffs here apply in name order after `rebrand.py`, against the rebranded 0.23.1 tree.
+
+PhotoCraft 0.21-0.23 changed several things these patches (and `rebrand.py`) had to follow:
+- the interface translations left the source tree: they are in storytold/craft-i18n at the commit
+  named in `craft-i18n.rev`. HORIX is for Arabic and English only (Saber Group, 2026-11-11), so
+  `rebrand.py` (`i18n()`) unpacks only the Arabic catalogs (`archive/photocraft/craft-i18n-<rev>-ar.tar.gz`,
+  made by `tools/pack_i18n.sh`), renames PhotoCraft in them, points `build.rs` at them and cuts the
+  language registry to English + Arabic. No patch for it: it is a few exact edits that fail loudly.
+- selections are sparse `Surface`s and `matting::refine_mask` / `region_reader` are test-only, so
+  50's `enhance_region` goes through `refine_surface`.
+- the start screen was rebuilt and upstream's own `home_screen_up()` now hides the panels under
+  Home; HORIX Home still replaces the start screen (80).
 
 PhotoCraft 0.16-0.20 split most large files into modules (`canvas.rs` -> `canvas/`, `panels.rs` ->
 `panels/`, `lib.rs` -> `app/`, the engine's `*_cmds.rs` -> `engine/src/cmd/`), so every patch was

@@ -1,8 +1,8 @@
 diff --git a/apps/lightcraft-web/index.html b/apps/lightcraft-web/index.html
-index 560cc6f..d75a646 100644
+index f5ff4d8..cd3494b 100644
 --- a/apps/lightcraft-web/index.html
 +++ b/apps/lightcraft-web/index.html
-@@ -72,5 +72,148 @@
+@@ -177,5 +177,148 @@
        if (el) el.textContent = "Horix Light failed to load: " + e;
      });
    </script>
@@ -152,13 +152,13 @@ index 560cc6f..d75a646 100644
  </body>
  </html>
 diff --git a/apps/lightcraft-web/src/web.rs b/apps/lightcraft-web/src/web.rs
-index 168bb87..1a7c187 100644
+index f2627c0..81bc2be 100644
 --- a/apps/lightcraft-web/src/web.rs
 +++ b/apps/lightcraft-web/src/web.rs
-@@ -404,6 +404,12 @@ struct WebApp {
-     first_frame_logged: bool,
+@@ -504,6 +504,12 @@ struct WebApp {
      last_save: f64,
      ui_written: Vec<u8>,
+     bridge: Option<crate::host::Bridge>,
 +    /// HORIX: AI mask requests the page is working on.
 +    horix_ai: Vec<lightcraft_engine::segment::external::ExternalRequest>,
 +    /// HORIX: whether the page's models were looked for (the first frame).
@@ -167,18 +167,18 @@ index 168bb87..1a7c187 100644
 +    horix_sent: bool,
  }
  
- impl WebApp {
-@@ -503,6 +509,9 @@ impl WebApp {
-             first_frame_logged: false,
+ /// The browser host's drop queues, taken only through the shared gate: a prompt or blocking
+@@ -654,6 +660,9 @@ impl WebApp {
              last_save: 0.0,
              ui_written,
+             bridge,
 +            horix_ai: Vec::new(),
 +            horix_checked: false,
 +            horix_sent: false,
          }
      }
  
-@@ -636,6 +645,92 @@ impl WebApp {
+@@ -847,6 +856,92 @@ impl WebApp {
          })
      }
  
@@ -271,15 +271,15 @@ index 168bb87..1a7c187 100644
      fn run_inbox(&mut self) {
          let inbox = INBOX.with(|q| std::mem::take(&mut *q.borrow_mut()));
          for (id, params, (resolve, reject)) in inbox {
-@@ -656,6 +751,7 @@ impl eframe::App for WebApp {
-             self.app.ui.toast = Some((text, now + NOTICE_SECS, None));
+@@ -873,6 +968,7 @@ impl eframe::App for WebApp {
          }
          self.run_inbox();
+         self.run_host(ctx);
 +        self.horix_ai(ctx);
-         self.import_dropped(ctx);
          self.load_originals(ctx);
          if let Some(w) = &self.workers {
-@@ -693,6 +789,17 @@ impl eframe::App for WebApp {
+             // `library.preferences ▸ cacheMb` is read by the session; the worker index prunes on
+@@ -932,6 +1028,17 @@ impl eframe::App for WebApp {
      }
  }
  
@@ -298,10 +298,10 @@ index 168bb87..1a7c187 100644
  /// `navigator.language`) that Horix Light ships becomes the UI's default. Every step is fallible
  /// (as in [`crate::safety::acquire_tab_lock`]): without a usable navigator Auto stays English,
 diff --git a/crates/engine/src/cmd/masks.rs b/crates/engine/src/cmd/masks.rs
-index cb7c912..8040f40 100644
+index 68c6e60..e095b1b 100644
 --- a/crates/engine/src/cmd/masks.rs
 +++ b/crates/engine/src/cmd/masks.rs
-@@ -5,6 +5,7 @@ use lightcraft_geom::Point;
+@@ -7,6 +7,7 @@ use lightcraft_geom::Point;
  use serde_json::{Value, json};
  
  use super::{CommandSpec, bad, bool_or, cmd, f64_or, has_active, ok, point, str_param};
@@ -309,7 +309,7 @@ index cb7c912..8040f40 100644
  use crate::segment::{Click, MAX_CLICKS};
  use crate::{Result, Session};
  
-@@ -72,6 +73,8 @@ enum Later {
+@@ -86,6 +87,8 @@ enum Later {
      Clicks(Vec<Point>, Vec<Point>),
      /// Background mode: the Describe selection is computed first; the mask is added when found.
      Text(String),
@@ -318,7 +318,7 @@ index cb7c912..8040f40 100644
  }
  
  /// Compute the segmentation of a new AI shape (Object with clicks, Prompt) — or, in background
-@@ -80,6 +83,19 @@ enum Later {
+@@ -94,6 +97,19 @@ enum Later {
  /// with their `seg` need no model.
  fn resolve_ai(s: &mut Session, shape: &mut MaskShape, c: &str) -> Result<Later> {
      let id = s.active().ok_or_else(|| bad(c, "no active photo"))?;
@@ -338,7 +338,7 @@ index cb7c912..8040f40 100644
      let background = s.segmenter.background;
      match shape {
          MaskShape::Object { seg: Some(_), .. } | MaskShape::Prompt { seg: Some(_), .. } => {}
-@@ -120,6 +136,10 @@ fn queue_later(s: &mut Session, later: Later, mask: u32, comp: usize, mut out: V
+@@ -138,6 +154,10 @@ fn queue_later(s: &mut Session, later: Later, mask: u32, comp: usize, mut out: V
          let id = s.active().ok_or_else(|| ai_err("no active photo"))?;
          segment(s, |s| s.segment_clicks_later(id, mask, comp, hint, exclude))?;
          out["pending"] = json!(true);
@@ -349,7 +349,7 @@ index cb7c912..8040f40 100644
      }
      Ok(out)
  }
-@@ -472,6 +492,11 @@ pub fn specs() -> Vec<CommandSpec> {
+@@ -520,6 +540,11 @@ pub fn specs() -> Vec<CommandSpec> {
                  } else {
                      hint.push(at)
                  }
@@ -361,7 +361,7 @@ index cb7c912..8040f40 100644
                  if s.segmenter.background && !hint.is_empty() {
                      let out = json!({"include": hint.len(), "exclude": ex.len(), "pending": true});
                      segment(s, |s| s.segment_clicks_later(id, mid, k, hint, ex))?;
-@@ -489,6 +514,59 @@ pub fn specs() -> Vec<CommandSpec> {
+@@ -537,6 +562,59 @@ pub fn specs() -> Vec<CommandSpec> {
                  Ok(out)
              }
          ),
@@ -421,7 +421,7 @@ index cb7c912..8040f40 100644
          cmd!(
              "mask.refineDetail",
              "Refine AI Mask Detail",
-@@ -498,6 +576,10 @@ pub fn specs() -> Vec<CommandSpec> {
+@@ -546,6 +624,10 @@ pub fn specs() -> Vec<CommandSpec> {
              has_active,
              |s, p| {
                  let c = "mask.refineDetail";
@@ -432,6 +432,63 @@ index cb7c912..8040f40 100644
                  let id = s.active().ok_or_else(|| bad(c, "no active photo"))?;
                  let mid = mask_id(p, s.active_mask, c)?;
                  let d = s.develop_of(id).unwrap_or_default();
+diff --git a/crates/engine/src/segment.rs b/crates/engine/src/segment.rs
+index e0848c2..4b2f048 100644
+--- a/crates/engine/src/segment.rs
++++ b/crates/engine/src/segment.rs
+@@ -17,6 +17,7 @@
+ 
+ #[cfg(feature = "sam")]
+ mod download;
++pub mod external;
+ #[cfg(feature = "sam")]
+ mod worker;
+ 
+@@ -131,6 +132,11 @@ pub struct Segmenter {
+     pub background: bool,
+     pending: Option<PendingClicks>,
+     messages: Vec<String>,
++    /// HORIX: AI masks are computed outside the engine (the web page's models); see [`external`].
++    pub external: bool,
++    external_queue: Vec<external::ExternalRequest>,
++    external_next: u64,
++    external_inflight: usize,
+     #[cfg(feature = "sam")]
+     worker: worker::Worker,
+     #[cfg(feature = "sam")]
+@@ -149,6 +155,10 @@ impl Default for Segmenter {
+             background: false,
+             pending: None,
+             messages: Vec::new(),
++            external: false,
++            external_queue: Vec::new(),
++            external_next: 0,
++            external_inflight: 0,
+             #[cfg(feature = "sam")]
+             worker: worker::Worker::default(),
+             #[cfg(feature = "sam")]
+@@ -182,9 +192,9 @@ impl Segmenter {
+     /// Whether requests are queued or running (loading, analyzing the photo, a click…).
+     pub fn busy(&self) -> bool {
+         #[cfg(feature = "sam")]
+-        return self.worker.pending() > 0;
++        return self.worker.pending() > 0 || self.external_inflight > 0;
+         #[cfg(not(feature = "sam"))]
+-        false
++        return self.external_inflight > 0;
+     }
+ 
+     /// Whether the slow part runs now: loading the model or analyzing a photo.
+@@ -255,6 +265,9 @@ impl Segmenter {
+     /// [`crate::EngineError::ModelMissing`], so a frontend offers the download without reading the message.
+     pub fn require_model(&self) -> crate::Result<PathBuf> {
+         let other = |why: &str| crate::EngineError::Other(why.into());
++        if self.external {
++            return Ok(PathBuf::new());
++        }
+         if !Self::AVAILABLE {
+             return Err(other("AI masks are not available in this build"));
+         }
 diff --git a/crates/engine/src/segment/external.rs b/crates/engine/src/segment/external.rs
 new file mode 100644
 index 0000000..6749815
@@ -615,60 +672,3 @@ index 0000000..6749815
 +        assert_eq!(s.develop_of(photo).unwrap().masks.len(), 2);
 +    }
 +}
-diff --git a/crates/engine/src/segment/mod.rs b/crates/engine/src/segment/mod.rs
-index 1a51637..115cff0 100644
---- a/crates/engine/src/segment/mod.rs
-+++ b/crates/engine/src/segment/mod.rs
-@@ -17,6 +17,7 @@
- 
- #[cfg(feature = "sam")]
- mod download;
-+pub mod external;
- #[cfg(feature = "sam")]
- mod worker;
- 
-@@ -128,6 +129,11 @@ pub struct Segmenter {
-     pub background: bool,
-     pending: Option<PendingClicks>,
-     messages: Vec<String>,
-+    /// HORIX: AI masks are computed outside the engine (the web page's models); see [`external`].
-+    pub external: bool,
-+    external_queue: Vec<external::ExternalRequest>,
-+    external_next: u64,
-+    external_inflight: usize,
-     #[cfg(feature = "sam")]
-     worker: worker::Worker,
-     #[cfg(feature = "sam")]
-@@ -146,6 +152,10 @@ impl Default for Segmenter {
-             background: false,
-             pending: None,
-             messages: Vec::new(),
-+            external: false,
-+            external_queue: Vec::new(),
-+            external_next: 0,
-+            external_inflight: 0,
-             #[cfg(feature = "sam")]
-             worker: worker::Worker::default(),
-             #[cfg(feature = "sam")]
-@@ -179,9 +189,9 @@ impl Segmenter {
-     /// Whether requests are queued or running (loading, analyzing the photo, a click…).
-     pub fn busy(&self) -> bool {
-         #[cfg(feature = "sam")]
--        return self.worker.pending() > 0;
-+        return self.worker.pending() > 0 || self.external_inflight > 0;
-         #[cfg(not(feature = "sam"))]
--        false
-+        return self.external_inflight > 0;
-     }
- 
-     /// Whether the slow part runs now: loading the model or analyzing a photo.
-@@ -252,6 +262,9 @@ impl Segmenter {
-     /// [`crate::EngineError::ModelMissing`], so a frontend offers the download without reading the message.
-     pub fn require_model(&self) -> crate::Result<PathBuf> {
-         let other = |why: &str| crate::EngineError::Other(why.into());
-+        if self.external {
-+            return Ok(PathBuf::new());
-+        }
-         if !Self::AVAILABLE {
-             return Err(other("AI masks are not available in this build"));
-         }

@@ -1,5 +1,5 @@
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index b80d4e0..fe70216 100644
+index 76a9fa7..0888557 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -28,6 +28,7 @@ mod brush_mode_menu;
@@ -11,10 +11,10 @@ index b80d4e0..fe70216 100644
  pub mod canvas;
  pub mod control;
 diff --git a/crates/ui-egui/src/panels.rs b/crates/ui-egui/src/panels.rs
-index 5d398a2..4d7d172 100644
+index cd4a39c..acedc07 100644
 --- a/crates/ui-egui/src/panels.rs
 +++ b/crates/ui-egui/src/panels.rs
-@@ -66,7 +66,7 @@ pub(super) mod variables_ui;
+@@ -67,7 +67,7 @@ pub(super) mod variables_ui;
  
  #[cfg(test)]
  use color::color_field_height;
@@ -87,7 +87,7 @@ index 1c9d47b..cd1896b 100644
  /// which folds onto a second line in a narrow dock. 120 pt when nothing sets a height.
  pub(super) fn color_field_height(avail: Option<f32>, width: f32) -> f32 {
 diff --git a/crates/ui-egui/src/panels/color_panel_ui.rs b/crates/ui-egui/src/panels/color_panel_ui.rs
-index 22665b2..21b7ee2 100644
+index c2abdfa..e878d81 100644
 --- a/crates/ui-egui/src/panels/color_panel_ui.rs
 +++ b/crates/ui-egui/src/panels/color_panel_ui.rs
 @@ -39,6 +39,8 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {

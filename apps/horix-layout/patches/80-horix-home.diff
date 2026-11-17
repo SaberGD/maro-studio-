@@ -1,8 +1,8 @@
 diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
-index 3833625..ee32e0d 100644
+index 88bd48c..bec7731 100644
 --- a/crates/ui-egui/src/app.rs
 +++ b/crates/ui-egui/src/app.rs
-@@ -230,23 +230,31 @@ impl DesignApp {
+@@ -222,23 +222,31 @@ impl DesignApp {
          if dbg {
              eprintln!("root start {:?}", ui.available_rect_before_wrap());
          }
@@ -98,7 +98,7 @@ index dbff184..c888adb 100644
      let key = egui::Id::unique(("recent_preview", path));
      if let Some((m, tex)) = ctx.data(|d| d.get_temp::<Cached>(key))
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index 765adf3..a4493a1 100644
+index 9afb74f..f8d4615 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -15,6 +15,9 @@ pub const UPDATE_APP: craft_update::app::App = craft_update::app::App {
@@ -112,10 +112,10 @@ index 765adf3..a4493a1 100644
  pub mod canvas;
  pub mod chrome;
 diff --git a/crates/ui-egui/src/menus/tests.rs b/crates/ui-egui/src/menus/tests.rs
-index 3fbd564..0e01de7 100644
+index e977c67..00946e6 100644
 --- a/crates/ui-egui/src/menus/tests.rs
 +++ b/crates/ui-egui/src/menus/tests.rs
-@@ -3092,7 +3092,8 @@ fn open_recent_lists_the_files_then_clear() {
+@@ -3102,7 +3102,8 @@ fn open_recent_lists_the_files_then_clear() {
  #[test]
  fn open_recent_of_a_missing_file_alerts_and_the_start_screen_lists_recent_files() {
      let mut app = crate::DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
@@ -125,7 +125,7 @@ index 3fbd564..0e01de7 100644
      app.session.prefs.note_recent_file("/nonexistent/dc-recent/gone.designcraft");
      assert!(app.run("app.openRecent", json!({"index": 0})).is_err());
      let d = app.ui.dialog.take().expect("an alert");
-@@ -3102,13 +3103,14 @@ fn open_recent_of_a_missing_file_alerts_and_the_start_screen_lists_recent_files(
+@@ -3112,13 +3113,14 @@ fn open_recent_of_a_missing_file_alerts_and_the_start_screen_lists_recent_files(
      assert!(app.run("app.openRecent", json!({"index": 9})).is_err(), "out of range: an error, not a panic");
      app.ui.dialog = None;
      let texts = start_screen_texts(&mut app);
@@ -141,7 +141,7 @@ index 3fbd564..0e01de7 100644
  fn start_screen_scrolls_when_the_window_is_too_short() {
      let mut app = crate::DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
      let ctx = egui::Context::default();
-@@ -3164,12 +3166,7 @@ fn help_links_are_enabled_without_a_document() {
+@@ -3174,12 +3176,7 @@ fn help_links_are_enabled_without_a_document() {
  // Regression test for #248: the start screen offered no A6 sheet (it listed only the first ten presets).
  #[test]
  fn start_screen_offers_every_print_preset_including_a6() {

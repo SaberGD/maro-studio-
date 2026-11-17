@@ -86,7 +86,7 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut egui::Ui) {
         }
         Some(home::Action::OpenRecent(i)) => {
             if let Some(path) = paths.get(i) {
-                let _ = crate::io::open_recent_reporting(app, path);
+                let _ = crate::io::open_reporting(app, path);
             }
         }
         Some(home::Action::Workspace) => {

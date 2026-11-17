@@ -1,8 +1,8 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index 27fbbbc..58a6ae7 100644
+index 860de3a..a296aab 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -974,7 +974,7 @@ version = "0.20.10"
+@@ -1020,7 +1020,7 @@ version = "0.20.10"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "9ba9e9ec16c447027685b1f897b720e18e9a8afd00bd7332c483537e38086c9f"
  dependencies = [
@@ -11,7 +11,7 @@ index 27fbbbc..58a6ae7 100644
   "target-lexicon",
  ]
  
-@@ -1859,7 +1859,7 @@ dependencies = [
+@@ -1947,7 +1947,7 @@ dependencies = [
   "profiling",
   "ron",
   "serde",
@@ -20,16 +20,16 @@ index 27fbbbc..58a6ae7 100644
   "unicode-segmentation",
   "web-sys",
  ]
-@@ -2062,7 +2062,7 @@ dependencies = [
+@@ -2150,7 +2150,7 @@ dependencies = [
   "self_cell",
   "serde",
-  "skrifa",
+  "skrifa 0.44.0",
 - "smallvec",
 + "smallvec 1.16.2",
   "unicode-bidi",
   "unicode-general-category",
   "unicode-properties",
-@@ -2171,7 +2171,7 @@ dependencies = [
+@@ -2259,7 +2259,7 @@ dependencies = [
   "num-complex",
   "pulp",
   "rayon-core",
@@ -38,7 +38,7 @@ index 27fbbbc..58a6ae7 100644
   "zune-inflate",
  ]
  
-@@ -2239,7 +2239,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -2327,7 +2327,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "2214fb00f669ee96bee5bb29dfb1ddabe058b2bc426817efc79afa03c9bc55ae"
  dependencies = [
   "displaydoc",
@@ -47,34 +47,61 @@ index 27fbbbc..58a6ae7 100644
   "writeable",
  ]
  
-@@ -2371,7 +2371,7 @@ dependencies = [
+@@ -2468,7 +2468,7 @@ dependencies = [
   "parlance",
-  "read-fonts",
+  "read-fonts 0.41.0",
   "roxmltree 0.21.1",
 - "smallvec",
 + "smallvec 1.16.2",
   "windows",
   "windows-core",
   "yeslogic-fontconfig-sys",
-@@ -2675,7 +2675,7 @@ dependencies = [
-  "log",
+@@ -2773,7 +2773,7 @@ dependencies = [
   "peniko",
-  "skrifa",
+  "png 0.18.1",
+  "skrifa 0.42.1",
 - "smallvec",
 + "smallvec 1.16.2",
-  "vello_common",
+  "vello_common 0.0.9",
  ]
  
-@@ -2826,7 +2826,7 @@ dependencies = [
+@@ -2789,7 +2789,7 @@ dependencies = [
+  "log",
+  "peniko",
+  "skrifa 0.44.0",
+- "smallvec",
++ "smallvec 1.16.2",
+  "vello_common 0.2.0",
+ ]
+ 
+@@ -2940,7 +2940,7 @@ dependencies = [
   "bitflags 2.13.2",
   "bytemuck",
-  "read-fonts",
+  "read-fonts 0.41.0",
 - "smallvec",
 + "smallvec 1.16.2",
  ]
  
  [[package]]
-@@ -2940,7 +2940,7 @@ dependencies = [
+@@ -3016,7 +3016,7 @@ dependencies = [
+  "rustc-hash 2.1.3",
+  "siphasher",
+  "skrifa 0.47.0",
+- "smallvec",
++ "smallvec 1.16.2",
+  "yoke",
+ ]
+ 
+@@ -3055,7 +3055,7 @@ dependencies = [
+  "hayro-jpeg2000",
+  "memchr",
+  "rustc-hash 2.1.3",
+- "smallvec",
++ "smallvec 1.16.2",
+  "stringprep",
+  "zune-jpeg 0.5.15",
+ ]
+@@ -3151,7 +3151,7 @@ dependencies = [
   "httparse",
   "itoa",
   "pin-project-lite",
@@ -83,7 +110,7 @@ index 27fbbbc..58a6ae7 100644
   "tokio",
   "want",
  ]
-@@ -3085,7 +3085,7 @@ dependencies = [
+@@ -3319,7 +3319,7 @@ dependencies = [
   "icu_normalizer_data",
   "icu_properties",
   "icu_provider",
@@ -92,7 +119,7 @@ index 27fbbbc..58a6ae7 100644
   "utf16_iter",
   "utf8_iter",
   "write16",
-@@ -3198,7 +3198,7 @@ dependencies = [
+@@ -3432,7 +3432,7 @@ dependencies = [
   "icu_provider",
   "icu_segmenter_data",
   "potential_utf",
@@ -101,7 +128,7 @@ index 27fbbbc..58a6ae7 100644
   "utf8_iter",
   "zerovec",
  ]
-@@ -3222,7 +3222,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -3456,7 +3456,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "3b0875f23caa03898994f6ddc501886a45c7d3d62d04d2d90788d47be1b1e4de"
  dependencies = [
   "idna_adapter",
@@ -110,7 +137,7 @@ index 27fbbbc..58a6ae7 100644
   "utf8_iter",
  ]
  
-@@ -3705,7 +3705,7 @@ checksum = "c62026ae44756f8a599ba21140f350303d4f08dcdcc71b5ad9c9bb8128c13c62"
+@@ -3940,7 +3940,7 @@ checksum = "c62026ae44756f8a599ba21140f350303d4f08dcdcc71b5ad9c9bb8128c13c62"
  dependencies = [
   "arrayvec",
   "euclid",
@@ -119,7 +146,7 @@ index 27fbbbc..58a6ae7 100644
  ]
  
  [[package]]
-@@ -3717,7 +3717,7 @@ dependencies = [
+@@ -3952,7 +3952,7 @@ dependencies = [
   "arrayvec",
   "euclid",
   "polycool",
@@ -128,9 +155,9 @@ index 27fbbbc..58a6ae7 100644
  ]
  
  [[package]]
-@@ -3899,6 +3899,16 @@ version = "0.1.3"
+@@ -4168,6 +4168,16 @@ version = "0.11.6"
  source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
+ checksum = "373f5eceeeab7925e0c1098212f2fbc4d416adec9d35051a6ab251e824c1854a"
  
 +[[package]]
 +name = "matrixmultiply"
@@ -145,7 +172,7 @@ index 27fbbbc..58a6ae7 100644
  [[package]]
  name = "maybe-owned"
  version = "0.3.4"
-@@ -4063,6 +4073,21 @@ dependencies = [
+@@ -4342,6 +4352,21 @@ dependencies = [
   "thiserror 2.0.21",
  ]
  
@@ -167,7 +194,7 @@ index 27fbbbc..58a6ae7 100644
  [[package]]
  name = "ndk"
  version = "0.9.0"
-@@ -4779,6 +4804,28 @@ dependencies = [
+@@ -5088,6 +5113,28 @@ dependencies = [
   "pin-project-lite",
  ]
  
@@ -196,7 +223,7 @@ index 27fbbbc..58a6ae7 100644
  [[package]]
  name = "os_pipe"
  version = "1.2.3"
-@@ -4824,7 +4871,7 @@ dependencies = [
+@@ -5133,7 +5180,7 @@ dependencies = [
   "cfg-if",
   "libc",
   "redox_syscall 0.5.18",
@@ -205,7 +232,7 @@ index 27fbbbc..58a6ae7 100644
   "windows-link",
  ]
  
-@@ -4908,7 +4955,7 @@ dependencies = [
+@@ -5217,7 +5264,7 @@ dependencies = [
   "color",
   "kurbo 0.13.1",
   "linebender_resource_handle",
@@ -214,7 +241,7 @@ index 27fbbbc..58a6ae7 100644
  ]
  
  [[package]]
-@@ -4994,6 +5041,8 @@ dependencies = [
+@@ -5345,6 +5392,8 @@ dependencies = [
   "objc2-app-kit 0.3.2",
   "objc2-foundation 0.3.2",
   "open",
@@ -223,7 +250,7 @@ index 27fbbbc..58a6ae7 100644
   "photocraft-automation",
   "photocraft-cms",
   "photocraft-codecs",
-@@ -6100,6 +6149,12 @@ dependencies = [
+@@ -6494,6 +6543,12 @@ dependencies = [
   "objc2-quartz-core 0.3.2",
  ]
  
@@ -236,7 +263,7 @@ index 27fbbbc..58a6ae7 100644
  [[package]]
  name = "rayon"
  version = "1.12.0"
-@@ -6577,7 +6632,7 @@ dependencies = [
+@@ -6992,7 +7047,7 @@ dependencies = [
   "bytemuck",
   "core_maths",
   "log",
@@ -245,7 +272,7 @@ index 27fbbbc..58a6ae7 100644
   "ttf-parser",
   "unicode-bidi-mirroring",
   "unicode-ccc",
-@@ -7108,6 +7163,12 @@ dependencies = [
+@@ -7543,6 +7598,12 @@ dependencies = [
   "serde",
  ]
  
@@ -258,7 +285,25 @@ index 27fbbbc..58a6ae7 100644
  [[package]]
  name = "smithay-client-toolkit"
  version = "0.19.2"
-@@ -8063,7 +8124,7 @@ dependencies = [
+@@ -8534,7 +8595,7 @@ dependencies = [
+  "log",
+  "peniko",
+  "png 0.18.1",
+- "smallvec",
++ "smallvec 1.16.2",
+  "thiserror 2.0.21",
+ ]
+ 
+@@ -8551,7 +8612,7 @@ dependencies = [
+  "log",
+  "peniko",
+  "png 0.18.1",
+- "smallvec",
++ "smallvec 1.16.2",
+  "thiserror 2.0.21",
+ ]
+ 
+@@ -8566,7 +8627,7 @@ dependencies = [
   "guillotiere",
   "log",
   "peniko",
@@ -267,7 +312,7 @@ index 27fbbbc..58a6ae7 100644
   "thiserror 2.0.21",
  ]
  
-@@ -8303,7 +8364,7 @@ dependencies = [
+@@ -8819,7 +8880,7 @@ dependencies = [
   "downcast-rs",
   "rustix 1.1.5",
   "scoped-tls",
@@ -276,7 +321,7 @@ index 27fbbbc..58a6ae7 100644
   "wayland-sys",
  ]
  
-@@ -8498,7 +8559,7 @@ dependencies = [
+@@ -9014,7 +9075,7 @@ dependencies = [
   "portable-atomic",
   "profiling",
   "raw-window-handle",
@@ -285,7 +330,7 @@ index 27fbbbc..58a6ae7 100644
   "static_assertions",
   "wasm-bindgen",
   "wasm-bindgen-futures",
-@@ -8532,7 +8593,7 @@ dependencies = [
+@@ -9048,7 +9109,7 @@ dependencies = [
   "profiling",
   "raw-window-handle",
   "rustc-hash 1.1.0",
@@ -294,7 +339,7 @@ index 27fbbbc..58a6ae7 100644
   "thiserror 2.0.21",
   "wgpu-core-deps-apple",
   "wgpu-core-deps-emscripten",
-@@ -8622,7 +8683,7 @@ dependencies = [
+@@ -9138,7 +9199,7 @@ dependencies = [
   "raw-window-handle",
   "raw-window-metal",
   "renderdoc-sys",
@@ -304,10 +349,10 @@ index 27fbbbc..58a6ae7 100644
   "thiserror 2.0.21",
   "wasm-bindgen",
 diff --git a/apps/photocraft-web/index.html b/apps/photocraft-web/index.html
-index 06be5f3..bdc2d6b 100644
+index e2321f8..388dfad 100644
 --- a/apps/photocraft-web/index.html
 +++ b/apps/photocraft-web/index.html
-@@ -463,5 +463,173 @@
+@@ -477,5 +477,173 @@
        font: inherit; font-weight: 700; text-align: center; text-decoration: none; cursor: pointer; }
      #sgps_crash a { background: #3A3535; }
    </style>
@@ -482,13 +527,13 @@ index 06be5f3..bdc2d6b 100644
  </body>
  </html>
 diff --git a/apps/photocraft-web/src/web.rs b/apps/photocraft-web/src/web.rs
-index 148942a..ab5dbcd 100644
+index 21171fc..365aa2e 100644
 --- a/apps/photocraft-web/src/web.rs
 +++ b/apps/photocraft-web/src/web.rs
-@@ -493,12 +493,78 @@ fn services(inbox: Inbox, place_inbox: Inbox, cursor_pos: photocraft_ui_egui::Cu
-         // Preferences live in the browser's localStorage.
-         load_prefs: Some(Box::new(|| local_storage()?.get_item(PREFS_KEY).ok().flatten())),
-         save_prefs: Some(Box::new(|text: &str| local_storage().ok_or("no localStorage")?.set_item(PREFS_KEY, text).map_err(|e| format!("{e:?}")))),
+@@ -588,12 +588,78 @@ fn services(inbox: Inbox, place_inbox: PlaceInbox, cursor_pos: photocraft_ui_egu
+         load_gpu_memo: None,
+         save_gpu_memo: None,
+         shader_compiler: None,
 +        segmenter: WebSegmenter::api().map(|_| Box::new(WebSegmenter) as Box<dyn photocraft_ui_egui::ai_segment::Segmenter>),
          ..Default::default()
      }
@@ -565,7 +610,7 @@ index 148942a..ab5dbcd 100644
      web_sys::window()?.local_storage().ok().flatten()
  }
 diff --git a/apps/photocraft/Cargo.toml b/apps/photocraft/Cargo.toml
-index b064f00..0cb13be 100644
+index 4130022..05241e4 100644
 --- a/apps/photocraft/Cargo.toml
 +++ b/apps/photocraft/Cargo.toml
 @@ -44,6 +44,9 @@ tempfile = "=3.27.0"
@@ -578,7 +623,7 @@ index b064f00..0cb13be 100644
  arboard = { version = "3.7", features = ["wayland-data-control"] }
  open = "5"
  # Reads the saved window layout (eframe persistence) to drop values that would abort startup.
-@@ -126,3 +129,5 @@ winresource = "0.1"
+@@ -132,3 +135,5 @@ winresource = "0.1"
  [dev-dependencies]
  # Opt-in native save-back acceptance transports embedded sources through engine JSON.
  base64 = "=0.22.1"
@@ -1291,7 +1336,7 @@ index 0000000..808bce8
 +    }
 +}
 diff --git a/apps/photocraft/src/main.rs b/apps/photocraft/src/main.rs
-index d1d859c..3e5c967 100644
+index 9a59ffc..cdc4da0 100644
 --- a/apps/photocraft/src/main.rs
 +++ b/apps/photocraft/src/main.rs
 @@ -29,6 +29,7 @@
@@ -1311,10 +1356,10 @@ index d1d859c..3e5c967 100644
              let display = tablet::DisplayKind::of(cc);
              #[cfg(target_os = "linux")]
 diff --git a/crates/engine/src/cmd/smartselect_cmds.rs b/crates/engine/src/cmd/smartselect_cmds.rs
-index adbf9b5..ed56046 100644
+index 3d10885..81e2cc2 100644
 --- a/crates/engine/src/cmd/smartselect_cmds.rs
 +++ b/crates/engine/src/cmd/smartselect_cmds.rs
-@@ -521,6 +521,44 @@ macro_rules! spec {
+@@ -545,6 +545,52 @@ macro_rules! spec {
      };
  }
  
@@ -1344,7 +1389,15 @@ index adbf9b5..ed56046 100644
 +/// with a band `band` pixels wide: about the model's upsampling factor).
 +pub fn enhance_region(s: &Session, all_layers: bool, r: &Region, band: f32) -> Option<Region> {
 +    let p = RefineParams { radius: band.max(1.0), ..ENHANCE };
-+    with_sampler(s, all_layers, |smp, doc| matting::refine_mask(smp, &matting::region_reader(r), r.bbox, doc.bounds(), &p)).ok().flatten()
++    // PhotoCraft 0.22+ refines sparse selection surfaces (`refine_mask` / `region_reader` are test-only now).
++    let input = matting::region_surface(r);
++    let refined = with_sampler(s, all_layers, |smp, doc| matting::refine_surface(smp, &input, doc.bounds(), &p, None)).ok()?.ok()??;
++    let bbox = refined.content_bounds();
++    if bbox.is_empty() {
++        return None;
++    }
++    let mask = photocraft_algo::selection::mask_from_surface(Some(&refined), bbox).iter().map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8).collect();
++    Some(Region { bbox, mask })
 +}
 +
 +/// Stores `base` combined with `region` by `mode` as the selection, in one history step labelled
@@ -2358,10 +2411,10 @@ index 0000000..2a835c9
 +    }
 +}
 diff --git a/crates/ui-egui/src/app.rs b/crates/ui-egui/src/app.rs
-index 3015f02..c70fee4 100644
+index a8cf267..214bcca 100644
 --- a/crates/ui-egui/src/app.rs
 +++ b/crates/ui-egui/src/app.rs
-@@ -51,6 +51,7 @@ impl PhotocraftApp {
+@@ -59,6 +59,7 @@ impl PhotocraftApp {
              move_blocked: false,
              tool_override: None,
              live_stroke: None,
@@ -2370,10 +2423,10 @@ index 3015f02..c70fee4 100644
              retouch_from_live: false,
              trail: None,
 diff --git a/crates/ui-egui/src/app/commands.rs b/crates/ui-egui/src/app/commands.rs
-index 1a43ffe..aacf7cf 100644
+index 1aa8111..a4a920c 100644
 --- a/crates/ui-egui/src/app/commands.rs
 +++ b/crates/ui-egui/src/app/commands.rs
-@@ -152,6 +152,10 @@ impl PhotocraftApp {
+@@ -181,6 +181,10 @@ impl PhotocraftApp {
              id,
              "layer.vectorMask.add" | "layer.vectorMask.fromPath" | "layer.vectorMask.revealAll" | "layer.vectorMask.hideAll" | "layer.vectorMask.currentPath"
          ) && on_active_layer;
@@ -2385,22 +2438,22 @@ index 1a43ffe..aacf7cf 100644
              actions::play(self, &params)
          } else if photocraft_engine::actions_cmds::shell_view_command(id) {
 diff --git a/crates/ui-egui/src/app/frame.rs b/crates/ui-egui/src/app/frame.rs
-index 348cacd..296efaa 100644
+index 27b7893..22739b3 100644
 --- a/crates/ui-egui/src/app/frame.rs
 +++ b/crates/ui-egui/src/app/frame.rs
-@@ -53,6 +53,7 @@ impl PhotocraftApp {
+@@ -64,6 +64,7 @@ impl PhotocraftApp {
          // sees their released budget.
          self.drain_captures(ctx);
          self.drain_control(ctx);
 +        crate::ai_segment::poll(self, ctx);
          native_menu::run(self, ctx);
          view_cmds::leave_full_screen_without_document(self, ctx);
-         // Switching tools commits, also between the Type and Type Mask tools.
+         // A box drag that ended without a release reaching the Type tool keeps its box, before
 diff --git a/crates/ui-egui/src/gpu_status.rs b/crates/ui-egui/src/gpu_status.rs
-index c4db3d3..4669319 100644
+index 27fee1c..f438527 100644
 --- a/crates/ui-egui/src/gpu_status.rs
 +++ b/crates/ui-egui/src/gpu_status.rs
-@@ -468,3 +468,64 @@ mod tests {
+@@ -479,3 +479,64 @@ mod tests {
          assert_eq!(app.ui.notices.len(), 1, "the restart notice");
      }
  }
@@ -2466,10 +2519,10 @@ index c4db3d3..4669319 100644
 +    format!("Graphics: {adapter} - {backend} - {device}")
 +}
 diff --git a/crates/ui-egui/src/jobs_ui.rs b/crates/ui-egui/src/jobs_ui.rs
-index 00fce3d..6eb4214 100644
+index 7459f54..c310231 100644
 --- a/crates/ui-egui/src/jobs_ui.rs
 +++ b/crates/ui-egui/src/jobs_ui.rs
-@@ -780,7 +780,7 @@ pub fn dialog(app: &mut PhotocraftApp, ctx: &egui::Context) {
+@@ -1030,7 +1030,7 @@ fn batch_interrupt_dialog(app: &mut PhotocraftApp, ctx: &egui::Context, id: JobI
      }
  }
  
@@ -2479,7 +2532,7 @@ index 00fce3d..6eb4214 100644
      if s < 60.0 { format!("{s:.1} s") } else { format!("{}:{:02}", (s / 60.0).floor() as u64, (s % 60.0).floor() as u64) }
  }
 diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index 134e8c1..e75a091 100644
+index 94748cf..da105a3 100644
 --- a/crates/ui-egui/src/lib.rs
 +++ b/crates/ui-egui/src/lib.rs
 @@ -25,6 +25,7 @@ macro_rules! tl {
@@ -2490,7 +2543,7 @@ index 134e8c1..e75a091 100644
  pub mod canvas;
  pub mod control;
  pub mod dialogs;
-@@ -337,6 +338,8 @@ pub struct PhotocraftApp {
+@@ -353,6 +354,8 @@ pub struct PhotocraftApp {
      pub session: Session,
      pub ui: UiState,
      pub services: Services,
@@ -2500,10 +2553,10 @@ index 134e8c1..e75a091 100644
      /// canvas state is shared (`canvas::GPU_OUTPUT`).
      canvases: HashMap<(DocId, u32), canvas::CanvasCache>,
 diff --git a/crates/ui-egui/src/notices.rs b/crates/ui-egui/src/notices.rs
-index 5838674..8c0f133 100644
+index f54b6ae..f32a3a0 100644
 --- a/crates/ui-egui/src/notices.rs
 +++ b/crates/ui-egui/src/notices.rs
-@@ -53,6 +53,12 @@ pub fn post(app: &mut PhotocraftApp, title: impl Into<String>, lines: Vec<String
+@@ -65,6 +65,12 @@ pub fn post(app: &mut PhotocraftApp, title: impl Into<String>, lines: Vec<String
      id
  }
  
@@ -2515,7 +2568,7 @@ index 5838674..8c0f133 100644
 +
  fn cap_notices(app: &mut PhotocraftApp) {
      while app.ui.notices.len() > MAX_NOTICES {
-         let oldest_temporary = app.ui.notices.iter().position(|notice| notice.dismiss_pref.is_none()).unwrap_or(0);
+         let oldest_temporary = app.ui.notices.iter().position(|notice| notice.dismiss_pref.is_none() && !notice.sticky).unwrap_or(0);
 diff --git a/crates/ui-egui/src/panels/status_bar.rs b/crates/ui-egui/src/panels/status_bar.rs
 index 4313e64..caa9864 100644
 --- a/crates/ui-egui/src/panels/status_bar.rs
@@ -2540,10 +2593,10 @@ index 4313e64..caa9864 100644
                          && !t.pro
                          && widgets::compact_button(ui, tl!("Fit"), control_h).clicked()
 diff --git a/crates/ui-egui/src/services.rs b/crates/ui-egui/src/services.rs
-index d770d4a..89a2f30 100644
+index 6e28f00..03e61b3 100644
 --- a/crates/ui-egui/src/services.rs
 +++ b/crates/ui-egui/src/services.rs
-@@ -500,4 +500,6 @@ pub struct Services {
+@@ -638,4 +638,6 @@ pub struct Services {
      /// while AppKit's run loop is still going crashes or hangs Touch Bar Macs (#1575, #1458).
      /// Without one, eframe closes the window and the app ends with it.
      pub quit: Option<QuitFn>,
@@ -2582,10 +2635,10 @@ index 267c326..1ad10fe 100644
      if up.busy {
          ctx.request_repaint_after(std::time::Duration::from_millis(40));
 diff --git a/crates/ui-egui/src/tools/retouch_ui.rs b/crates/ui-egui/src/tools/retouch_ui.rs
-index 2b1a4f9..9fb9932 100644
+index 68abe3d..8b0ef78 100644
 --- a/crates/ui-egui/src/tools/retouch_ui.rs
 +++ b/crates/ui-egui/src/tools/retouch_ui.rs
-@@ -169,7 +169,12 @@ pub fn finish_stroke(app: &mut PhotocraftApp, tool: Tool, points: &[[f64; 3]], m
+@@ -273,7 +273,12 @@ pub(crate) fn finish_stroke_with(app: &mut PhotocraftApp, tool: Tool, points: &[
              let mode = if mods.alt { "subtract" } else { "add" };
              let xy: Vec<[f64; 2]> = points.iter().map(|q| [q[0], q[1]]).collect();
              let (sample_all, enhance) = (o.sample_all.quick_selection, o.enhance_edge);
@@ -2599,7 +2652,7 @@ index 2b1a4f9..9fb9932 100644
              report_smart_result(app, r, tl!("Quick Selection found nothing there"));
              return true;
          }
-@@ -416,6 +421,10 @@ pub fn finish_object_selection(app: &mut PhotocraftApp, start: [f64; 2], end: [f
+@@ -641,6 +646,10 @@ pub fn finish_object_selection(app: &mut PhotocraftApp, start: [f64; 2], end: [f
              (false, true) => "subtract",
              (false, false) => "replace",
          };
@@ -2610,7 +2663,7 @@ index 2b1a4f9..9fb9932 100644
          let r = app.run("select.object", json!({"point": [end[0], end[1]], "mode": mode, "sampleAllLayers": sample_all}));
          crate::object_finder::clear(app);
          report_smart_result(app, r, tl!("No object found there — drag a rectangle around it"));
-@@ -435,7 +444,12 @@ pub fn finish_object_selection(app: &mut PhotocraftApp, start: [f64; 2], end: [f
+@@ -660,7 +669,12 @@ pub fn finish_object_selection(app: &mut PhotocraftApp, start: [f64; 2], end: [f
      } else {
          "replace"
      };
